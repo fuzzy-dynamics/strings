@@ -1,0 +1,198 @@
+#!/usr/bin/env python3
+"""Resolve t.co links from bookmarks to real URLs and classify them.
+
+Usage:
+    ft-resolve <id> [<id>...]     Resolve specific bookmark(s)
+    ft-resolve --all              Resolve all bookmarks
+    ft-resolve --unresolved       Only bookmarks not yet cached
+"""
+
+import argparse
+import json
+import os
+import re
+import subprocess
+import sys
+from urllib.parse import urlparse
+
+CACHE_FILE = os.path.expanduser("~/.ft-bookmarks/resolved-links.json")
+
+IMAGE_HOSTS = {"pbs.twimg.com", "abs.twimg.com"}
+VIDEO_HOSTS = {"video.twimg.com"}
+
+ARTICLE_BLACKLIST_PATHS = {"/photo", "/video", "/i/spaces"}
+
+
+def load_cache():
+    if os.path.exists(CACHE_FILE):
+        with open(CACHE_FILE) as f:
+            return json.load(f)
+    return {}
+
+
+def save_cache(cache):
+    os.makedirs(os.path.dirname(CACHE_FILE), exist_ok=True)
+    tmp = CACHE_FILE + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(cache, f, indent=2)
+    os.replace(tmp, CACHE_FILE)
+
+
+def resolve_tco(url):
+    """Follow a single t.co redirect."""
+    try:
+        result = subprocess.run(
+            ["curl", "-sI", "-o", "/dev/null", "-w", "%{redirect_url}",
+             "--max-time", "8", url],
+            capture_output=True, text=True, timeout=12,
+        )
+        resolved = result.stdout.strip()
+        return resolved if resolved else url
+    except Exception:
+        return url
+
+
+def classify_url(url):
+    """Classify a resolved URL by content type."""
+    parsed = urlparse(url)
+    host = (parsed.hostname or "").lower()
+    path = parsed.path or ""
+
+    if host in IMAGE_HOSTS:
+        return "image"
+    if host in VIDEO_HOSTS:
+        return "video"
+
+    # Twitter/X internal links
+    if host in ("twitter.com", "x.com", "www.twitter.com", "www.x.com",
+                "mobile.twitter.com", "mobile.x.com"):
+        if "/photo" in path:
+            return "image"
+        if "/video" in path:
+            return "video"
+        if "/i/article" in path:
+            return "article"
+        if "/i/spaces" in path:
+            return "space"
+        # quote tweet or reply link
+        return "tweet"
+
+    if "arxiv.org" in host:
+        return "arxiv"
+    if "github.com" in host or "gitlab.com" in host:
+        return "repo"
+    if host in ("youtube.com", "www.youtube.com", "youtu.be", "m.youtube.com"):
+        return "video"
+    if host in ("vimeo.com", "www.vimeo.com"):
+        return "video"
+
+    return "article"
+
+
+def extract_tco_links(text):
+    return re.findall(r"https://t\.co/\w+", text)
+
+
+def get_bookmarks(ids=None):
+    """Fetch bookmarks from ft list --json."""
+    cmd = ["ft", "list", "--json", "--limit", "9999"]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    output = result.stdout
+    # The output has an ANSI banner before the JSON. Find the JSON array
+    # by looking for a '[' at the start of a line.
+    start = -1
+    for i, ch in enumerate(output):
+        if ch == "[" and (i == 0 or output[i - 1] == "\n"):
+            start = i
+            break
+    if start == -1:
+        print("Error: could not parse ft list output.", file=sys.stderr)
+        return []
+    bookmarks = json.loads(output[start:])
+
+    if ids:
+        id_set = set(ids)
+        bookmarks = [
+            b for b in bookmarks
+            if b.get("id") in id_set or b.get("tweetId") in id_set
+        ]
+    return bookmarks
+
+
+def resolve_bookmark(bookmark):
+    text = bookmark.get("text", "")
+    tco_links = extract_tco_links(text)
+
+    links = []
+    for tco in tco_links:
+        url = resolve_tco(tco)
+        link_type = classify_url(url)
+        links.append({
+            "tco": tco,
+            "url": url,
+            "type": link_type,
+            "domain": urlparse(url).hostname or "",
+        })
+
+    return {
+        "id": bookmark.get("id", ""),
+        "author": bookmark.get("authorHandle", ""),
+        "text": text[:140],
+        "posted_at": bookmark.get("postedAt", ""),
+        "links": links,
+    }
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Resolve t.co links from bookmarks to real URLs"
+    )
+    parser.add_argument("ids", nargs="*", help="Bookmark IDs to resolve")
+    parser.add_argument("--all", action="store_true",
+                        help="Resolve all bookmarks")
+    parser.add_argument("--unresolved", action="store_true",
+                        help="Only bookmarks not yet in cache")
+    parser.add_argument("--no-cache", action="store_true",
+                        help="Ignore cache, re-resolve everything")
+    args = parser.parse_args()
+
+    if not args.ids and not args.all and not args.unresolved:
+        parser.print_help()
+        sys.exit(1)
+
+    cache = {} if args.no_cache else load_cache()
+
+    bookmarks = get_bookmarks(ids=args.ids if args.ids else None)
+
+    if args.unresolved:
+        bookmarks = [b for b in bookmarks if b.get("id", "") not in cache]
+
+    results = []
+    total = len(bookmarks)
+
+    for i, bm in enumerate(bookmarks):
+        bid = bm.get("id", "")
+
+        if bid in cache and not args.no_cache:
+            results.append(cache[bid])
+            continue
+
+        if total > 1:
+            print(
+                f"\r  Resolving {i + 1}/{total}...",
+                end="", flush=True, file=sys.stderr,
+            )
+
+        resolved = resolve_bookmark(bm)
+        cache[bid] = resolved
+        results.append(resolved)
+
+    if total > 1:
+        print(f"\r  Resolved {total} bookmarks.       ", file=sys.stderr)
+
+    save_cache(cache)
+    print(json.dumps(results, indent=2))
+
+
+if __name__ == "__main__":
+    main()

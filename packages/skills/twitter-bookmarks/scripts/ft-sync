@@ -1,0 +1,127 @@
+#!/usr/bin/env python3
+"""Cross-platform bookmark sync with automatic cookie extraction.
+
+macOS: tries fieldtheory's native browser extraction first, falls back to
+       Firefox cookie extraction if that fails.
+Linux: extracts Firefox cookies directly (native extraction is broken).
+"""
+
+import glob
+import os
+import platform
+import shutil
+import sqlite3
+import subprocess
+import sys
+import tempfile
+
+
+def find_firefox_profile():
+    """Find the most recently used Firefox profile with X cookies."""
+    system = platform.system()
+    if system == "Linux":
+        base = os.path.expanduser("~/.mozilla/firefox")
+    elif system == "Darwin":
+        base = os.path.expanduser(
+            "~/Library/Application Support/Firefox/Profiles"
+        )
+    else:
+        return None
+
+    if not os.path.isdir(base):
+        return None
+
+    profiles = glob.glob(os.path.join(base, "*/cookies.sqlite"))
+    if not profiles:
+        return None
+
+    # Prefer the most recently modified cookie db
+    profiles.sort(key=os.path.getmtime, reverse=True)
+    return os.path.dirname(profiles[0])
+
+
+def extract_cookies(profile_dir):
+    """Extract ct0 and auth_token from Firefox cookies.sqlite."""
+    db = os.path.join(profile_dir, "cookies.sqlite")
+    tmp = tempfile.mktemp(suffix=".sqlite")
+    try:
+        shutil.copy2(db, tmp)
+        for ext in ("-wal", "-shm"):
+            src = db + ext
+            if os.path.exists(src):
+                shutil.copy2(src, tmp + ext)
+
+        conn = sqlite3.connect(tmp)
+        ct0 = conn.execute(
+            "SELECT value FROM moz_cookies "
+            "WHERE host LIKE '%x.com' AND name='ct0'"
+        ).fetchone()
+        auth = conn.execute(
+            "SELECT value FROM moz_cookies "
+            "WHERE host LIKE '%x.com' AND name='auth_token'"
+        ).fetchone()
+        conn.close()
+    finally:
+        for f in (tmp, tmp + "-wal", tmp + "-shm"):
+            if os.path.exists(f):
+                os.unlink(f)
+
+    if not ct0 or not auth:
+        return None, None
+    return ct0[0], auth[0]
+
+
+def try_native_sync(extra_args):
+    """Try fieldtheory's native browser detection."""
+    result = subprocess.run(
+        ["ft", "sync"] + extra_args,
+        capture_output=True,
+        text=True,
+    )
+    output = result.stdout + result.stderr
+    if "synced" in output.lower() or "up to date" in output.lower():
+        print(output)
+        return True
+    return False
+
+
+def main():
+    extra_args = sys.argv[1:]
+    system = platform.system()
+
+    # macOS: try native extraction first (works for Chrome, Brave, Arc, Firefox)
+    if system == "Darwin":
+        print("Trying native browser sync...", file=sys.stderr)
+        if try_native_sync(extra_args):
+            sys.exit(0)
+        print(
+            "Native sync failed, falling back to Firefox cookies...",
+            file=sys.stderr,
+        )
+
+    # Manual Firefox cookie extraction (Linux always, macOS fallback)
+    profile = find_firefox_profile()
+    if not profile:
+        print("Error: no Firefox profile found.", file=sys.stderr)
+        print(
+            "Install Firefox and log into x.com, or pass cookies manually:\n"
+            "  ft sync --cookies <ct0> <auth_token>",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    ct0, auth = extract_cookies(profile)
+    if not ct0 or not auth:
+        print(
+            "Error: X/Twitter cookies not found in Firefox.\n"
+            "Make sure you're logged into x.com in Firefox.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    cmd = ["ft", "sync", "--cookies", ct0, auth] + extra_args
+    sys.exit(subprocess.call(cmd))
+
+
+if __name__ == "__main__":
+    main()

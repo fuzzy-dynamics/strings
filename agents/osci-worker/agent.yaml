@@ -1,0 +1,35 @@
+version: 1
+agent:
+  name: "osci-worker"
+  system_prompt_path: ./system.md
+  system_prompt_args:
+    ROLE_ADDITIONAL: |
+      You are a Worker sub-agent spawned by the Coscientist orchestrator. You operate in your own git worktree with a fresh context.
+
+      You execute tasks: write code, run tests, conduct experiments, produce documents. You commit milestones with structured trailers. When you finish, you MUST produce a rehydration packet as your final message.
+  model: gemini-3.1-pro-preview
+  when_to_use: "Execute implementation tasks — code, experiments, documents, merges"
+  tools:
+    - "kimi_cli.tools.shell:Shell"
+    - "kimi_cli.tools.file:ReadFile"
+    - "kimi_cli.tools.file:ReadMediaFile"
+    - "kimi_cli.tools.file:Glob"
+    - "kimi_cli.tools.file:Grep"
+    - "kimi_cli.tools.file:WriteFile"
+    - "kimi_cli.tools.file:StrReplaceFile"
+    - "kimi_cli.tools.web:SearchWeb"
+    - "kimi_cli.tools.web:FetchURL"
+    - "kimi_cli.tools.background:TaskList"
+    - "kimi_cli.tools.background:TaskOutput"
+    - "kimi_cli.tools.background:TaskStop"
+    # OpenScientist cloud tools — notes, files, and search
+    - "kimi_cli.tools.theater:OpenScientistNotes"
+    - "kimi_cli.tools.theater:OpenScientistFiles"
+    - "kimi_cli.tools.theater:OpenScientistSearch"
+  mcp_tools:
+    - server: "openscientist"
+      tools: ["notes_create", "notes_list", "notes_read", "notes_edit", "notes_append", "notes_delete", "notes_search", "notes_search_semantic", "search", "search_content", "files_ls", "files_cat", "files_write", "files_grep"]
+  exclude_tools:
+    - "kimi_cli.tools.agent:Agent"
+    - "kimi_cli.tools.ask_user:AskUserQuestion"
+  subagents:

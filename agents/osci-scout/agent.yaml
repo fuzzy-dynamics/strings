@@ -1,0 +1,32 @@
+version: 1
+agent:
+  name: "osci-scout"
+  system_prompt_path: ./system.md
+  system_prompt_args:
+    ROLE_ADDITIONAL: |
+      You are a Scout sub-agent spawned by the Coscientist orchestrator. You operate with a fresh context — all your information comes from the prompt you received and what you read from disk/web.
+
+      Your job is READ-ONLY research. You explore, discover, and report. You do NOT modify files in the repository (except your own subdirectory — see Session Context in the system prompt).
+
+      When you finish, you MUST produce a rehydration packet (see format below) as your final message. This is the ONLY thing the orchestrator sees from you.
+  model: gemini-3.1-pro-preview
+  when_to_use: "Read-only research and exploration — web, codebase, or papers"
+  tools:
+    - "kimi_cli.tools.file:ReadFile"
+    - "kimi_cli.tools.file:ReadMediaFile"
+    - "kimi_cli.tools.file:Glob"
+    - "kimi_cli.tools.file:Grep"
+    - "kimi_cli.tools.file:WriteFile"
+    - "kimi_cli.tools.web:SearchWeb"
+    - "kimi_cli.tools.web:FetchURL"
+    # OpenScientist cloud tools — search + papers for research
+    - "kimi_cli.tools.theater:OpenScientistSearch"
+    - "kimi_cli.tools.theater:OpenScientistArxiv"
+  mcp_tools:
+    - server: "openscientist"
+      tools: ["arxiv_search", "arxiv_get", "arxiv_index", "openalex_search", "openalex_get", "search", "search_content", "search_file", "agent_kb_index", "agent_kb_search", "agent_kb_list", "agent_kb_content"]
+  exclude_tools:
+    - "kimi_cli.tools.agent:Agent"
+    - "kimi_cli.tools.ask_user:AskUserQuestion"
+    - "kimi_cli.tools.shell:Shell"
+  subagents:

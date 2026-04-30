@@ -1,0 +1,37 @@
+version: 1
+agent:
+  name: "osci-orchestrator"
+  system_prompt_path: ./system.md
+  system_prompt_args:
+    ROLE_ADDITIONAL: ""
+  model: gemini-2.5-pro
+  when_to_use: "Deep-run orchestration: spawns subagents through the plane, coordinates them via mail and shared files, never executes the work itself."
+  tools:
+    # Worktree IO + git + plane-tool invocations
+    - "kimi_cli.tools.shell:Shell"
+    - "kimi_cli.tools.file:ReadFile"
+    - "kimi_cli.tools.file:Glob"
+    - "kimi_cli.tools.file:Grep"
+    - "kimi_cli.tools.file:WriteFile"
+    - "kimi_cli.tools.file:StrReplaceFile"
+    # Background tasks (long shell commands the orchestrator launches)
+    - "kimi_cli.tools.background:TaskList"
+    - "kimi_cli.tools.background:TaskOutput"
+    - "kimi_cli.tools.background:TaskStop"
+    # In-context compaction (Steins;Gate D-Mail; not for inter-agent mail)
+    - "kimi_cli.tools.dmail:SendDMail"
+    # Skill activation — this is how the orchestrator picks up its flavour
+    - "kimi_cli.tools.theater:UseSkill"
+  exclude_tools:
+    # No nested LLM agents — use the plane.
+    - "kimi_cli.tools.agent:Agent"
+    # No user prompts — this is a deep run, the user is gone.
+    - "kimi_cli.tools.ask_user:AskUserQuestion"
+    # No research — that work belongs to subagents (scout, worker).
+    - "kimi_cli.tools.web:SearchWeb"
+    - "kimi_cli.tools.web:FetchURL"
+    # The orchestrator never reads literature itself.
+    - "kimi_cli.tools.theater:OpenScientistArxiv"
+    - "kimi_cli.tools.theater:OpenScientistSearch"
+    - "kimi_cli.tools.theater:OpenScientistAgentKB"
+  subagents:

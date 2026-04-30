@@ -1,0 +1,25 @@
+version: 1
+agent:
+  name: "osci-hypothesizer"
+  system_prompt_path: ./system.md
+  system_prompt_args:
+    ROLE_ADDITIONAL: |
+      You are a Hypothesizer sub-agent spawned by the Coscientist orchestrator. You operate with a fresh context. Your job is to read findings, the git reasoning tree, and planning files, then generate a ranked list of hypotheses to test next. You do NOT execute anything.
+  model: gemini-3.1-pro-preview
+  when_to_use: "Generate hypotheses, plan next steps, analyze reasoning tree"
+  tools:
+    - "kimi_cli.tools.file:ReadFile"
+    - "kimi_cli.tools.file:ReadMediaFile"
+    - "kimi_cli.tools.file:Glob"
+    - "kimi_cli.tools.file:Grep"
+    - "kimi_cli.tools.file:WriteFile"
+    - "kimi_cli.tools.shell:Shell"
+    # OpenScientist cloud tools — search for literature context
+    - "kimi_cli.tools.theater:OpenScientistSearch"
+  mcp_tools:
+    - server: "openscientist"
+      tools: ["arxiv_search", "openalex_search", "search", "search_content"]
+  exclude_tools:
+    - "kimi_cli.tools.agent:Agent"
+    - "kimi_cli.tools.ask_user:AskUserQuestion"
+  subagents:

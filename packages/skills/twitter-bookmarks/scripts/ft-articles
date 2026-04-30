@@ -1,0 +1,97 @@
+#!/usr/bin/env python3
+"""List bookmarks that link to readable articles, papers, or repos.
+
+Usage:
+    ft-articles                    All bookmarks with article links
+    ft-articles --topic "RAG"      Filter by keyword in tweet text
+    ft-articles --arxiv            Only arxiv papers
+    ft-articles --repos            Only GitHub/GitLab repos
+    ft-articles --limit 20         Limit results
+    ft-articles --json             JSON output
+"""
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+
+CACHE_FILE = os.path.expanduser("~/.ft-bookmarks/resolved-links.json")
+
+
+def load_cache():
+    if os.path.exists(CACHE_FILE):
+        with open(CACHE_FILE) as f:
+            return json.load(f)
+    return {}
+
+
+def ensure_resolved():
+    """Run ft-resolve --all if cache is empty."""
+    cache = load_cache()
+    if cache:
+        return cache
+    print("No resolved links found. Running ft-resolve --all...", file=sys.stderr)
+    subprocess.run(
+        ["ft-resolve", "--all"],
+        stdout=subprocess.DEVNULL,
+    )
+    return load_cache()
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="List bookmarks with readable article links"
+    )
+    parser.add_argument("--topic", help="Filter by keyword in tweet text")
+    parser.add_argument("--limit", type=int, default=50, help="Max results")
+    parser.add_argument("--arxiv", action="store_true", help="Only arxiv papers")
+    parser.add_argument("--repos", action="store_true", help="Only GitHub repos")
+    parser.add_argument("--json", action="store_true", help="JSON output")
+    args = parser.parse_args()
+
+    cache = ensure_resolved()
+
+    if args.arxiv:
+        types = {"arxiv"}
+    elif args.repos:
+        types = {"repo"}
+    else:
+        types = {"article", "arxiv", "repo"}
+
+    articles = []
+    for bid, data in cache.items():
+        matching = [l for l in data.get("links", []) if l["type"] in types]
+        if not matching:
+            continue
+        articles.append({
+            "id": data.get("id", bid),
+            "author": data.get("author", ""),
+            "text": data.get("text", ""),
+            "posted_at": data.get("posted_at", ""),
+            "urls": [l["url"] for l in matching],
+            "domains": list({l["domain"] for l in matching}),
+        })
+
+    if args.topic:
+        q = args.topic.lower()
+        articles = [a for a in articles if q in a["text"].lower()]
+
+    articles = articles[: args.limit]
+
+    if args.json:
+        print(json.dumps(articles, indent=2))
+    else:
+        if not articles:
+            print("  No matching articles found.")
+            return
+        for a in articles:
+            print(f"  @{a['author']:20s}  {a['text'][:80]}...")
+            for url in a["urls"]:
+                print(f"    -> {url}")
+            print()
+        print(f"  {len(articles)} bookmarks with article links.")
+
+
+if __name__ == "__main__":
+    main()

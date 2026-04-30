@@ -1,0 +1,19 @@
+services:
+  sandbox:
+    image: alpine:latest
+    command: ["sleep", "infinity"]
+    init: true
+    user: "${SPOT_HOST_UID}:${SPOT_HOST_GID}"
+    working_dir: ${SPOT_HOST_MOUNT}
+    volumes:
+      - type: bind
+        source: ${SPOT_HOST_MOUNT}
+        target: ${SPOT_HOST_MOUNT}
+        read_only: false
+
+x-spot:
+  id: alpine
+  label: "Alpine (POC)"
+  description: "Minimal Alpine Linux sandbox for proving the plumbing."
+  size_hint: "~5 MB"
+  schema_version: 1

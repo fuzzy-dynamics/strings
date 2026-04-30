@@ -1,0 +1,32 @@
+version: 1
+agent:
+  name: "osci-general"
+  system_prompt_path: ./system.md
+  system_prompt_args:
+    ROLE_ADDITIONAL: ""
+  tools:
+    - "kimi_cli.tools.agent:Agent"
+    - "kimi_cli.tools.ask_user:AskUserQuestion"
+    - "kimi_cli.tools.todo:SetTodoList"
+    - "kimi_cli.tools.shell:Shell"
+    - "kimi_cli.tools.background:TaskList"
+    - "kimi_cli.tools.background:TaskOutput"
+    - "kimi_cli.tools.background:TaskStop"
+    - "kimi_cli.tools.file:ReadFile"
+    - "kimi_cli.tools.file:ReadMediaFile"
+    - "kimi_cli.tools.file:Glob"
+    - "kimi_cli.tools.file:Grep"
+    - "kimi_cli.tools.file:WriteFile"
+    - "kimi_cli.tools.file:StrReplaceFile"
+    - "kimi_cli.tools.web:SearchWeb"
+    - "kimi_cli.tools.web:FetchURL"
+    - "kimi_cli.tools.plan:ExitPlanMode"
+    - "kimi_cli.tools.plan.enter:EnterPlanMode"
+    # OpenScientist tools
+    - "kimi_cli.tools.theater:OpenScientistSearch"
+    - "kimi_cli.tools.theater:OpenScientistNotes"
+    - "kimi_cli.tools.theater:OpenScientistArxiv"
+    - "kimi_cli.tools.theater:OpenScientistAgentKB"
+    - "kimi_cli.tools.theater:OpenScientistFiles"
+    - "kimi_cli.tools.theater:UseSkill"
+  subagents:
