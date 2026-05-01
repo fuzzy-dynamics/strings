@@ -28,5 +28,7 @@ agent:
     - "kimi_cli.tools.theater:OpenScientistArxiv"
     - "kimi_cli.tools.theater:OpenScientistAgentKB"
     - "kimi_cli.tools.theater:OpenScientistFiles"
+  exclude_tools:
+    # Skills are served by plane HTTP — do not load via the in-process tool.
     - "kimi_cli.tools.theater:UseSkill"
   subagents:

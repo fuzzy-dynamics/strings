@@ -121,3 +121,17 @@ The current working directory is ``.
 # Project Information
 
 # Skills
+
+Skills are workflow playbooks served by plane-server — read and run them through `$PLANE_TOOL_BIN`.
+
+```bash
+"$PLANE_TOOL_BIN" skills-list                                       # list available skills
+"$PLANE_TOOL_BIN" skill-view  <name>/SKILL.md                       # read a skill's body (the playbook)
+"$PLANE_TOOL_BIN" skill-view  <name>/                               # list the skill's files
+"$PLANE_TOOL_BIN" skill-which <name>/scripts/<script>.sh            # → absolute path on disk
+"$PLANE_TOOL_BIN" skill-run   <name>/scripts/<script>.sh [args...]  # exec the script
+```
+
+`skill-run` is the canonical way to invoke a script: it preserves the caller's CWD, env, stdio, and exit code — `$0`, `$(dirname "$0")`, sibling sourcing, and signal forwarding all behave as if you ran the absolute path yourself. Space overrides take precedence over globals automatically.
+
+To **activate** a skill, `skill-view <name>/SKILL.md` and follow what its body says. To **run** one of its scripts, `skill-run <name>/scripts/<script>.sh`.

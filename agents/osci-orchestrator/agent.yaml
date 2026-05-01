@@ -20,9 +20,9 @@ agent:
     - "kimi_cli.tools.background:TaskStop"
     # In-context compaction (Steins;Gate D-Mail; not for inter-agent mail)
     - "kimi_cli.tools.dmail:SendDMail"
-    # Skill activation — this is how the orchestrator picks up its flavour
-    - "kimi_cli.tools.theater:UseSkill"
   exclude_tools:
+    # Skills are served by plane HTTP — never via the in-process tool.
+    - "kimi_cli.tools.theater:UseSkill"
     # No nested LLM agents — use the plane.
     - "kimi_cli.tools.agent:Agent"
     # No user prompts — this is a deep run, the user is gone.

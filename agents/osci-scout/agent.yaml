@@ -26,6 +26,8 @@ agent:
     - server: "openscientist"
       tools: ["arxiv_search", "arxiv_get", "arxiv_index", "openalex_search", "openalex_get", "search", "search_content", "search_file", "agent_kb_index", "agent_kb_search", "agent_kb_list", "agent_kb_content"]
   exclude_tools:
+    # Skills are served by plane HTTP — never via the in-process tool.
+    - "kimi_cli.tools.theater:UseSkill"
     - "kimi_cli.tools.agent:Agent"
     - "kimi_cli.tools.ask_user:AskUserQuestion"
     - "kimi_cli.tools.shell:Shell"

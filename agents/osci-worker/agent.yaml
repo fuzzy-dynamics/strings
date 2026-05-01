@@ -30,6 +30,8 @@ agent:
     - server: "openscientist"
       tools: ["notes_create", "notes_list", "notes_read", "notes_edit", "notes_append", "notes_delete", "notes_search", "notes_search_semantic", "search", "search_content", "files_ls", "files_cat", "files_write", "files_grep"]
   exclude_tools:
+    # Skills are served by plane HTTP — never via the in-process tool.
+    - "kimi_cli.tools.theater:UseSkill"
     - "kimi_cli.tools.agent:Agent"
     - "kimi_cli.tools.ask_user:AskUserQuestion"
   subagents:

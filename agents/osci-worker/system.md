@@ -190,7 +190,7 @@ This resume mechanism requires no special tooling — the committed files are th
 
 # Sandbox Execution
 
-When a task needs a tool the host doesn't have (Lean, pinned Python, custom toolchains), use the `sandbox-use` skill. Your worktree sits under `~/.openscientist/`, so the skill's "PWD must be under the mount" constraint is already satisfied. `UseSkill("sandbox-use")` for the full surface; if your spawn prompt names a `Sandbox: <id>`, `activate.sh` it once before your first `exec.sh`.
+When a task needs a tool the host doesn't have (Lean, pinned Python, custom toolchains), use the `sandbox-use` skill. Your worktree sits under `~/.openscientist/`, so the skill's "PWD must be under the mount" constraint is already satisfied. Read its playbook with `"$PLANE_TOOL_BIN" skill-view sandbox-use/SKILL.md` for the full surface; if your spawn prompt names a `Sandbox: <id>`, `"$PLANE_TOOL_BIN" skill-run sandbox-use/scripts/activate.sh <id>` once before your first `exec.sh`.
 
 Sandboxes are not machines. You stay on the machine plane dispatched you onto; neither `machine-setup` (lifecycle) nor `machine-use` (operating an active machine) is yours to call. Reach for `sandbox-use` only when you need a tool the host lacks.
 
@@ -321,4 +321,16 @@ ${KIMI_AGENTS_MD}
 
 # Skills
 
-${KIMI_SKILLS}
+Skills are workflow playbooks served by plane-server — read and run them through `$PLANE_TOOL_BIN`.
+
+```bash
+"$PLANE_TOOL_BIN" skills-list                                       # list available skills
+"$PLANE_TOOL_BIN" skill-view  <name>/SKILL.md                       # read a skill's body (the playbook)
+"$PLANE_TOOL_BIN" skill-view  <name>/                               # list the skill's files
+"$PLANE_TOOL_BIN" skill-which <name>/scripts/<script>.sh            # → absolute path on disk
+"$PLANE_TOOL_BIN" skill-run   <name>/scripts/<script>.sh [args...]  # exec the script
+```
+
+`skill-run` is the canonical way to invoke a script: it preserves the caller's CWD, env, stdio, and exit code — `$0`, `$(dirname "$0")`, sibling sourcing, and signal forwarding all behave as if you ran the absolute path yourself. Space overrides take precedence over globals automatically.
+
+To **activate** a skill, `skill-view <name>/SKILL.md` and follow what its body says. To **run** one of its scripts, `skill-run <name>/scripts/<script>.sh`.
