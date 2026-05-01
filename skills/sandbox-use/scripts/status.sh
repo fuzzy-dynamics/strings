@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
-# status.sh <id> — live-probe a sandbox via `docker inspect`, reconcile the
-# index's last-known status, and emit the probed state as JSON.
+# status.sh <id> — live-probe a sandbox via `docker inspect`, emit the probed
+# state as JSON. Read-only: does NOT write back to the catalog (Docker is the
+# source of truth for runtime state; the persisted `status` field exists only
+# as a stale hint and is overridden on read by enrichment).
 source "$(dirname "$0")/_common.sh"
 ensure_index
 
@@ -16,6 +18,7 @@ if [[ -z "$raw" || "$raw" == "[]" ]]; then
   running=false
   started_at=null
   image_ref=null
+  binds_json="[]"
 else
   running="$(jq -r '.[0].State.Running' <<<"$raw")"
   raw_status="$(jq -r '.[0].State.Status' <<<"$raw")"
@@ -28,9 +31,8 @@ else
   fi
   started_at="$(jq '.[0].State.StartedAt' <<<"$raw")"
   image_ref="$(jq '.[0].Config.Image' <<<"$raw")"
+  binds_json="$(jq '[.[0].Mounts // [] | .[] | select(.Type == "bind") | .Source] | unique' <<<"$raw")"
 fi
-
-write_index "$(jq_index --arg n "$id" --arg s "$status" '.sandboxes[$n].status = $s')"
 
 jq -n \
   --arg id "$id" \
@@ -39,4 +41,5 @@ jq -n \
   --argjson running "$running" \
   --argjson started_at "$started_at" \
   --argjson image_ref "$image_ref" \
-  '{id:$id, container:$container, status:$status, running:$running, started_at:$started_at, image_ref:$image_ref}'
+  --argjson binds "$binds_json" \
+  '{id:$id, container:$container, status:$status, running:$running, started_at:$started_at, image_ref:$image_ref, current_bindings:$binds}'

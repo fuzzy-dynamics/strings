@@ -1,6 +1,6 @@
 ---
 name: sandbox-use
-description: Manage Docker sandbox containers for the OpenScientist agent stack — the isolated execution environments agents reach for when they need a tool that isn't on the host (Lean, pinned Python, custom toolchains). Covers the full runtime lifecycle — listing which sandboxes are available in `~/.openscientist/sandboxes/index.json`, checking/changing which one is *active* (the default target for exec calls), starting/stopping containers, live-probing health via `docker inspect`, and running shell commands inside the active sandbox. **HARD CONSTRAINT on where you can use it:** the sandbox bind-mounts ONLY `~/.openscientist` into the container (same-path bind, SPEC §6). `exec.sh` defaults the container's working directory to the caller's `$PWD` and refuses with exit 126 if that `$PWD` is outside `~/.openscientist` — silent fallback would make relative paths resolve against the wrong place. So: only call this skill from an agent whose working directory is a SPOT worktree or otherwise lives under `~/.openscientist/…`. If an agent runs out of `~/Documents` or any other host path, move the work under `~/.openscientist/` first or the skill won't execute. Use this skill whenever the user (or a higher-level skill) asks to run a command that requires a sandbox-resident tool, wants to switch between sandboxes, or needs to check which sandbox is currently wired in. File I/O should go through host-side Read/Write/Edit tools on the same absolute paths — only reach for `exec.sh` when you need to *execute* something. Adding / pulling / removing / uninstalling sandboxes is intentionally not in this skill yet (separate tools land later); `activate.sh` errors cleanly if the sandbox isn't already in the index.
+description: Manage Docker sandbox containers for the OpenScientist agent stack — the isolated execution environments agents reach for when they need a tool that isn't on the host (Lean, pinned Python, custom toolchains). Multiple sandboxes can be running concurrently. There is no global "active" sandbox — `exec.sh --sandbox <id>` is required, and "active for path P" is a derived predicate (container running AND P falls under one of its current bind-mount targets). The frontend's brick-button dropdown drives activation/deactivation per-space; agents can also self-activate via `activate.sh <id>` (with optional `--mount <abs-path>` to add a same-path bind beyond the canonical `~/.openscientist`). Workdir transparency holds for any host path that's currently bound — `exec.sh` defaults `--workdir` to `$PWD` and refuses with exit 126 if `$PWD` isn't under any of the target container's bind targets. Use this skill whenever you need to run a command that requires a sandbox-resident tool, or to check which sandbox is bound to a given host path. Adding/pulling/removing sandboxes still lives in higher layers (the Electron app's `POST /sandbox/add`); `activate.sh` errors cleanly if the sandbox isn't already in the index.
 metadata:
   skill-author: OpenScientist
 category: execution
@@ -10,101 +10,98 @@ category: execution
 
 Manage Docker sandbox containers agents run commands inside.
 
-A **sandbox** is a long-lived Docker container that mounts `~/.openscientist` at the identical absolute path (`/home/<user>/.openscientist` → `/home/<user>/.openscientist`), so file paths match on both sides with no translation. Every agent tool call is a fresh `docker exec` — per-call cwd and env, stateless except for the filesystem. One sandbox per SPOT installation is *active* at a time; that's the default target for exec calls. Switching active stops the previous container and starts the new one.
+A **sandbox** is a long-lived Docker container started from a spec stored in `~/.openscientist/sandboxes/index.json`. Every sandbox bind-mounts `~/.openscientist` at the same absolute path (so file paths match host↔container with zero translation), plus any additional same-path host directories the activator passed via `--mount`. Every agent tool call is a fresh `docker exec` — per-call cwd and env, stateless except for the filesystem.
 
-The catalog — which sandboxes exist, their docker spec, their last-known status, which one is active — lives in `~/.openscientist/sandboxes/index.json`. Every script in this skill reads and/or writes that file.
+**Multiple sandboxes can be running concurrently.** The single global `.active` field that the previous version of this skill maintained is gone. "Active for space S" is now a *derived predicate*: a sandbox qualifies iff its container is running AND `S`'s repo root appears in its current bind set. There's no stored "the one true sandbox" — the question is always relative to a host path.
 
-## Where you can run the skill (read this first)
+The catalog (`~/.openscientist/sandboxes/index.json`) is now strictly a record of *what's installed* — image, command, canonical binds, env, limits. Runtime state (status, current bindings, who's bound where) is derived live from `docker inspect` on every read, so it can never go stale.
 
-> **`exec.sh` only works when the caller's `$PWD` is under `~/.openscientist/…`.** If you run it from anywhere else (e.g. `~/Documents/foo`, `/tmp/bar`, a checkout under `~/src/…`), it will refuse with a big visible banner and exit 126. This is a hard constraint, not a bug.
+## What `exec.sh` requires
 
-### Why
+> **`exec.sh --sandbox <id>` is mandatory.** There's no fallback to a "currently active" sandbox — silently picking one would be wrong when several are running with different bind sets. Pass it explicitly.
 
-The sandbox bind-mounts only `~/.openscientist` into the container (same-path bind, SPEC §6). Any host path outside that tree simply does not exist inside the container. `exec.sh` defaults the container's working directory to your `$PWD` so relative paths and shell redirections work the same way they do on the host — but that only holds if `$PWD` actually exists inside the container. Silent fallback to the container's default WORKDIR would make `cat foo.txt` resolve against a completely different directory than you thought; that kind of silent wrongness is worse than failing out.
+> **`exec.sh` only works when `$PWD` is under one of the target container's actual bind targets.** Read live via `docker inspect`. If `$PWD` is outside, it refuses with a banner and exit 126. Silent fallback to the container's default WORKDIR would make `cat foo.txt` resolve against a directory you didn't intend.
 
-### Who this is (and isn't) fine for
+### Who this is fine for
 
 | Caller's cwd | Can use the skill? |
 |---|---|
-| `~/.openscientist/sessions/<sid>/worktrees/<wt>/…` (every SPOT deep-run worktree) | ✓ yes, with full pwd ergonomics |
-| Any other path under `~/.openscientist/…` | ✓ yes |
-| `~/Documents/...`, `~/src/...`, `/tmp/...`, `/etc/...`, etc. | ✗ refused with exit 126 |
+| `~/.openscientist/...` (always bound; covers every SPOT worktree) | ✓ yes |
+| Any path the user `--mount`-ed when activating the sandbox | ✓ yes |
+| Anywhere else | ✗ refused, exit 126 |
 
 ### If you're in the ✗ row
 
-- Move the working files under `~/.openscientist/<something>/` and `cd` there, **or**
-- Pass an explicit `--workdir /some/path/under/.openscientist/` and use absolute paths in the command.
+You have two options:
 
-There is no third option today. A future "per-mount-root container instance" feature would relax this (§SPEC follow-ups); for now, the invariant stands.
+- `cd` into a path under one of the container's existing binds (see `list.sh` or `status.sh <id>` to find them), **or**
+- `activate.sh <id> --mount /your/path`, then retry. This recreates the container with the new bind added.
 
-## PWD transparency (when you're in the ✓ row)
+The banner shown on exit 126 enumerates the live binds and prints the exact `activate.sh` command to fix it.
 
-Inside a SPOT worktree, calling `exec.sh` feels like running the command on the host shell from the same directory. Concretely:
+## PWD transparency
+
+Inside a bound directory, calling `exec.sh` feels like running the command on the host shell from the same directory. Concretely:
 
 ```bash
-$ cd ~/.openscientist/sessions/abc/worktrees/w1    # some SPOT worktree
-$ bash $SCRIPTS/exec.sh -- pwd
+$ cd ~/.openscientist/sessions/abc/worktrees/w1     # under canonical mount
+$ bash $SCRIPTS/exec.sh --sandbox math -- pwd
 /home/zeero/.openscientist/sessions/abc/worktrees/w1   # matches host PWD
-$ bash $SCRIPTS/exec.sh -- cat math.txt                # relative path — works
-$ bash $SCRIPTS/exec.sh --command 'ls -la > listing.txt'  # redirects — works via --command
-$ cat listing.txt                                      # host sees the sandbox's write
+
+$ bash $SCRIPTS/exec.sh --sandbox math -- cat math.txt          # relative — works
+$ bash $SCRIPTS/exec.sh --sandbox math --command 'ls > out.txt' # redirect — works via --command
+$ cat out.txt                                                   # host sees the sandbox's write
 ```
 
 No path translation. No workdir juggling. Same-path bind + auto `--workdir $PWD` = native shell ergonomics.
 
 ### `--` vs `--command` — when to use which
 
-Both forms are supported, and it matters which one you reach for:
-
-- **`exec.sh -- <argv...>`** — pass a plain argv. Use this for `cat foo`, `ls -la`, `lake build`, anything without shell metacharacters. Quoting flattens (every arg is joined with spaces before being passed to `sh -c`), so `>`, `|`, `&&`, nested quotes do NOT survive.
-- **`exec.sh --command '<string>'`** — pass one shell string. Use this for anything with `>`, `|`, `&&`, `$(…)`, nested quoting, multi-line shell. The whole string is handed verbatim to `sh -c` in the sandbox.
-
-Rule of thumb: if the command contains `>`, `|`, `&&`, or needs to preserve quotes, use `--command`.
+- **`exec.sh --sandbox <id> -- <argv...>`** — pass a plain argv. Use this for `cat foo`, `ls -la`, `lake build`, anything without shell metacharacters. Quoting flattens (every arg is joined with spaces before being passed to `sh -c`), so `>`, `|`, `&&`, nested quotes do NOT survive.
+- **`exec.sh --sandbox <id> --command '<string>'`** — pass one shell string. Use for anything with `>`, `|`, `&&`, `$(…)`, nested quoting, multi-line shell. Handed verbatim to `sh -c` in the sandbox.
 
 ## Where things live
 
 | Path | Purpose |
 |---|---|
-| `~/.openscientist/sandboxes/index.json` | sandbox catalog (authoritative) |
-| `~/.openscientist/sandboxes/defs/*.yaml` | Docker-Compose-shaped authoring files (consumed by the deferred `add.sh` tool) |
-| `~/.openscientist` | the host mount root — bind-mounted into every sandbox at the same absolute path |
+| `~/.openscientist/sandboxes/index.json` | catalog (installed sandbox specs only — no runtime state) |
+| `~/.openscientist/sandboxes/defs/*.yaml` | Compose-shaped authoring files (consumed by the install flow on the Electron side) |
+| `~/.openscientist` | the canonical host mount root — bind-mounted into every sandbox at the same absolute path |
 | `spot-sandbox-<id>` | container name convention; always computed from the sandbox id |
 
 The host mount path resolves from `$SPOT_HOST_MOUNT` if set, else `$HOME/.openscientist`. Host uid/gid default to `id -u` / `id -g`, overridable with `$SPOT_HOST_UID` / `$SPOT_HOST_GID`. Every `docker run` uses `--user $HOST_UID:$HOST_GID` so files written inside the container land on the host with the right perms.
 
 ## index.json schema
 
-Records are flat — everything the scripts need to `docker run` the container sits on the record, no YAML parsing in shell. Variables `$SPOT_HOST_MOUNT`, `$SPOT_HOST_UID`, `$SPOT_HOST_GID` are interpolated at start time inside `binds[].source` / `binds[].target`.
+Catalog records carry only what's needed to launch a sandbox; runtime fields are no longer persisted. Variables `$SPOT_HOST_MOUNT`, `$SPOT_HOST_UID`, `$SPOT_HOST_GID` are interpolated at start time inside `binds[].source` / `binds[].target`.
 
 ```jsonc
 {
   "version": 1,
-  "active": "alpine",                       // null when no sandbox is active
+  "active": null,                          // legacy, no longer used by this skill
   "sandboxes": {
-    "alpine": {
-      "label":          "Alpine (POC)",
-      "image":          "alpine:latest",
+    "math": {
+      "label":          "Math (Lean 4)",
+      "image":          "leanprovercommunity/lean4:latest",
+      "image_digest":   "sha256:8d…",      // pinned at install
       "command":        ["sleep", "infinity"],
-      "init":           true,               // --init, tini as PID 1 (SPEC §5.3)
+      "init":           true,              // --init / tini as PID 1
       "env":            {},
-      "binds": [
-        { "source": "$SPOT_HOST_MOUNT", "target": "$SPOT_HOST_MOUNT", "mode": "rw" }
+      "binds": [                           // canonical only — per-activation extras
+        { "source": "$SPOT_HOST_MOUNT",    // are passed at runtime via --mount and
+          "target": "$SPOT_HOST_MOUNT",    // never persisted here
+          "mode": "rw" }
       ],
-      "named_volumes":  [],                 // [{source:"spot-mathlib-cache", target:"/var/cache/mathlib"}, …]
-      "limits":         {},                 // {cpus:"4", memory:"8g"}
+      "named_volumes":  [],
+      "limits":         {},
       "schema_version": 1,
-      "status":         "running",          // last-known; reconciled by status.sh
-      "image_digest":   null,
-      "added_at":       "2026-04-22T...",
-      "last_started_at":"2026-04-22T...",
-      "last_used_at":   "2026-04-22T...",
-      "error_message":  null
+      "added_at":       "2026-04-22T..."
     }
   }
 }
 ```
 
-The `active` field is the default sandbox for `exec.sh`. Setting it is how `activate.sh` switches.
+The `last_used_at` and `error_message` fields older versions persisted have been removed entirely. `status` and `last_started_at` may still appear in legacy files; they're treated as stale hints and overridden by live `docker inspect` on every read.
 
 ## Scripts
 
@@ -112,92 +109,91 @@ All scripts live in `scripts/`. Stdout is structured JSON; stderr is a human log
 
 | Script | Purpose |
 |---|---|
-| `list.sh` | JSON array of every sandbox: `id`, `label`, `status`, `image`, `active`. |
-| `show.sh <id>` | Dump one sandbox's full record. |
-| `active.sh` | Print the currently active sandbox id (empty if none). |
-| `activate.sh <id>` | Stop the previous active (if any), start `<id>` (adopt / restart / create), set `.active = <id>`. Refuses unknown ids. |
-| `deactivate.sh` | Stop the active container and clear `.active`. No-op if nothing is active. |
-| `status.sh <id>` | Live `docker inspect`, reconcile the index's `status`, emit probed state as JSON. |
-| `exec.sh --command "<cmd>" [--workdir PATH] [--timeout N] [--sandbox ID]` / `exec.sh -- <cmd…>` | Run a shell command in the active (or `--sandbox`-overridden) sandbox via `docker exec`. Rejects non-absolute workdirs (exit 126). |
+| `list.sh` | JSON array, every installed sandbox enriched with live `status` and `current_bindings`. |
+| `show.sh <id>` | Dump one sandbox's full catalog record (static fields only). |
+| `active.sh [<host-path>]` | JSON array of running sandbox ids; with a path, filtered to sandboxes whose live binds include it (the "active for this path" predicate). |
+| `activate.sh <id> [--mount /abs/path]…` | Ensure `<id>`'s container is running with the canonical mount + any `--mount` extras. Compares requested binds against the container's live bind set; recreates when they differ, `docker start`s when they match, no-ops when already correctly running. Does **not** touch any other sandbox. |
+| `deactivate.sh <id>` | `docker stop` the container. Explicit id required. |
+| `status.sh <id>` | Live `docker inspect`, emit JSON. Read-only — never writes the catalog. |
+| `exec.sh --sandbox <id> --command "<cmd>"  [--workdir PATH] [--timeout N]` / `exec.sh --sandbox <id> -- <cmd…>` | Run a shell command in the named sandbox via `docker exec`. `--sandbox` is required. Workdir gate is "any of this container's live bind targets". |
 
 ### Common helpers (`_common.sh`)
 
 Every script sources `_common.sh`, which provides:
 
-- `INDEX_PATH`, `DEFS_DIR`, `HOST_MOUNT`, `HOST_UID`, `HOST_GID` — canonical paths and ids (all env-overridable).
+- `INDEX_PATH`, `DEFS_DIR`, `HOST_MOUNT`, `HOST_UID`, `HOST_GID` — canonical paths and ids (env-overridable).
 - `ensure_index` — create empty `index.json` if missing.
 - `write_index <json>` — atomic temp+rename, preserves 0600.
 - `jq_index <expr…>` — shorthand for `jq <expr…> "$INDEX_PATH"`.
 - `sandbox_exists <id>`, `sandbox_get <id>`, `sandbox_field <id> <path>` — registry reads.
-- `active_sandbox` — prints `.active` (empty string if null).
 - `container_name <id>` — always `spot-sandbox-<id>`.
 - `container_exists <name>`, `container_running <name>` — docker inspect probes.
+- `container_bindings <name>` — sorted/deduped host-side bind sources for a container; empty when the container doesn't exist.
 - `interp <string>` — substitute `$SPOT_HOST_MOUNT` / `$SPOT_HOST_UID` / `$SPOT_HOST_GID`.
-
-Always `source "$(dirname "$0")/_common.sh"` at the top — do not duplicate these.
+- `active_sandbox` — DEPRECATED; reads the legacy `.active` field. Callers should use `container_bindings` plus `container_running` instead.
 
 ## Workflows
 
-Scripts resolve their own location via `$(dirname "$0")`, so invoke them directly by path. After world-model sync they land under `${KIMI_WORK_DIR}/.openscientist/skills/sandbox-use/scripts/` — the sync target is the current work_dir (space root for chat, worktree path for deep runs), never home.
-
-**Always prefix invocations with `bash`** — `bash $SCRIPTS/activate.sh …`, not `$SCRIPTS/activate.sh …`. World-model sync does not preserve the executable bit.
+After world-model sync, scripts land under `${KIMI_WORK_DIR}/.openscientist/skills/sandbox-use/scripts/`.
 
 ```bash
 SCRIPTS=${KIMI_WORK_DIR}/.openscientist/skills/sandbox-use/scripts
 ```
 
-### Switch sandbox and run a command
+Always prefix invocations with `bash` — sync does not preserve the executable bit.
 
-The common flow. `activate.sh` handles start-if-not-running + stop-previous; `exec.sh` uses the active one by default.
+### Run a command in a sandbox bound to your CWD
 
-```bash
-bash $SCRIPTS/list.sh                       # see what's available
-bash $SCRIPTS/active.sh                     # which is current?
-bash $SCRIPTS/activate.sh alpine            # start alpine, stop anything else
-bash $SCRIPTS/exec.sh --command "uname -a"  # run in alpine
-bash $SCRIPTS/exec.sh -- echo "hello"       # alternate form
-```
-
-### Keep using the already-active sandbox
-
-Skip `activate.sh` entirely — it's only needed when switching. A bare `exec.sh` targets whatever `.active` points at:
+The common path. The frontend has typically already activated the sandbox for the user's space; agents just exec into it.
 
 ```bash
-bash $SCRIPTS/exec.sh -- lake build
+bash $SCRIPTS/list.sh                                    # see what's installed + live state
+bash $SCRIPTS/active.sh "$KIMI_WORK_DIR"                 # which sandboxes are bound to my CWD?
+bash $SCRIPTS/exec.sh --sandbox math -- lake build       # run inside math
 ```
 
-### Run in a specific sandbox without changing active
+### Self-activate from an agent (Trigger 2)
 
-Useful when an agent wants a one-off execution without touching the default:
+When the frontend hasn't picked a sandbox and the agent realizes it needs one (e.g. it sees a `.lean` file and wants the math toolchain), it can activate the sandbox itself with its own work_dir as the bind:
 
 ```bash
-bash $SCRIPTS/exec.sh --sandbox math -- lean --version
+bash $SCRIPTS/activate.sh math --mount "$KIMI_WORK_DIR"
+bash $SCRIPTS/exec.sh --sandbox math -- lake build
 ```
 
-Note: the target sandbox must already be running (otherwise exit 125). `--sandbox` does not auto-start.
+If the user later picks a different sandbox via the UI, that one gets recreated for the new selection independently — Trigger 2's container keeps running for its current work_dir.
 
-### Free resources
+### Deep-run agents (Trigger 3)
+
+A deep-run agent's CWD is under `~/.openscientist/worktrees/...`, which is always covered by the canonical mount. So:
 
 ```bash
-bash $SCRIPTS/deactivate.sh                 # stops the active container, clears .active
+bash $SCRIPTS/activate.sh math       # no --mount needed
+bash $SCRIPTS/exec.sh --sandbox math -- lake build
 ```
+
+`activate.sh` with no `--mount` is permissive: if `math` is already running with a UI-driven binding for some other space, it's reused as-is (the canonical mount is always there, so the deep run gets what it needs without disturbing the user's session). If `math` was stopped, it's started with canonical-only binds.
+
+### Deactivate a sandbox
+
+```bash
+bash $SCRIPTS/deactivate.sh math    # docker stop
+```
+
+Other running sandboxes are untouched. There's no "the active one" to clear.
 
 ### Reconcile when something looks wrong
 
-If `index.json` says `running` but `docker ps` disagrees (user ran `docker rm` manually, laptop rebooted, etc.), `status.sh` re-probes and writes the true state back:
+Live state is derived on every read, so there's no `index.json` ↔ Docker drift to reconcile. If `list.sh` says "stopped" but you remember starting it, the container actually died — check `docker logs spot-sandbox-<id>`.
 
-```bash
-bash $SCRIPTS/status.sh alpine
-```
+## Path contract
 
-## Path contract (important for every agent)
-
-- **Caller's `$PWD` must be under `~/.openscientist/…`.** `exec.sh` defaults `--workdir` to your `$PWD`. If that path isn't inside the mount, the skill refuses (exit 126, big visible banner). See "Where you can run the skill" above.
-- **Relative paths work** — they resolve against the caller's `$PWD` exactly like native shell execution. `exec.sh -- cat foo.txt` reads `$PWD/foo.txt` both on the host and in the sandbox (they're the same file via same-path bind).
-- **Absolute paths work** — as long as they point inside the mount. `/home/zeero/.openscientist/foo.txt` resolves identically on both sides.
-- **Never `~`.** The container's `$HOME` is not the host's home (different `/etc/passwd`); `~` inside a sandbox exec does not resolve to `$HOME_MOUNT`. Use absolute paths (or relative-to-PWD).
-- **Don't use sandbox tools for file I/O** — host-side `Read` / `Write` / `Edit` tools work on the same files at the same paths. Only reach for `exec.sh` when you need to *run* something (a compiler, an interpreter) the host doesn't have.
-- **Shell is `sh -c`, not `bash -lc`.** Don't rely on bashisms in commands you pass to `exec.sh` (pending: richer images with bash will relax this).
+- **`$PWD` (or explicit `--workdir`) must fall under one of the target sandbox's current bind targets.** `exec.sh`'s gate reads them live via `docker inspect`. Subdirectories of any bind work transparently.
+- **Relative paths work** — they resolve against `$PWD` exactly like native shell. `exec.sh --sandbox X -- cat foo.txt` reads `$PWD/foo.txt` both on the host and in the sandbox (same file via same-path bind).
+- **Absolute paths work** — as long as they point inside one of the binds.
+- **Never `~`.** The container's `$HOME` is not the host's home (different `/etc/passwd`); `~` inside a sandbox exec does not resolve to anything bound. Use absolute paths or relative-to-PWD.
+- **Don't use sandbox tools for file I/O** — host-side `Read` / `Write` / `Edit` work on the same files at the same paths. Reach for `exec.sh` only when you need to *run* something the host doesn't have.
+- **Shell is `sh -c`, not `bash -lc`.** Don't rely on bashisms in commands you pass to `exec.sh`.
 
 ## Exit codes (for agents parsing `exec.sh` results)
 
@@ -206,36 +202,33 @@ bash $SCRIPTS/status.sh alpine
 | `0` | command succeeded |
 | `>0` (any other positive) | real process exit code from the command |
 | `124` | exec exceeded `--timeout` seconds |
-| `125` | container not running (run `activate.sh`) |
-| `126` | bad args — non-absolute workdir, `~` in workdir, **or workdir outside the sandbox mount** (see "Where you can run the skill"). The last case prints a big banner to stderr; do not retry until you fix the cwd. |
+| `125` | container not running (run `activate.sh <id>`) |
+| `126` | bad args — non-absolute workdir, `~` in workdir, **or workdir outside the target container's bind set** (see "Workdir gate"). The last case prints a banner enumerating the live binds and a fix-up `activate.sh` command. |
 | `127` | (reserved) docker CLI not available |
 
 ## Writing conventions
 
-- **Exit codes**: 0 success, 1 user error (bad args, unknown sandbox), 2 environment error (missing docker, missing index).
-- **Stdout is structured**, **stderr is human log**. Agents should parse stdout as JSON where the script emits it.
+- **Exit codes**: 0 success, 1 user error, 2 environment error.
+- **Stdout is structured**, **stderr is human log**.
 - **Atomic writes only** for `index.json` — `_common.sh`'s `write_index` does temp+rename, never append.
-- **Never hardcode** sandbox ids or container names — always go through `container_name <id>` and the `_common.sh` helpers.
-- **Variable interpolation in specs** — `_common.sh` provides `interp` for `$SPOT_HOST_MOUNT` / `$SPOT_HOST_UID` / `$SPOT_HOST_GID` in `binds[].source` / `binds[].target`. Apply it at start time, not at add time.
+- **Never hardcode** sandbox ids or container names — always go through `container_name <id>` and the helpers.
 
 ## Troubleshooting
 
 | Symptom | First check | Fix |
 |---|---|---|
-| `exec.sh` exits 125 | `bash $SCRIPTS/status.sh <id>` | Run `activate.sh <id>` — the container isn't running. |
-| `exec.sh` exits 126, banner says "OUTSIDE THE SANDBOX MOUNT" | Check the caller's `$PWD` | The caller is running outside `~/.openscientist/`. Move files under the mount and `cd` there, or pass `--workdir` pointing inside the mount. See "Where you can run the skill" in this file. |
-| `exec.sh` exits 126, no banner | Check the `--workdir` argument | Workdir must be an absolute host path. Never `~`, never relative. |
-| `activate.sh` errors "no such sandbox" | `bash $SCRIPTS/list.sh` | Sandbox isn't in `index.json`. Adding sandboxes is a separate (deferred) tool. |
-| `index.json` says running but `docker ps` disagrees | `bash $SCRIPTS/status.sh <id>` | The script re-probes via `docker inspect` and writes the true state. |
-| `activate.sh` fails with "docker run failed" | `bash $SCRIPTS/show.sh <id>` to see the spec; check `error_message` | Usually a missing image (no separate pull tool yet — pull manually with `docker pull <image>` as a one-off) or a bad bind source. |
-| Container writes land as root on the host | `docker inspect spot-sandbox-<id> --format '{{.Config.User}}'` | The image hardcodes a uid in its default user. `activate.sh` passes `--user $HOST_UID:$HOST_GID` — if this is getting overridden, the image is broken. |
+| `exec.sh` exits 1 with "--sandbox required" | You forgot the flag | All exec calls now require `--sandbox <id>` explicitly. |
+| `exec.sh` exits 125 | `bash $SCRIPTS/status.sh <id>` | The container isn't running — `activate.sh <id>` (add `--mount $PWD` if your CWD is outside the canonical mount). |
+| `exec.sh` exits 126 | The banner enumerates the container's live binds | `cd` to a path under one of those binds, or run the suggested `activate.sh <id> --mount …`. |
+| `activate.sh` errors "no such sandbox" | `bash $SCRIPTS/list.sh` | Sandbox isn't installed. Use the Electron app's `POST /sandbox/add` flow. |
+| `activate.sh` fails with "docker run failed" | `bash $SCRIPTS/show.sh <id>` for the spec; the failure prints stderr verbatim | Usually a missing image (pull manually with `docker pull <image>`) or a bad bind source (e.g. host path doesn't exist). |
+| Container writes land as root on the host | `docker inspect spot-sandbox-<id> --format '{{.Config.User}}'` | Image hardcodes a uid in its default user. `activate.sh` passes `--user $HOST_UID:$HOST_GID` — if this is being overridden, the image is broken. |
 | `$HOME` inside exec isn't the host home | Expected. | The container's `$HOME` comes from its own `/etc/passwd`. Never expand `~` in commands you pass to `exec.sh`. |
 
 ## What this skill does not do
 
-- **It does not add sandboxes.** There is no `add.sh` yet. Sandboxes currently in `index.json` were seeded manually; a future `add.sh` will accept a YAML def and compile it into the catalog.
-- **It does not pull images.** `activate.sh` errors out if the image isn't present locally. Pull manually with `docker pull <image>` for now.
-- **It does not remove sandboxes or uninstall images.** No `remove.sh` / `uninstall.sh` yet.
-- **It does not manage per-file I/O.** Use host-side `Read` / `Write` / `Edit` on the same absolute paths — the bind is same-path (SPEC §6).
-- **It does not write agent MCP configs.** That's what Electron / plane will own when MCP lands; this skill is the pre-MCP command surface agents use directly.
-- **It does not manage concurrency between multiple SPOT processes.** Dev hot-reload with two plane processes can race on the same container; `.lock` support arrives when the SPEC's §7.8 flock lands.
+- **It does not install sandboxes.** Installing is the Electron app's job (`POST /sandbox/add` on plane). `activate.sh` errors out if the sandbox isn't already in the catalog.
+- **It does not pull images on demand.** That happens at install time; `activate.sh` assumes the image is local.
+- **It does not remove sandboxes.** No `uninstall.sh` yet.
+- **It does not mediate per-file I/O.** Use host-side `Read` / `Write` / `Edit` on the same absolute paths — same-path bind makes them equivalent.
+- **It does not manage concurrency between multiple SPOT processes.** Two processes calling `activate.sh <same-id> --mount <different-path>` can race, causing one to recreate the container out from under the other. The §7.8 flock has not landed; for now, treat per-(sandbox, host-path) activations as serially scheduled by the user.

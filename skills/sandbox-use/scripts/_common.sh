@@ -25,7 +25,7 @@ ensure_index() {
   if [[ ! -f "$INDEX_PATH" ]]; then
     mkdir -p "$(dirname "$INDEX_PATH")"
     umask 077
-    printf '%s\n' '{"version":1,"active":null,"sandboxes":{}}' > "$INDEX_PATH"
+    printf '%s\n' '{"version":1,"sandboxes":{}}' > "$INDEX_PATH"
   fi
 }
 
@@ -59,8 +59,15 @@ sandbox_field() {
   jq_index -r --arg n "$id" ".sandboxes[\$n].$path // empty"
 }
 
-active_sandbox() {
-  jq_index -r '.active // empty'
+# Return the running/exited container's bind-mount sources, sorted/deduped,
+# one per line. Empty output when the container doesn't exist. Mirrors the
+# Node-side `lifecycle.containerBindings` so both control planes agree.
+container_bindings() {
+  local name="$1"
+  local raw
+  raw="$(docker inspect "$name" 2>/dev/null || true)"
+  [[ -z "$raw" || "$raw" == "[]" ]] && return 0
+  jq -r '.[0].Mounts // [] | map(select(.Type == "bind") | .Source) | unique | .[]' <<<"$raw"
 }
 
 # Interpolate $SPOT_HOST_MOUNT / $SPOT_HOST_UID / $SPOT_HOST_GID in a string.
