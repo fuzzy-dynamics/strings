@@ -16,7 +16,5 @@ if container_running "$name"; then
   stopped=true
 fi
 
-write_index "$(jq_index --arg n "$id" '.sandboxes[$n].status = "stopped"')"
-
 log "deactivated $id"
 jq -n --arg n "$id" --argjson s "$stopped" '{id:$n, stopped:$s}'

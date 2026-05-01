@@ -132,7 +132,6 @@ create_fresh() {
   if ! docker "${args[@]}" >/dev/null 2>"$err_file"; then
     err="$(tr '\n' ' ' <"$err_file")"
     rm -f "$err_file"
-    write_index "$(jq_index --arg n "$id" '.sandboxes[$n].status = "error"')"
     die "docker run failed: $err"
   fi
   rm -f "$err_file"
