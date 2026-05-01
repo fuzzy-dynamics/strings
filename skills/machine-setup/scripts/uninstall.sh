@@ -10,9 +10,6 @@ name="${1:-}"
 [[ "$name" == "local" ]] && die 'cannot uninstall reserved machine "local"'
 machine_exists "$name" || die "no such machine: $name"
 
-active="$(active_machine)"
-[[ "$active" == "$name" ]] && die "$name is active; deactivate first"
-
 if ! ssh_master_alive "$name"; then
   log "ControlMaster down; attempting reconnect ..."
   "$(dirname "$0")/reconnect-ssh.sh" "$name" >/dev/null
@@ -37,12 +34,12 @@ sock="$(ssh_sock "$name")"
 [[ -S "$sock" ]] && ssh -O exit -S "$sock" "check-$name" 2>/dev/null || true
 
 updated="$(jq_index --arg n "$name" --arg at "$(now_iso)" '
-  .machines[$n].status        = "unprovisioned"
+  .machines[$n] |= (del(.lastError))
+  | .machines[$n].status        = "unprovisioned"
   | .machines[$n].bundleVersion = null
   | .machines[$n].provisionedAt = null
-  | .machines[$n].services      = {plane:null, kimi:null, providers:{}}
+  | .machines[$n].services      = {plane:null, kimi:null}
   | .machines[$n].remote        = {home:null, prefix:null}
-  | .machines[$n].lastError     = null
 ')"
 write_index "$updated"
 

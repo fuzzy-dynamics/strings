@@ -100,10 +100,13 @@ case "$provider" in
   gecko|openscientist-gecko) provider="kimi" ;;
 esac
 
-[[ "$provider" =~ ^(claudecode|codex|kimi)$ ]] || \
-  die "--provider must be one of: gecko, claudecode, codex (got: $provider)"
+# Gecko/kimi-server is the only orchestrator backend supported. Claude Code and
+# Codex provider paths were removed when the desktop app went thin-client —
+# remote machines run a kimi-server bundle, not third-party CLIs.
+[[ "$provider" == "kimi" ]] || \
+  die "--provider must be 'gecko' (canonicalizes to 'kimi'); claudecode/codex are no longer supported (got: $provider)"
 
-[[ -z "$machine" ]] && machine="$(active_machine)"
+[[ -z "$machine" ]] && machine="local"
 
 if [[ "$machine" != "local" ]] && ! machine_exists "$machine"; then
   die "no such machine: $machine"

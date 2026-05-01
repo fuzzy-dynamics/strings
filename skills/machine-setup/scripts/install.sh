@@ -116,19 +116,36 @@ fi
 
 version="$(ssh "${opts[@]}" "$target" "jq -r '.version // .bundleVersion // \"unknown\"' '$remote_stage/manifest.json'" 2>/dev/null || echo "unknown")"
 remote_prefix="$remote_home/.local/share/openscientist"
+remote_spaces_root="$remote_home/.openscientist/spaces"
+remote_worktrees_root="$remote_home/.openscientist/worktrees"
 
+# Pre-create the directories the renderer + skill scripts will look for. Both
+# are referenced as `remote.spacesRoot` / `remote.worktreesRoot` in the index
+# so callers don't have to derive paths from `remote.home` ad hoc.
+log "preparing remote dirs: $remote_spaces_root, $remote_worktrees_root"
+ssh "${opts[@]}" "$target" "mkdir -p '$remote_spaces_root' '$remote_worktrees_root'" || \
+  log "WARNING: could not create spaces/worktrees roots (continuing anyway)"
+
+# Success path: delete status/lastError. Their absence is the canonical "ready"
+# state — Electron strips status=="ready" on read anyway, but we don't even
+# write it. Only "unprovisioned" / "provisioning" / "error" should ever appear
+# here. (status.sh used to writeback "degraded"/"ready"/"unknown" but no longer
+# does; the boot probe in cloud-run/index.cjs derives liveness from the bridge.)
 updated="$(jq_index \
   --arg n "$name" \
   --arg ver "$version" \
   --arg home "$remote_home" \
   --arg prefix "$remote_prefix" \
+  --arg sroot "$remote_spaces_root" \
+  --arg wroot "$remote_worktrees_root" \
   --arg at "$(now_iso)" \
-  '.machines[$n].status = "ready"
+  '.machines[$n] |= (del(.status, .lastError))
    | .machines[$n].bundleVersion = $ver
-   | .machines[$n].remote.home   = $home
-   | .machines[$n].remote.prefix = $prefix
-   | .machines[$n].provisionedAt = $at
-   | .machines[$n].lastError     = null')"
+   | .machines[$n].remote.home          = $home
+   | .machines[$n].remote.prefix        = $prefix
+   | .machines[$n].remote.spacesRoot    = $sroot
+   | .machines[$n].remote.worktreesRoot = $wroot
+   | .machines[$n].provisionedAt = $at')"
 write_index "$updated"
 
 log "install complete: $name @ bundle $version"

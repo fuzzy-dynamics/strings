@@ -85,12 +85,10 @@ entry="$(jq -n \
        controlSocket: $sock
      },
      remote:        null,
-     services:      {plane:null, kimi:null, providers:{}},
-     spaces:        {},
+     services:      {plane:null, kimi:null},
      status:        "unprovisioned",
      bundleVersion: null,
      provisionedAt: null,
-     lastError:     null,
      createdAt:     $createdAt
    }')"
 

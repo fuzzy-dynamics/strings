@@ -86,31 +86,8 @@ snapshot="$(jq -n \
      lastError:     (if $err == "" then null else $err end)
    }')"
 
-# Writeback into index. Derived top-level status semantics:
-#   ready     — services active and /healthz OK (tunnel may be down; agent can reopen it)
-#   degraded  — remote was reachable but something is off (a service inactive, healthz failing)
-#   error     — remote was completely unreachable (no probe data at all)
-derived_status="unknown"
-if [[ -z "$probe_output" ]]; then
-  derived_status="error"
-elif [[ "$svc_kimi" == "active" && "$svc_plane" == "active" && "$hz_kimi" == '"ok"' && "$hz_plane" == '"ok"' ]]; then
-  derived_status="ready"
-else
-  derived_status="degraded"
-fi
-
-updated="$(jq_index \
-  --arg n   "$name" \
-  --argjson s "$snapshot" \
-  --arg ds  "$derived_status" \
-  '.machines[$n].status = $ds
-   | .machines[$n].services.kimi  = ((.machines[$n].services.kimi  // {}) | .runtimeState = $s.services.kimi  | .lastCheckedAt = $s.lastCheckedAt)
-   | .machines[$n].services.plane = ((.machines[$n].services.plane // {}) | .runtimeState = $s.services.plane | .lastCheckedAt = $s.lastCheckedAt)
-   | .machines[$n].ssh.lastReachableAt = (if $s.sshMaster == "up" then $s.lastCheckedAt else (.machines[$n].ssh.lastReachableAt // null) end)
-   | .machines[$n].lastError = $s.lastError
-   | .machines[$n].lastHealthCheckAt = $s.lastCheckedAt
-   | (if $s.bundleVersion != null then .machines[$n].bundleVersion = $s.bundleVersion else . end)
-  ')"
-write_index "$updated"
-
+# Pure stdout probe — no writeback. The renderer (or Electron's boot probe in
+# cloud-run/index.cjs) derives liveness from the bridge state and from
+# repeated calls to this script. Persisting derived fields used to drift fast
+# (services flap, healthz blips) and Electron now strips them on read anyway.
 printf '%s\n' "$snapshot"
