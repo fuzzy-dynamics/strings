@@ -1,97 +1,139 @@
 #!/usr/bin/env bash
 # add.sh <name> [--from-ssh-config ALIAS] [--host H --user U --key K] [--port P]
+#                [--force]
 #
 # Registers a new machine as status:"unprovisioned". Does NOT reach out to the
 # machine — use install.sh next.
 #
-# Preferred path: `--from-ssh-config <alias>` reads `ssh -G <alias>` to resolve
-# host / user / port / IdentityFile from the user's existing SSH config.
-# Any explicit --host/--user/--key/--port override the resolved values.
-# Fall back to explicit flags only when the alias isn't in ssh_config or is
-# missing required fields.
-source "$(dirname "$0")/_common.sh"
-ensure_index
+# Preferred path: --from-ssh-config <alias> reads `ssh -G <alias>`.
 
-name=""
-host=""
-user=""
-key=""
-port=""
-from_alias=""
+set -euo pipefail
 
-usage() { die "usage: add.sh <name> [--from-ssh-config ALIAS] [--host H --user U --key KEYPATH] [--port P]"; }
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+SKILL_TAG="machine-setup" source "$SCRIPT_DIR/../../_lib/provisioning.sh"
+
+NAME=""
+HOST=""
+USER_ARG=""
+KEY=""
+PORT=""
+FROM_ALIAS=""
+FORCE=0
+
+usage_msg='usage: add.sh <name> [--from-ssh-config ALIAS] [--host H --user U --key KEYPATH] [--port P] [--force]'
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --host)             host="$2"; shift 2 ;;
-    --user)             user="$2"; shift 2 ;;
-    --key)              key="$2";  shift 2 ;;
-    --port)             port="$2"; shift 2 ;;
-    --from-ssh-config)  from_alias="$2"; shift 2 ;;
-    -*)                 usage ;;
-    *)                  [[ -z "$name" ]] && name="$1" || usage; shift ;;
+    --host)              HOST="$2"; shift 2 ;;
+    --user)              USER_ARG="$2"; shift 2 ;;
+    --key)               KEY="$2";  shift 2 ;;
+    --port)              PORT="$2"; shift 2 ;;
+    --from-ssh-config)   FROM_ALIAS="$2"; shift 2 ;;
+    --force)             FORCE=1; shift ;;
+    -h|--help)
+      echo "$usage_msg" >&2
+      exit 0 ;;
+    --*)
+      printf '{"ok":false,"stage":"parse-args","message":"unknown flag: %s","usage":"%s"}\n' "$1" "$usage_msg"
+      exit 2 ;;
+    *)
+      if [[ -z "$NAME" ]]; then NAME="$1"; else
+        printf '{"ok":false,"stage":"parse-args","message":"unexpected positional: %s","usage":"%s"}\n' "$1" "$usage_msg"
+        exit 2
+      fi
+      shift ;;
   esac
 done
 
-# Resolve from ssh_config if requested. Explicit flags override resolved values.
-if [[ -n "$from_alias" ]]; then
-  log "resolving $from_alias from ~/.ssh/config ..."
-  resolved=$(ssh -G "$from_alias" 2>/dev/null) || die "ssh -G $from_alias failed"
+[[ -z "$NAME" ]] && { printf '{"ok":false,"stage":"parse-args","message":"missing <name>","usage":"%s"}\n' "$usage_msg"; exit 2; }
+[[ "$NAME" == "local" ]] && { printf '{"ok":false,"stage":"parse-args","message":"name \"local\" is reserved for the laptop"}\n'; exit 2; }
+
+PROVISIONING_NAME="$NAME"
+export PROVISIONING_NAME
+ensure_index
+
+# Resolve from ssh_config if requested. Explicit flags override resolved.
+if [[ -n "$FROM_ALIAS" ]]; then
+  emit_progress info "ssh-config" "resolving $FROM_ALIAS from ~/.ssh/config"
+  resolved=$(ssh -G "$FROM_ALIAS" 2>/dev/null) \
+    || { printf '{"ok":false,"stage":"ssh-config","message":"ssh -G %s failed"}\n' "$FROM_ALIAS"; exit 1; }
   while IFS=' ' read -r field value; do
     case "$field" in
-      hostname)     [[ -z "$host" ]] && host="$value" ;;
-      user)         [[ -z "$user" ]] && user="$value" ;;
-      port)         [[ -z "$port" ]] && port="$value" ;;
-      identityfile) [[ -z "$key"  ]] && key="${value/#\~/$HOME}" ;;
+      hostname)     [[ -z "$HOST"     ]] && HOST="$value" ;;
+      user)         [[ -z "$USER_ARG" ]] && USER_ARG="$value" ;;
+      port)         [[ -z "$PORT"     ]] && PORT="$value" ;;
+      identityfile) [[ -z "$KEY"      ]] && KEY="${value/#\~/$HOME}" ;;
     esac
   done <<<"$resolved"
-  # ssh -G always returns `hostname <alias>` for unknown aliases.
-  # If host matches the alias literally and no user was found, bail cleanly.
-  if [[ "$host" == "$from_alias" && -z "$user" ]]; then
-    die "alias '$from_alias' not in ~/.ssh/config — pass --host/--user/--key explicitly"
+  if [[ "$HOST" == "$FROM_ALIAS" && -z "$USER_ARG" ]]; then
+    printf '{"ok":false,"stage":"ssh-config","message":"alias %s not in ~/.ssh/config; pass --host/--user/--key explicitly"}\n' "$FROM_ALIAS"
+    exit 1
   fi
 fi
 
-[[ -z "$port" ]] && port=22
+[[ -z "$PORT" ]] && PORT=22
 
-[[ -z "$name" || -z "$host" || -z "$user" || -z "$key" ]] && usage
-[[ "$name" == "local" ]] && die 'name "local" is reserved for the laptop'
-machine_exists "$name" && die "machine already exists: $name"
-[[ -f "$key" ]] || die "ssh key not found: $key"
-[[ "$port" =~ ^[0-9]+$ ]] || die "port must be an integer: $port"
+# Validate.
+if [[ -z "$HOST" || -z "$USER_ARG" || -z "$KEY" ]]; then
+  printf '{"ok":false,"stage":"parse-args","message":"missing required ssh fields (host, user, key)","usage":"%s"}\n' "$usage_msg"
+  exit 2
+fi
+[[ "$PORT" =~ ^[0-9]+$ ]] || { printf '{"ok":false,"stage":"parse-args","message":"port must be an integer: %s"}\n' "$PORT"; exit 2; }
+[[ -f "$KEY" ]]           || { printf '{"ok":false,"stage":"parse-args","message":"ssh key not found: %s"}\n' "$KEY"; exit 1; }
 
-sock_path="$SSH_DIR/$name.sock"
+if machine_exists "$NAME"; then
+  if (( FORCE )); then
+    emit_progress warn "force" "--force given; overwriting existing entry"
+  else
+    existing="$(machine_get "$NAME")"
+    printf '{"ok":false,"stage":"add","message":"machine already exists: %s — pass --force to overwrite","existing":%s}\n' "$NAME" "$existing"
+    exit 1
+  fi
+fi
+
+index_lock "$NAME"
+trap_unhandled_errors
+
+sock_path="$SSH_DIR/$NAME.sock"
 key_mode=""
-[[ -f "$key" ]] && key_mode="$(stat -c '%a' "$key" 2>/dev/null || printf '')"
+[[ -f "$KEY" ]] && key_mode="$(stat -c '%a' "$KEY" 2>/dev/null || printf '')"
 
-entry="$(jq -n \
-  --arg name "$name" \
-  --arg host "$host" \
-  --arg user "$user" \
-  --arg key  "$key" \
-  --argjson port "$port" \
+entry=$(jq -n \
+  --arg name "$NAME" \
+  --arg host "$HOST" \
+  --arg user "$USER_ARG" \
+  --arg key  "$KEY" \
+  --argjson port "$PORT" \
   --arg sock "$sock_path" \
   --arg mode "$key_mode" \
   --arg createdAt "$(now_iso)" \
   '{
-     name:          $name,
-     host:          $host,
-     user:          $user,
-     port:          $port,
+     name: $name,
      ssh: {
-       keyPath:       $key,
-       keyPresent:    true,
-       keyMode:       $mode,
-       controlSocket: $sock
+       host: $host,
+       user: $user,
+       port: $port,
+       keyPath: $key,
+       keyMode: $mode,
+       controlPath: $sock
      },
-     remote:        null,
-     services:      {plane:null, kimi:null},
-     status:        "unprovisioned",
+     remote: null,
+     services: { providers: {} },
+     status: "unprovisioned",
      bundleVersion: null,
      provisionedAt: null,
-     createdAt:     $createdAt
-   }')"
+     lastVerifiedAt: null,
+     lastError: null,
+     lastProviderError: { claude: null, codex: null },
+     createdAt: $createdAt
+   }')
 
-write_index "$(jq_index --arg n "$name" --argjson v "$entry" '.machines[$n] = $v')"
-log "added machine: $name ($user@$host:$port)"
-log "next: run install.sh $name"
+write_index "$(jq_index --arg n "$NAME" --argjson v "$entry" '.machines[$n] = $v')"
+emit_progress info "done" "added machine: $NAME ($USER_ARG@$HOST:$PORT)"
+
+jq -nc \
+  --arg name "$NAME" \
+  --arg host "$HOST" \
+  --arg user "$USER_ARG" \
+  --argjson port "$PORT" \
+  '{ok:true,name:$name,stage:"done",ssh:{host:$host,user:$user,port:$port}}'

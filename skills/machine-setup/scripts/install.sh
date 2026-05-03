@@ -1,152 +1,227 @@
 #!/usr/bin/env bash
 # install.sh <name> [--bundle PATH]
-# Stages the plane+kimi bundle onto the remote and runs its installer.
-# On success, flips the machine's status to "ready" and records bundleVersion.
 #
-# Bundle layout expected:
-#   <bundle>/install.sh          — runs on the remote
+# Single source of truth for the machine install. Drives stages from the
+# laptop over the SSH ControlMaster. Per machine-provisioning-spec.md §4.2
+# and §4.2.1: the bundle ships only artifacts; this script is the only
+# orchestrator. Idempotent. Re-runs from setup-complete | ready | broken
+# are allowed; services.providers is preserved across rerun.
+#
+# Bundle layout expected (no install.sh shipped per spec):
 #   <bundle>/kimi-server         — PyInstaller binary
 #   <bundle>/plane.tar.gz        — plane node bundle
 #   <bundle>/systemd/{kimi,plane}.service
-#   <bundle>/manifest.json       — has .version
+#   <bundle>/manifest.json       — has .bundleVersion (sha256 of plane.tar.gz)
 #
 # Bundle resolution order:
 #   1. --bundle <path>
 #   2. $OPENSCIENTIST_CLOUD_RUN_BUNDLE
-#   3. ~/.openscientist/cloud-run/<arch>/ — canonical symlink Electron main
-#      maintains at startup. Points at process.resourcesPath/cloud-run in a
-#      packaged app, or at frontend/electron/cloud-run/ in dev. This is the
-#      only production path — if it's missing, Electron hasn't started yet or
-#      the app is installed incorrectly. Do NOT paper over that by prompting.
-source "$(dirname "$0")/_common.sh"
-ensure_index
+#   3. ~/.openscientist/cloud-run/<arch>/  (canonical Electron-maintained symlink)
 
-name=""
-bundle=""
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+SKILL_TAG="machine-setup" source "$SCRIPT_DIR/../../_lib/provisioning.sh"
+
+# ── parse args ───────────────────────────────────────────────────────────────
+
+NAME=""
+BUNDLE=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --bundle) bundle="$2"; shift 2 ;;
-    -*) die "unknown flag: $1" ;;
-    *)  [[ -z "$name" ]] && name="$1" || die "usage: install.sh <name> [--bundle PATH]"; shift ;;
+    --bundle) BUNDLE="$2"; shift 2 ;;
+    -h|--help)
+      echo "usage: install.sh <name> [--bundle PATH]" >&2
+      exit 0 ;;
+    --*)
+      printf '{"ok":false,"stage":"parse-args","message":"unknown flag: %s"}\n' "$1"
+      exit 2 ;;
+    *)
+      if [[ -z "$NAME" ]]; then NAME="$1"; else
+        printf '{"ok":false,"stage":"parse-args","message":"unexpected positional: %s"}\n' "$1"
+        exit 2
+      fi
+      shift ;;
   esac
 done
 
-[[ -z "$name" ]] && die "usage: install.sh <name> [--bundle PATH]"
-[[ "$name" == "local" ]] && die 'cannot install on reserved machine "local"'
-machine_exists "$name" || die "no such machine: $name — run add.sh first"
+[[ -z "$NAME" ]] && { printf '{"ok":false,"stage":"parse-args","message":"missing <name>"}\n'; exit 2; }
+if [[ "$NAME" == "local" ]]; then
+  printf '{"ok":false,"stage":"precheck","message":"local machine is implicit; no install needed"}\n'
+  exit 1
+fi
+
+PROVISIONING_NAME="$NAME"
+export PROVISIONING_NAME
+ensure_index
+machine_exists "$NAME" || { printf '{"ok":false,"stage":"precheck","message":"no such machine: %s — run add.sh first"}\n' "$NAME"; exit 1; }
+
+index_lock "$NAME"
+trap_unhandled_errors
+
+# Mark provisioning at the start. Preserve services.providers across this update.
+index_update "$NAME" '
+  . + { status: "provisioning", lastError: null }
+  | .services = ((.services // {}) | (.providers //= {}) | .)
+'
+
+# ── stage: bundle-resolve ────────────────────────────────────────────────────
+
+emit_progress info "bundle-resolve" "resolving cloud-run bundle for arch"
 
 resolve_bundle() {
   local arch
   arch="$(uname -m)"
   [[ "$arch" == "x86_64" ]] && arch="linux-x86_64" || die "unsupported arch: $arch"
 
-  # Single canonical location. Electron main ensures ~/.openscientist/cloud-run
-  # is a symlink pointing at the right source (packaged resources dir in prod,
-  # frontend/electron/cloud-run/ in dev). $OPENSCIENTIST_CLOUD_RUN_BUNDLE and
-  # --bundle remain as escape hatches for manual dev testing but should never
-  # be needed in normal operation.
   local candidates=(
     "${OPENSCIENTIST_CLOUD_RUN_BUNDLE:-}"
     "$HOME/.openscientist/cloud-run/$arch"
   )
   for c in "${candidates[@]}"; do
     [[ -z "$c" ]] && continue
-    [[ -f "$c/install.sh" && -x "$c/kimi-server" && -f "$c/plane.tar.gz" ]] && { printf '%s' "$c"; return 0; }
+    [[ -x "$c/kimi-server" && -f "$c/plane.tar.gz" && -f "$c/manifest.json" ]] && { printf '%s' "$c"; return 0; }
   done
   return 1
 }
 
-if [[ -z "$bundle" ]]; then
-  bundle="$(resolve_bundle)" || die "bundle not found at \$HOME/.openscientist/cloud-run/<arch>/ — this symlink is maintained by Electron main at app startup. If you're seeing this, either the app hasn't started yet, or the install is broken. Do not prompt the user for a path — open the app to restore the symlink. (Manual override: --bundle PATH or \$OPENSCIENTIST_CLOUD_RUN_BUNDLE, for dev testing only.)"
+if [[ -z "$BUNDLE" ]]; then
+  BUNDLE="$(resolve_bundle)" || mark_broken "bundle-resolve" \
+    "bundle not found at \$HOME/.openscientist/cloud-run/<arch>/ (Electron maintains this symlink at startup; if missing, restart the app or run scripts/build-cloud-run-bundle.sh)" '{}'
 fi
-[[ -d "$bundle" ]] || die "bundle path not a directory: $bundle"
-[[ -f "$bundle/install.sh" ]] || die "bundle missing install.sh: $bundle"
+[[ -d "$BUNDLE" ]]                || mark_broken "bundle-resolve" "bundle path not a directory: $BUNDLE" '{}'
+[[ -f "$BUNDLE/manifest.json" ]]  || mark_broken "bundle-resolve" "bundle missing manifest.json: $BUNDLE" '{}'
+[[ -x "$BUNDLE/kimi-server" ]]    || mark_broken "bundle-resolve" "bundle missing executable kimi-server: $BUNDLE" '{}'
+[[ -f "$BUNDLE/plane.tar.gz" ]]   || mark_broken "bundle-resolve" "bundle missing plane.tar.gz: $BUNDLE" '{}'
 
-log "bundle: $bundle"
+bundle_version="$(jq -r '.bundleVersion // .components.plane.sha256 // empty' "$BUNDLE/manifest.json")"
+[[ -n "$bundle_version" ]] || mark_broken "bundle-resolve" "manifest.json has no bundleVersion or components.plane.sha256" '{}'
+emit_progress info "bundle-resolve" "bundle=$BUNDLE version=${bundle_version:0:16}"
 
-# Ensure ControlMaster before scp/rsync.
-"$(dirname "$0")/reconnect-ssh.sh" "$name" >/dev/null
+# ── stage: precheck (ssh) ────────────────────────────────────────────────────
 
-mapfile -t opts < <(ssh_base_opts "$name")
-target="$(ssh_target "$name")"
-sock="$(ssh_sock "$name")"
-key="$(machine_field "$name" "ssh.keyPath")"
-port="$(machine_field "$name" "port")"; [[ -z "$port" ]] && port=22
+emit_progress info "precheck" "ensuring SSH ControlMaster"
+"$SCRIPT_DIR/reconnect-ssh.sh" "$NAME" >/dev/null || mark_broken "precheck" "reconnect-ssh.sh failed" '{}'
 
-# Record "provisioning" so the UI sees progress.
-write_index "$(jq_index --arg n "$name" '.machines[$n].status = "provisioning" | .machines[$n].lastError = null')"
+mapfile -t SSH_OPTS < <(ssh_base_opts "$NAME")
+SSH_TARGET="$(ssh_target "$NAME")"
+SSH_SOCK="$(ssh_sock "$NAME")"
+SSH_KEY="$(machine_field "$NAME" "ssh.keyPath")"
+SSH_PORT="$(machine_field "$NAME" "ssh.port")"; [[ -z "$SSH_PORT" ]] && SSH_PORT=22
 
-remote_home="$(ssh "${opts[@]}" "$target" 'printf %s "$HOME"')"
-[[ -z "$remote_home" ]] && die "could not resolve remote \$HOME"
+remote_home="$(ssh "${SSH_OPTS[@]}" "$SSH_TARGET" 'printf %s "$HOME"' 2>/dev/null || true)"
+[[ -n "$remote_home" ]] || mark_broken "precheck" "could not resolve remote \$HOME" '{}'
 remote_stage="$remote_home/.openscientist/cloud-run"
+emit_progress info "precheck" "remote.home=$remote_home"
 
-log "staging bundle on remote: $remote_stage"
-ssh "${opts[@]}" "$target" "mkdir -p '$remote_stage'"
+# ── stage: bundle-copy ───────────────────────────────────────────────────────
 
-log "rsync bundle -> remote (this may take a minute on first push)"
-rsync -az --delete \
-  -e "ssh -o ControlPath=$sock -i $key -p $port -o BatchMode=yes" \
-  "$bundle/" "$target:$remote_stage/"
+emit_progress info "bundle-copy" "rsync bundle artifacts to remote"
+ssh "${SSH_OPTS[@]}" "$SSH_TARGET" "mkdir -p '$remote_stage'" \
+  || mark_broken "bundle-copy" "could not create remote staging dir" '{}'
 
-log "copying auth token (if present)"
+if ! with_timeout 90 "bundle-copy" -- \
+  rsync -az --delete \
+    -e "ssh -o ControlPath=$SSH_SOCK -i $SSH_KEY -p $SSH_PORT -o BatchMode=yes" \
+    "$BUNDLE/" "$SSH_TARGET:$remote_stage/"
+then
+  mark_broken "bundle-copy" "rsync failed; check disk space or remote permissions" '{}'
+fi
+
+# ── stage: auth.json copy (best-effort) ──────────────────────────────────────
+
 if [[ -f "$AUTH_PATH" ]]; then
-  # Rewrite base_url to the remote-reachable backend so the machine hits the
-  # production endpoint instead of the laptop's localhost. The local
-  # auth.json is left untouched; only the synced copy is rewritten.
-  # Override via OPENSCIENTIST_REMOTE_BASE_URL if you need to point a machine
-  # at staging or a custom backend.
   remote_base_url="${OPENSCIENTIST_REMOTE_BASE_URL:-https://aloo-gobi.fydy.ai}"
   tmp_auth="$(mktemp)"
   jq --arg url "$remote_base_url" '.base_url = $url' "$AUTH_PATH" > "$tmp_auth"
-  log "syncing auth.json with base_url=$remote_base_url"
-  scp -o ControlPath="$sock" -i "$key" -P "$port" -q "$tmp_auth" "$target:$remote_home/.openscientist/auth.json" || \
-    log "WARNING: auth.json copy failed; skill-sync and provider routing will not work until fixed"
-  ssh "${opts[@]}" "$target" "chmod 600 '$remote_home/.openscientist/auth.json'" || true
+  emit_progress info "auth-copy" "syncing auth.json with base_url=$remote_base_url"
+  if ! scp -o ControlPath="$SSH_SOCK" -i "$SSH_KEY" -P "$SSH_PORT" -q "$tmp_auth" "$SSH_TARGET:$remote_home/.openscientist/auth.json" 2>/dev/null; then
+    emit_progress warn "auth-copy" "auth.json copy failed; provider routing may not work"
+  else
+    ssh "${SSH_OPTS[@]}" "$SSH_TARGET" "chmod 600 '$remote_home/.openscientist/auth.json'" 2>/dev/null || true
+  fi
   rm -f "$tmp_auth"
 else
-  log "no $AUTH_PATH on laptop — skipping; provider-routing endpoints will fail"
+  emit_progress warn "auth-copy" "no $AUTH_PATH on laptop; provider-routing endpoints will fail"
 fi
 
-log "running remote installer ..."
-if ! ssh "${opts[@]}" "$target" "STAGE_DIR='$remote_stage' bash '$remote_stage/install.sh'"; then
-  err="remote install.sh exited non-zero (see ssh output above)"
-  write_index "$(jq_index --arg n "$name" --arg e "$err" '.machines[$n].status = "error" | .machines[$n].lastError = $e')"
-  die "$err"
+# ── stage: remote-stage (piped) ──────────────────────────────────────────────
+
+emit_progress info "remote-stage" "piping remote-stage.sh"
+remote_node="$(ssh "${SSH_OPTS[@]}" "$SSH_TARGET" 'command -v node || true' 2>/dev/null)"
+[[ -n "$remote_node" ]] || mark_broken "remote-stage" "node not found on remote PATH" '{}'
+
+# ssh_pipe runs the script with explicit env injection, no SendEnv config.
+# Stage "all" runs layout, install-binary, extract-plane, render-units, enable-services.
+remote_log_path=""
+if ! remote_log_path=$(with_timeout 90 "remote-stage" -- \
+  ssh_pipe "$NAME" \
+    --env "KIMI_PORT=5494" \
+    --env "PLANE_PORT=5495" \
+    --env "NODE_BIN=$remote_node" \
+    --env "STAGE_DIR=$remote_stage" \
+    --env "HEALTHCHECK_TIMEOUT_S=30" \
+    -- "$SCRIPT_DIR/remote-stage.sh" "all" \
+  | tail -1)
+then
+  tail_log="$(remote_log_tail "$NAME" "\$HOME/.openscientist/logs/remote-stage-*.log" 200)"
+  mark_broken "remote-stage" "remote-stage.sh failed" \
+    "$(jq -nc --arg t "$tail_log" '{remoteLogTail:$t}')"
 fi
 
-version="$(ssh "${opts[@]}" "$target" "jq -r '.version // .bundleVersion // \"unknown\"' '$remote_stage/manifest.json'" 2>/dev/null || echo "unknown")"
-remote_prefix="$remote_home/.local/share/openscientist"
+# ── stage: pre-create remote dirs ────────────────────────────────────────────
+
 remote_spaces_root="$remote_home/.openscientist/spaces"
 remote_worktrees_root="$remote_home/.openscientist/worktrees"
+remote_prefix="$remote_home/.local/share/openscientist"
 
-# Pre-create the directories the renderer + skill scripts will look for. Both
-# are referenced as `remote.spacesRoot` / `remote.worktreesRoot` in the index
-# so callers don't have to derive paths from `remote.home` ad hoc.
-log "preparing remote dirs: $remote_spaces_root, $remote_worktrees_root"
-ssh "${opts[@]}" "$target" "mkdir -p '$remote_spaces_root' '$remote_worktrees_root'" || \
-  log "WARNING: could not create spaces/worktrees roots (continuing anyway)"
+emit_progress info "remote-dirs" "ensuring spaces/worktrees roots"
+ssh "${SSH_OPTS[@]}" "$SSH_TARGET" "mkdir -p '$remote_spaces_root' '$remote_worktrees_root'" \
+  || emit_progress warn "remote-dirs" "could not create spaces/worktrees roots (continuing)"
 
-# Success path: delete status/lastError. Their absence is the canonical "ready"
-# state — Electron strips status=="ready" on read anyway, but we don't even
-# write it. Only "unprovisioned" / "provisioning" / "error" should ever appear
-# here. (status.sh used to writeback "degraded"/"ready"/"unknown" but no longer
-# does; the boot probe in cloud-run/index.cjs derives liveness from the bridge.)
-updated="$(jq_index \
-  --arg n "$name" \
-  --arg ver "$version" \
+# ── stage: verify-from-laptop ────────────────────────────────────────────────
+
+emit_progress info "verify-from-laptop" "running verify.sh"
+verify_out=""
+if verify_out=$(with_timeout 30 "verify-from-laptop" -- \
+  bash "$SCRIPT_DIR/../../machine-use/scripts/verify.sh" "$NAME"); then
+  emit_progress info "verify-from-laptop" "ok"
+else
+  mark_broken "verify-from-laptop" "verify.sh failed; kimi or plane not reachable" \
+    "$(jq -nc --arg v "$verify_out" '{verifyOutput:$v}')"
+fi
+
+# ── stage: index-write-success ───────────────────────────────────────────────
+
+emit_progress info "index-write-success" "merging success record"
+
+# Atomic merge that PRESERVES services.providers across a reinstall (spec §4.2).
+index_update "$NAME" "$(cat <<JQ
+  (.services // {}) as \$svc
+  | (\$svc.providers // {}) as \$prov
+  | . + {
+      status: "ready",
+      bundleVersion: "$bundle_version",
+      provisionedAt: "$(now_iso)",
+      lastVerifiedAt: "$(now_iso)",
+      remote: ((.remote // {}) + {
+        home: "$remote_home",
+        prefix: "$remote_prefix",
+        spacesRoot: "$remote_spaces_root",
+        worktreesRoot: "$remote_worktrees_root"
+      }),
+      services: (\$svc + { providers: \$prov }),
+      lastError: null
+    }
+JQ
+)"
+
+# Final outcome on stdout, single JSON doc per contract.
+jq -nc \
+  --arg name "$NAME" \
+  --arg version "$bundle_version" \
   --arg home "$remote_home" \
-  --arg prefix "$remote_prefix" \
-  --arg sroot "$remote_spaces_root" \
-  --arg wroot "$remote_worktrees_root" \
-  --arg at "$(now_iso)" \
-  '.machines[$n] |= (del(.status, .lastError))
-   | .machines[$n].bundleVersion = $ver
-   | .machines[$n].remote.home          = $home
-   | .machines[$n].remote.prefix        = $prefix
-   | .machines[$n].remote.spacesRoot    = $sroot
-   | .machines[$n].remote.worktreesRoot = $wroot
-   | .machines[$n].provisionedAt = $at')"
-write_index "$updated"
+  --argjson verify "$verify_out" \
+  '{ok:true,name:$name,stage:"done",bundleVersion:$version,remoteHome:$home,verify:$verify}'
 
-log "install complete: $name @ bundle $version"
-log "next: run status.sh $name to verify healthz, then activate.sh $name"
+emit_progress info "done" "install complete: $NAME @ ${bundle_version:0:16}"
