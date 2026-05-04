@@ -74,12 +74,18 @@ emit_progress info "download" "fetching Claude Code installer"
 # laptop-side artifact. We record the npm package version as the "installer
 # sha" surrogate so reruns can short-circuit on version stability.
 
+# Resolve ssh args once. with_timeout uses GNU timeout, which can only exec
+# binaries — wrap `ssh` (a real binary) directly rather than the bash
+# function `ssh_run`.
+mapfile -t SSH_OPTS < <(ssh_base_opts "$NAME")
+SSH_TGT="$(ssh_target "$NAME")"
+
 # ── stage: install ───────────────────────────────────────────────────────────
 
 emit_progress info "install" "running npm install -g @anthropic-ai/claude-code on remote"
 install_log=""
 if ! install_log=$(with_timeout 90 "install" -- \
-  ssh_run "$NAME" -q -- "npm install -g @anthropic-ai/claude-code 2>&1"); then
+  ssh "${SSH_OPTS[@]}" "$SSH_TGT" "npm install -g @anthropic-ai/claude-code 2>&1"); then
   record_provider_failure "install" "npm install failed: $(printf %s "$install_log" | tail -3)"
 fi
 
@@ -87,7 +93,8 @@ fi
 
 emit_progress info "smoke" "claude --version"
 version=""
-if ! version=$(with_timeout 15 "smoke" -- ssh_run "$NAME" -q -- "claude --version 2>&1"); then
+if ! version=$(with_timeout 15 "smoke" -- \
+  ssh "${SSH_OPTS[@]}" "$SSH_TGT" "claude --version 2>&1"); then
   record_provider_failure "smoke" "claude --version failed; check PATH on the remote"
 fi
 version=$(printf '%s' "$version" | head -1 | tr -d '\r\n')
