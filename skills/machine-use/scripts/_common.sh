@@ -78,23 +78,32 @@ ssh_master_alive() {
 ssh_base_opts() {
   local name="$1"
   local host user key port sock
-  host="$(machine_field "$name" "host")"
-  user="$(machine_field "$name" "user")"
-  key="$(machine_field "$name" "ssh.keyPath")"
-  port="$(machine_field "$name" "port")"
+  # New schema (nested) is authoritative; fall back to legacy flat fields
+  # for entries that haven't been migrated yet.
+  host="$(machine_field "$name" "ssh.host")"
+  user="$(machine_field "$name" "ssh.user")"
+  key="$(machine_field "$name"  "ssh.keyPath")"
+  port="$(machine_field "$name" "ssh.port")"
+  [[ -z "$host" ]] && host="$(machine_field "$name" "host")"
+  [[ -z "$user" ]] && user="$(machine_field "$name" "user")"
+  [[ -z "$port" ]] && port="$(machine_field "$name" "port")"
   [[ -z "$port" ]] && port=22
   sock="$(ssh_sock "$name")"
-  [[ -z "$host" ]] && die "$name: missing host"
-  [[ -z "$user" ]] && die "$name: missing user"
+  [[ -z "$host" ]] && die "$name: missing ssh.host"
+  [[ -z "$user" ]] && die "$name: missing ssh.user"
   [[ -z "$key"  ]] && die "$name: missing ssh.keyPath"
-  # One option per line so mapfile can split on newlines.
   printf -- '-i\n%s\n-p\n%s\n-o\nConnectTimeout=5\n-o\nBatchMode=yes\n-o\nControlPath=%s\n' \
     "$key" "$port" "$sock"
 }
 
 ssh_target() {
   local name="$1"
-  printf '%s@%s' "$(machine_field "$name" "user")" "$(machine_field "$name" "host")"
+  local user host
+  user="$(machine_field "$name" "ssh.user")"
+  host="$(machine_field "$name" "ssh.host")"
+  [[ -z "$user" ]] && user="$(machine_field "$name" "user")"
+  [[ -z "$host" ]] && host="$(machine_field "$name" "host")"
+  printf '%s@%s' "$user" "$host"
 }
 
 now_iso() { date -u +"%Y-%m-%dT%H:%M:%SZ"; }
