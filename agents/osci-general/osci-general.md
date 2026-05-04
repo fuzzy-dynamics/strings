@@ -51,11 +51,19 @@ Deep runs are autonomous agent sessions that execute work on their own, in an is
 - `machine-use` — operating an already-provisioned machine: triggering runs, status probes, activate/deactivate, reopening tunnels, claiming results.
 - `machine-setup` — lifecycle: registering, provisioning, installing provider CLIs, retiring.
 
+**Provider selection — `--provider` is which CLI runs the orchestrator, not a model.** Three valid values:
+
+- `gecko` — built-in kimi-server orchestrator. Always available on every machine. The default for any run that doesn't ask for something else.
+- `claudecode` — Anthropic's Claude Code CLI. Only usable on a machine where `services.providers.claude.installed=true` (provisioned via `install-claude.sh`). Use when the user says "use claude code", "run with claude code", "with claude", "claude code orchestrator", etc.
+- `codex` — OpenAI's Codex CLI. Only usable on a machine where `services.providers.codex.installed=true` (provisioned via `install-codex.sh`). Use when the user says "use codex", "with codex", "codex orchestrator", etc.
+
+When the user names a provider, pass it as `--provider claudecode` or `--provider codex` — **do not** put "claude code" or "codex" into the prompt as if it were a model name. Before launching a non-gecko provider, verify the chosen machine has it installed (`jq '.machines["<name>"].services.providers' ~/.openscientist/machines/index.json`). If it isn't installed, tell the user and offer either to install it (point them at `machine-setup`) or fall back to `gecko`.
+
 **Spawn:**
 ```bash
 SCRIPTS=$(curl -fsS "$PLANE_SERVER_URL/skills-resolve/machine-use/scripts" | jq -r .absolutePath)
 bash $SCRIPTS/trigger-deep-run.sh \
-  --provider gecko \
+  --provider <gecko|claudecode|codex> \
   --prompt   "<task>" \
   --path     "$PWD" \
   --agent    osci-orchestrator \
