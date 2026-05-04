@@ -174,14 +174,65 @@ If services are down (SSH master up, but kimi/plane returning non-200), ssh in a
 
 ### Install a provider CLI on a remote
 
+Both `install-claude.sh` and `install-codex.sh` require `status="ready"` on the target. They run `npm install -g <package>` on the remote, smoke-test with `<provider> --version`, and update `services.providers.<provider>` in the index. A failed install does NOT demote the machine — only `lastProviderError.<provider>` is set and `services.providers.<provider>.installed=false`. The base machine stays selectable for `gecko` runs.
+
+#### Claude Code (auth-required)
+
+Claude Code on a remote needs a `CLAUDE_CODE_OAUTH_TOKEN` to talk to Anthropic. The laptop's interactive OAuth credentials live in the OS keychain and are not portable; the headless flow uses `claude setup-token` to mint a long-lived token the agent can write into the remote's env file. The bundle's systemd units already have `EnvironmentFile=-${PROV_DIR}/claudecode.env` wired in, so the token file is picked up automatically.
+
+**The agent must ask the user where the token comes from.** Three paths:
+
+1. **"I'll paste it in chat"** — user runs `claude setup-token` on the laptop and pastes the printed `CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-...` (or the bare value). Agent uses `--token-stdin`:
+
+   ```bash
+   echo "<paste-the-token-here>" | bash $SCRIPTS/install-claude.sh osci-math --token-stdin
+   ```
+
+   The script reads stdin, strips whitespace and any `CLAUDE_CODE_OAUTH_TOKEN=`/`export` prefix the user may have included, scp's it to the remote env file, never lets the value land in `ps`.
+
+2. **"It's saved in a file"** — user gives a path. Agent uses `--token-file`:
+
+   ```bash
+   bash $SCRIPTS/install-claude.sh osci-math --token-file ~/.config/claude/token
+   ```
+
+   Same parsing rules as `--token-stdin`. File can contain `CLAUDE_CODE_OAUTH_TOKEN=sk-ant-...` or the bare value.
+
+3. **"I haven't set one up yet"** — agent asks the user to run `claude setup-token` on the laptop, then come back with the token in one of the two forms above.
+
+**Do not use `--token <value>`** for chat-pasted secrets — argv is visible in `ps` while the script runs. Use `--token-stdin` or `--token-file` for any user-provided token.
+
+**Without any token flag** the script installs Claude Code, marks `authed: false`, and exits 0 with stderr instructions for wiring auth on a follow-up run. The base machine stays usable; only `claude`-routed actions on the remote will fail until auth lands.
+
+What the script actually does (when a token is provided):
+
+1. `npm install -g @anthropic-ai/claude-code` on the remote.
+2. Smoke test: `claude --version`.
+3. scp the token to `~/.openscientist/providers/claudecode.env` on the remote (mode 600). Token never on argv.
+4. Drop in `~/.config/systemd/user/{kimi,plane}.service.d/path.conf` so user units find `~/.local/bin/claude`.
+5. `daemon-reload` + restart kimi+plane.
+6. `claude auth status --json` — verifies `loggedIn: true`. Records `authed` and `authMethod` in the index.
+
+Verify the result:
+
 ```bash
-bash $SCRIPTS/install-claude.sh osci-math
-bash $SCRIPTS/install-codex.sh  osci-math
+jq '.machines["osci-math"].services.providers.claude' ~/.openscientist/machines/index.json
 ```
 
-Both require `status="ready"`. The install runs `npm install -g @anthropic-ai/claude-code` (or `@openai/codex`) on the remote, then runs `<provider> --version` as a smoke test. On success, the machine record gains `services.providers.<provider> = {installed:true, version, installedAt, smokeTestedAt}` and any prior `lastProviderError.<provider>` is cleared.
+Expected: `{"installed": true, "authed": true, "authMethod": "...", "version": "...", ...}`. If `authed: false` after a token-write attempt, the token may be expired, or the remote's `claude` CLI may be too old to support `auth status --json`. Try `ssh <name> 'claude auth status --json'` directly to debug.
 
-On failure, the machine's `status` stays `ready` — only `lastProviderError.<provider>` is set and `services.providers.<provider>.installed=false`. The base machine remains usable for `gecko` runs.
+#### Codex
+
+Codex stores auth in a portable file at `~/.codex/auth.json`, so no token flow is needed. `install-codex.sh` only does install + smoke test. To wire auth, rsync the laptop's `~/.codex/` to the remote after install:
+
+```bash
+bash $SCRIPTS/install-codex.sh osci-math
+ssh osci-math 'mkdir -p ~/.codex'
+rsync -az ~/.codex/ osci-math:.codex/
+ssh osci-math 'codex login status'   # confirm: "Logged in using ChatGPT" or similar
+```
+
+This is documented separately and not yet wrapped by the install script — file an issue if the round-trip becomes painful enough to automate.
 
 ### Trigger a deep run (local or remote)
 
