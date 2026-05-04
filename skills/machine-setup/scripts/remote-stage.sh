@@ -79,10 +79,12 @@ stage_extract_plane() {
   # (cannot happen here since we just created it, but cheap insurance).
   tar -xzf "$STAGE_DIR/plane.tar.gz" -C "$staging" --overwrite
   [ -f "$staging/kimi-server.cjs" ] || die "plane bundle missing kimi-server.cjs after extract"
-  # Atomic dir swap. mv on existing PLANE_DIR fails on non-empty dest;
-  # so we move existing aside, then move new into place, then delete old.
-  if [ -d "$PLANE_DIR" ] && [ "$(ls -A "$PLANE_DIR" 2>/dev/null || true)" ]; then
-    rm -rf "$PLANE_DIR.old" 2>/dev/null || true
+  # Atomic dir swap. `mv src dst` MERGES into dst when dst exists as a
+  # directory (even if empty), producing $PLANE_DIR/$staging-basename/...
+  # instead of replacing $PLANE_DIR. So always move dst aside (if present)
+  # before the rename, regardless of whether it's empty. Then clean up.
+  rm -rf "$PLANE_DIR.old" 2>/dev/null || true
+  if [ -d "$PLANE_DIR" ]; then
     mv "$PLANE_DIR" "$PLANE_DIR.old"
   fi
   mv "$staging" "$PLANE_DIR"
