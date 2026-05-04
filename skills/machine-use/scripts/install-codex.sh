@@ -105,13 +105,15 @@ emit_progress info "smoke" "$version"
 # ── stage: index-write ───────────────────────────────────────────────────────
 
 ts="$(now_iso)"
+# Use printf %s | jq -Rsc rather than `jq -Rsc <<<...` (bash `<<<` appends \n).
+version_json="$(printf '%s' "$version" | jq -Rsc .)"
 index_update "$NAME" "$(cat <<JQ
   . + {
     services: ((.services // {}) + {
       providers: ((.services.providers // {}) + {
         codex: {
           installed: true,
-          version: $(jq -Rsc <<<"$version"),
+          version: $version_json,
           installedAt: "$ts",
           smokeTestedAt: "$ts"
         }

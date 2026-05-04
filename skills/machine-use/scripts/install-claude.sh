@@ -244,15 +244,23 @@ fi
 # ── stage: index-write ───────────────────────────────────────────────────────
 
 ts="$(now_iso)"
+# Use printf %s | jq -Rsc rather than `jq -Rsc <<<...` because bash `<<<`
+# appends a trailing newline that ends up in the JSON string.
+version_json="$(printf '%s' "$version" | jq -Rsc .)"
+if [[ "$auth_method" == "null" ]]; then
+  auth_method_json='null'
+else
+  auth_method_json="$(printf '%s' "$auth_method" | jq -Rsc .)"
+fi
 index_update "$NAME" "$(cat <<JQ
   . + {
     services: ((.services // {}) + {
       providers: ((.services.providers // {}) + {
         claude: {
           installed: true,
-          version: $(jq -Rsc <<<"$version"),
+          version: $version_json,
           authed: $authed,
-          authMethod: $(if [[ "$auth_method" == "null" ]]; then printf 'null'; else jq -Rsc <<<"$auth_method"; fi),
+          authMethod: $auth_method_json,
           installedAt: "$ts",
           smokeTestedAt: "$ts"
         }
