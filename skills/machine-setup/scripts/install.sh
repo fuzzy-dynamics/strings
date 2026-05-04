@@ -181,18 +181,34 @@ ssh "${SSH_OPTS[@]}" "$SSH_TARGET" "mkdir -p '$remote_spaces_root' '$remote_work
 
 # ── stage: verify-from-laptop ────────────────────────────────────────────────
 
-emit_progress info "verify-from-laptop" "running verify.sh"
+emit_progress info "verify-from-laptop" "running verify.sh (with retries)"
+# remote-stage.sh exits as soon as systemctl restart returns; services may
+# still be "activating" for a few seconds. Poll verify.sh until both kimi
+# and plane report ok, or the budget expires.
+VERIFY_BUDGET_S="${VERIFY_BUDGET_S:-60}"
+VERIFY_INTERVAL_S=2
 verify_out=""
-verify_rc=0
-verify_out=$(with_timeout 30 "verify-from-laptop" -- \
-  bash "$SCRIPT_DIR/../../machine-use/scripts/verify.sh" "$NAME") || verify_rc=$?
-# verify.sh exits 0 even when its JSON reports ok:false, so check both.
-verify_ok=$(printf '%s' "$verify_out" | tail -1 | jq -r '.ok // false' 2>/dev/null)
-if [[ "$verify_rc" -ne 0 ]] || [[ "$verify_ok" != "true" ]]; then
-  mark_broken "verify-from-laptop" "verify.sh failed; kimi or plane not reachable" \
+verify_ok="false"
+verify_kimi="false"
+verify_plane="false"
+end=$(( SECONDS + VERIFY_BUDGET_S ))
+while [[ $SECONDS -lt $end ]]; do
+  verify_out=$(bash "$SCRIPT_DIR/../../machine-use/scripts/verify.sh" "$NAME" 2>/dev/null || true)
+  # verify.sh emits pretty JSON; slurp the whole stdout, not just tail -1.
+  verify_ok=$(printf '%s' "$verify_out" | jq -r '.ok // false' 2>/dev/null || echo false)
+  verify_kimi=$(printf '%s' "$verify_out" | jq -r '.kimi.ok // false' 2>/dev/null || echo false)
+  verify_plane=$(printf '%s' "$verify_out" | jq -r '.plane.ok // false' 2>/dev/null || echo false)
+  if [[ "$verify_ok" == "true" ]]; then
+    break
+  fi
+  emit_progress info "verify-from-laptop" "kimi=$verify_kimi plane=$verify_plane (retrying)"
+  sleep "$VERIFY_INTERVAL_S"
+done
+if [[ "$verify_ok" != "true" ]]; then
+  mark_broken "verify-from-laptop" "verify.sh did not report ok=true within ${VERIFY_BUDGET_S}s; kimi=$verify_kimi plane=$verify_plane" \
     "$(jq -nc --arg v "$verify_out" '{verifyOutput:$v}')"
 fi
-emit_progress info "verify-from-laptop" "ok"
+emit_progress info "verify-from-laptop" "ok (kimi=$verify_kimi plane=$verify_plane)"
 
 # ── stage: index-write-success ───────────────────────────────────────────────
 
