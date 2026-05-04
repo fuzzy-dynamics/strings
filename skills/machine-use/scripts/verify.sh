@@ -119,12 +119,20 @@ probe_remote_healthz() {
 
 probe_provider() {
   local cmd="$1"
-  if version=$(ssh_run "$NAME" -q -- "$cmd --version" 2>/dev/null); then
+  # Provider CLIs are installed under ~/.local/bin (per install-{claude,codex}.sh
+  # using --prefix=~/.local). Non-interactive ssh sessions don't get that on
+  # PATH by default, so probe by absolute path. Falls back to PATH lookup if
+  # the binary is somehow elsewhere.
+  local probe='V=$($HOME/.local/bin/'"$cmd"' --version 2>/dev/null) || V=$('"$cmd"' --version 2>/dev/null) || true; printf "%s" "$V"'
+  local version
+  if version=$(ssh_run "$NAME" -q -- "$probe" 2>/dev/null); then
     version=$(printf '%s' "$version" | head -1 | tr -d '\r\n')
-    jq -nc --arg v "$version" '{ok:true,version:$v}'
-  else
-    jq -nc '{ok:false,version:null}'
+    if [[ -n "$version" ]]; then
+      jq -nc --arg v "$version" '{ok:true,version:$v}'
+      return
+    fi
   fi
+  jq -nc '{ok:false,version:null}'
 }
 
 # ── stages ───────────────────────────────────────────────────────────────────
