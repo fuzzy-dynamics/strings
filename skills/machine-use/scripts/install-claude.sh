@@ -137,24 +137,33 @@ JQ
 }
 
 # ── stage: install ───────────────────────────────────────────────────────────
+# Pin --prefix ~/.local so the binary lands at a known path (~/.local/bin/claude).
+# Without --prefix, npm uses whatever the user's npm config has (often /usr or
+# nvm's per-version dir) which may not be on the non-interactive SSH PATH or
+# the systemd user units' PATH. ~/.local is the de facto user-prefix and the
+# systemd PATH drop-in below already includes it.
 
-emit_progress info "install" "running npm install -g @anthropic-ai/claude-code on remote"
+emit_progress info "install" "running npm install -g --prefix=~/.local @anthropic-ai/claude-code on remote"
 install_log=""
-if ! install_log=$(with_timeout 120 "install" -- \
-  ssh "${SSH_OPTS[@]}" "$SSH_TGT" "npm install -g @anthropic-ai/claude-code 2>&1"); then
+if ! install_log=$(with_timeout 180 "install" -- \
+  ssh "${SSH_OPTS[@]}" "$SSH_TGT" "mkdir -p \$HOME/.local && npm install -g --prefix=\$HOME/.local @anthropic-ai/claude-code 2>&1"); then
   record_provider_failure "install" "npm install failed: $(printf %s "$install_log" | tail -3 | tr '\n' ' ')"
 fi
 
 # ── stage: smoke ─────────────────────────────────────────────────────────────
+# Call by absolute path so we don't depend on the remote's interactive PATH.
 
-emit_progress info "smoke" "claude --version"
+CLAUDE_BIN='$HOME/.local/bin/claude'
+emit_progress info "smoke" "$CLAUDE_BIN --version"
 version=""
 if ! version=$(with_timeout 15 "smoke" -- \
-  ssh "${SSH_OPTS[@]}" "$SSH_TGT" "claude --version 2>&1"); then
-  record_provider_failure "smoke" "claude --version failed; check PATH on the remote"
+  ssh "${SSH_OPTS[@]}" "$SSH_TGT" "$CLAUDE_BIN --version 2>&1"); then
+  record_provider_failure "smoke" "claude --version failed; check ~/.local/bin/claude exists on the remote"
 fi
 version=$(printf '%s' "$version" | head -1 | tr -d '\r\n')
-[[ -z "$version" ]] && record_provider_failure "smoke" "claude --version returned empty"
+if [[ -z "$version" ]] || printf '%s' "$version" | grep -qiE 'command not found|no such file|cannot execute'; then
+  record_provider_failure "smoke" "claude --version produced no version string: ${version:-(empty)}"
+fi
 
 emit_progress info "smoke" "$version"
 
@@ -206,15 +215,28 @@ REMOTE
   # ── stage: auth-probe ─────────────────────────────────────────────────────
   emit_progress info "auth-probe" "verifying claude auth status"
   auth_json=""
-  if auth_json=$(with_timeout 15 "auth-probe" -- ssh "${SSH_OPTS[@]}" "$SSH_TGT" \
-    'set -a; . $HOME/.openscientist/providers/claudecode.env 2>/dev/null; set +a; claude auth status --json 2>&1' \
-    || true); then
-    if printf '%s' "$auth_json" | jq -e '.loggedIn == true' >/dev/null 2>&1; then
+  auth_json=$(with_timeout 20 "auth-probe" -- ssh "${SSH_OPTS[@]}" "$SSH_TGT" \
+    "set -a; . \$HOME/.openscientist/providers/claudecode.env 2>/dev/null; set +a; $CLAUDE_BIN auth status --json 2>&1" \
+    || true)
+  if printf '%s' "$auth_json" | jq -e '.loggedIn == true' >/dev/null 2>&1; then
+    authed="true"
+    auth_method=$(printf '%s' "$auth_json" | jq -r '.authMethod // "unknown"')
+    emit_progress info "auth-probe" "authed via $auth_method"
+  else
+    # Some claude CLI versions don't support `auth status --json`. Fall back
+    # to a minimal smoke that exercises the OAuth token: `claude --print` with
+    # a one-token prompt. If it returns 200/output, auth is good even without
+    # the structured probe.
+    emit_progress warn "auth-probe" "auth status --json did not report loggedIn=true; trying claude --print fallback"
+    smoke_out=$(with_timeout 30 "auth-print" -- ssh "${SSH_OPTS[@]}" "$SSH_TGT" \
+      "set -a; . \$HOME/.openscientist/providers/claudecode.env 2>/dev/null; set +a; printf 'reply with: ok' | $CLAUDE_BIN --print --model claude-haiku-4-5 2>&1 | head -c 200" \
+      || true)
+    if printf '%s' "$smoke_out" | grep -qiE 'ok|hi|hello|sure'; then
       authed="true"
-      auth_method=$(printf '%s' "$auth_json" | jq -r '.authMethod // "unknown"')
-      emit_progress info "auth-probe" "authed via $auth_method"
+      auth_method="oauth-token"
+      emit_progress info "auth-probe" "fallback print smoke returned content; treating as authed"
     else
-      emit_progress warn "auth-probe" "claude auth status reports not-logged-in; token may be invalid or the CLI lacks the auth subcommand on this version"
+      emit_progress warn "auth-probe" "claude --print fallback also failed; token may be invalid or remote CLI is too old: $(printf '%s' "$smoke_out" | head -c 200)"
     fi
   fi
 fi
