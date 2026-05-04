@@ -236,13 +236,19 @@ with_timeout() {
   local secs="$1" stage="$2"
   shift 2
   if [[ "${1:-}" == "--" ]]; then shift; fi
-  if ! timeout --foreground "$secs" "$@"; then
-    local rc=$?
-    if [[ "$rc" == "124" || "$rc" == "137" ]]; then
-      mark_broken "$stage" "timeout after ${secs}s" "{}"
-    fi
-    return "$rc"
+  local rc=0
+  # timeout(1) can only exec binaries, not shell functions. Callers like
+  # ssh_run / ssh_pipe rely on ssh's own ConnectTimeout for liveness, so
+  # for function targets we invoke directly and trust that bound.
+  if [[ "$(type -t "$1" 2>/dev/null)" == "function" ]]; then
+    "$@" || rc=$?
+  else
+    timeout --foreground "$secs" "$@" || rc=$?
   fi
+  if [[ "$rc" == "124" || "$rc" == "137" ]]; then
+    mark_broken "$stage" "timeout after ${secs}s" "{}"
+  fi
+  return "$rc"
 }
 
 # ── ssh helpers ──────────────────────────────────────────────────────────────

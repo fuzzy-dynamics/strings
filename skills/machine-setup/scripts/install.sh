@@ -183,13 +183,16 @@ ssh "${SSH_OPTS[@]}" "$SSH_TARGET" "mkdir -p '$remote_spaces_root' '$remote_work
 
 emit_progress info "verify-from-laptop" "running verify.sh"
 verify_out=""
-if verify_out=$(with_timeout 30 "verify-from-laptop" -- \
-  bash "$SCRIPT_DIR/../../machine-use/scripts/verify.sh" "$NAME"); then
-  emit_progress info "verify-from-laptop" "ok"
-else
+verify_rc=0
+verify_out=$(with_timeout 30 "verify-from-laptop" -- \
+  bash "$SCRIPT_DIR/../../machine-use/scripts/verify.sh" "$NAME") || verify_rc=$?
+# verify.sh exits 0 even when its JSON reports ok:false, so check both.
+verify_ok=$(printf '%s' "$verify_out" | tail -1 | jq -r '.ok // false' 2>/dev/null)
+if [[ "$verify_rc" -ne 0 ]] || [[ "$verify_ok" != "true" ]]; then
   mark_broken "verify-from-laptop" "verify.sh failed; kimi or plane not reachable" \
     "$(jq -nc --arg v "$verify_out" '{verifyOutput:$v}')"
 fi
+emit_progress info "verify-from-laptop" "ok"
 
 # ── stage: index-write-success ───────────────────────────────────────────────
 
