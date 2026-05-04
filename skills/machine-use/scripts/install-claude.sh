@@ -252,6 +252,19 @@ if [[ "$auth_method" == "null" ]]; then
 else
   auth_method_json="$(printf '%s' "$auth_method" | jq -Rsc .)"
 fi
+
+# When no token was provided, preserve any existing authed / authMethod
+# values rather than overwriting them with false / null. The remote env
+# file is unchanged from a prior install, so a re-run without --token
+# should not appear to "log out" the machine.
+if [[ -z "$TOKEN" ]]; then
+  authed_jq='(.services.providers.claude.authed // false)'
+  auth_method_jq='(.services.providers.claude.authMethod // null)'
+else
+  authed_jq="$authed"
+  auth_method_jq="$auth_method_json"
+fi
+
 index_update "$NAME" "$(cat <<JQ
   . + {
     services: ((.services // {}) + {
@@ -259,8 +272,8 @@ index_update "$NAME" "$(cat <<JQ
         claude: {
           installed: true,
           version: $version_json,
-          authed: $authed,
-          authMethod: $auth_method_json,
+          authed: $authed_jq,
+          authMethod: $auth_method_jq,
           installedAt: "$ts",
           smokeTestedAt: "$ts"
         }
