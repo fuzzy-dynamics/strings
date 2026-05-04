@@ -33,12 +33,20 @@ REMOTE
 sock="$(ssh_sock "$name")"
 [[ -S "$sock" ]] && ssh -O exit -S "$sock" "check-$name" 2>/dev/null || true
 
+# Preserve services.providers across uninstall: provider auth files on the
+# remote (e.g. ~/.openscientist/providers/claudecode.env) survive uninstall
+# (we only remove the install dir + service unit files), so the renderer
+# should still see the provider state. Plane/kimi keys are reset.
 updated="$(jq_index --arg n "$name" --arg at "$(now_iso)" '
   .machines[$n] |= (del(.lastError))
   | .machines[$n].status        = "unprovisioned"
   | .machines[$n].bundleVersion = null
   | .machines[$n].provisionedAt = null
-  | .machines[$n].services      = {plane:null, kimi:null}
+  | .machines[$n].services      = {
+      plane: null,
+      kimi:  null,
+      providers: ((.machines[$n].services.providers // {}))
+    }
   | .machines[$n].remote        = {home:null, prefix:null}
 ')"
 write_index "$updated"
