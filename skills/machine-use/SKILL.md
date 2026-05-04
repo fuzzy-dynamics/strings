@@ -1,6 +1,6 @@
 ---
 name: machine-use
-description: Operate already-provisioned remote Linux machines that host the OpenScientist agent stack so deep runs can execute off-laptop. Covers day-to-day use — listing registered machines and inspecting their state, activating/deactivating which one is the current target (Electron opens or tears down the SSH tunnel based on this), live status probes (SSH ControlMaster, systemd services, healthz), reopening a dropped tunnel, triggering deep runs end-to-end (worktree prep + plane POST), and claiming a run's result by fetching the `osci/<sid>` branch back into the laptop's `.git`. Use this skill whenever the user wants to switch active machine, check why runs aren't showing up, repair a tunnel, spawn a deep run, or pull a finished run's result. Lifecycle (registering, provisioning, installing providers, retiring) lives in the sibling `machine-setup` skill — switch to it for those flows. Reaches the remote over SSH using keys the user already has on the laptop; all scripts are shell-native (ssh / scp / rsync / curl / jq) and drive the registry file directly.
+description: Operate already-provisioned remote Linux machines that host the OpenScientist agent stack so deep runs can execute off-laptop. Covers day-to-day use — listing registered machines and inspecting their state, activating/deactivating which one is the current target (Electron opens or tears down the SSH tunnel based on this), **health probes via verify.sh**, **per-space repo sync via sync-space.sh**, **provider CLI installs (install-claude.sh, install-codex.sh)**, reopening a dropped tunnel, triggering deep runs end-to-end (worktree prep + plane POST), and claiming a run's result by fetching the `osci/<sid>` branch back into the laptop's `.git`. Use this skill whenever the user wants to switch active machine, check machine health, install Claude / Codex on a machine, spawn a deep run, or pull a finished run's result. Base lifecycle (registering, provisioning kimi+plane, retiring) lives in the sibling `machine-setup` skill.
 metadata:
   skill-author: OpenScientist
 category: infrastructure
@@ -12,15 +12,17 @@ Use the machines that have already been set up to run deep runs.
 
 This skill is the **runtime complement** to `machine-setup`. After `machine-setup/setup.sh` lands a machine at `status: "ready"`, every later interaction — listing, activating, status probes, reopening dropped tunnels, triggering deep runs, claiming results — happens through this skill. Lifecycle changes (register, install plane + kimi, install provider CLIs, uninstall, remove from registry) live in `machine-setup`.
 
-A **machine** is a remote Linux box (or the laptop itself, reserved name `local`) that hosts the OpenScientist agent stack: the plane server (HTTP API on port 5495), the kimi-server (HTTP API on port 5494), and zero or more external provider CLIs (claudecode, codex). When a machine is **active**, the Electron app opens an SSH tunnel from the laptop so the UI can poll it as if it were local.
+A **machine** is a remote Linux box (or the laptop itself, reserved name `local`) that hosts the OpenScientist agent stack: the plane server (HTTP API on port 5495), the kimi-server (HTTP API on port 5494), and zero or more external provider CLIs (claude, codex). When a machine is **active**, the Electron app opens an SSH tunnel from the laptop so the UI can poll it as if it were local.
+
+This skill follows the contracts in `frontend/docs/machine-provisioning-spec.md`. Read that doc for the design rationale.
 
 ### Providers, explained once clearly
 
 There are exactly three provider options for `--provider`:
 
-- **`gecko`** — the built-in orchestrator that runs *inside* the kimi-server daemon on port 5494. `machine-setup`'s `install.sh` already provisions this on every machine; there is **no separate CLI, no npm package, no auth step**. If kimi-server is healthy (`status.sh` reports `services.kimi: ready`), then `gecko` is ready.
-- **`claudecode`** — external Anthropic CLI. Install + auth via `machine-setup/scripts/setup-claude.sh`.
-- **`codex`** — external OpenAI CLI. Install + auth via `machine-setup/scripts/setup-codex.sh`.
+- **`gecko`** — the built-in orchestrator that runs *inside* the kimi-server daemon on port 5494. `machine-setup/install.sh` already provisions this on every machine; there is **no separate CLI, no npm package, no auth step**. If kimi-server is healthy (`verify.sh` reports `kimi.ok=true`), then `gecko` is ready.
+- **`claude`** — external Anthropic CLI. Install via `install-claude.sh` (this skill, spec §4.3). Failed install does not break the base machine — only that provider stays unusable.
+- **`codex`** — external OpenAI CLI. Install via `install-codex.sh` (this skill, spec §4.4).
 
 The wire-format string plane expects for the built-in option is `kimi` (historical — kept stable to avoid churning backend auth / session records). `trigger-deep-run.sh` accepts `gecko` (canonical), `openscientist-gecko`, and `kimi` (legacy) and canonicalizes them to `kimi` before POSTing. Prefer `gecko` in new invocations and docs — it removes the confusable collision with the kimi-server daemon name.
 
@@ -43,7 +45,7 @@ If you catch yourself about to do any of the following, **stop and re-read this 
 
 If a `--provider gecko` run fails, the cause is **always** one of: (a) kimi-server unit unhealthy (`journalctl --user -u kimi -n 100`), (b) plane unit unhealthy (`journalctl --user -u plane -n 100`), (c) a genuine task-payload / auth / network problem *inside* the orchestrator — which you diagnose by reading the session's `meta.json` and `stdout.log` under `~/.kimi/plane/sessions/<sid>/`, not by reconfiguring ports.
 
-All state lives in `~/.openscientist/machines/index.json`. Every script in this skill reads and/or writes that file.
+All state lives in `~/.openscientist/machines/index.json`. Every script in this skill reads and/or writes that file via `_lib/provisioning.sh`'s atomic helpers.
 
 ## Where things live
 
@@ -56,86 +58,86 @@ All state lives in `~/.openscientist/machines/index.json`. Every script in this 
 
 For setup-side paths (cloud-run bundle, remote install dir, systemd units, `~/.openscientist/auth.json`), see `machine-setup/SKILL.md`.
 
-## index.json schema
-
-The canonical layout — written by both this skill and `machine-setup`, read by Electron's `MachineBridge` (see `frontend/electron/cloud-run/ssh-bridge.cjs`) — keeps SSH connection fields flat at the top level and nests only non-essential auxiliary metadata under `ssh`:
+## index.json schema (spec §5)
 
 ```jsonc
 {
   "version": 1,
-  "active": "osci-math",                    // reserved name "local" = laptop
   "machines": {
     "osci-math": {
       "name": "osci-math",
-      "host": "34.57.180.63",               // required — top-level
-      "user": "zeero",                      // required — top-level
-      "port": 22,                           // required — top-level
       "ssh": {
-        "keyPath":       "/home/zeero/.ssh/osci-math",  // required
-        "keyPresent":    true,
-        "keyMode":       "600",
-        "controlSocket": "/home/zeero/.openscientist/ssh/osci-math.sock",
-        "lastReachableAt": "2026-04-21T11:39:34Z"
+        "host":        "34.57.180.63",
+        "user":        "zeero",
+        "port":        22,
+        "keyPath":     "/home/zeero/.ssh/osci-math",
+        "keyMode":     "600",
+        "controlPath": "/home/zeero/.openscientist/ssh/osci-math.sock"
       },
       "remote": {
-        "home":   "/home/zeero",
-        "arch":   "x86_64",
-        "distro": "ubuntu-24.04",
-        "nodeBin": "/usr/bin/node"
+        "home":          "/home/zeero",
+        "prefix":        "/home/zeero/.local/share/openscientist",
+        "spacesRoot":    "/home/zeero/.openscientist/spaces",
+        "worktreesRoot": "/home/zeero/.openscientist/worktrees",
+        "arch":          "linux-x86_64"
       },
-      "status": "ready",                    // unprovisioned | provisioning | ready | degraded | error
+      "status": "ready",
+      "bundleVersion":  "1c88412819478c4c...",
+      "provisionedAt":  "2026-05-04T07:56:00Z",
+      "lastVerifiedAt": "2026-05-04T12:34:56Z",
       "services": {
-        "plane":     { "status": "ready", "version": "2.0.0",  "port": 5495, "lastCheckedAt": "..." },
-        "kimi":      { "status": "ready", "version": "1.25.0", "port": 5494, "lastCheckedAt": "..." },
         "providers": {
-          "claudecode": { "installed": true, "authed": true, "version": "2.1.100"  },
-          "codex":      { "installed": true, "authed": true, "version": "0.122.0"  },
-          "gecko":      { "installed": true, "authed": true, "version": "1.25.0"   }
+          "claude": { "installed": true, "version": "1.2.3", "installedAt": "...", "smokeTestedAt": "..." },
+          "codex":  { "installed": false }
         }
       },
-      "spaces":        {},
-      "bundleVersion": "0.1.0+theater-01adbe20+frontend-ee4ba4e",
-      "provisionedAt": "2026-04-21T07:56:00Z",
-      "lastError":     null,
-      "createdAt":     "2026-04-21T07:53:00Z"
+      "lastError":         null,
+      "lastProviderError": { "claude": null, "codex": null },
+      "createdAt":         "2026-05-04T07:53:00Z"
     }
   }
 }
 ```
 
-The `active` field is read by Electron's machine watcher. Writing it from a script is how this skill switches machines — Electron sees the change and opens / tears down the SSH tunnel + LocalForward rules.
+Status is one of: `unprovisioned | setup-complete | provisioning | verifying | ready | broken`. The renderer enables only `ready` machines whose latest probe has `kimiReachable=true`.
+
+There is **no `active` field**. The renderer (Electron + React) holds the active machine in localStorage. SSH ControlMaster lifecycle and LocalForward rules are managed by `cloudRun.activateMachine` in Electron main, triggered by the renderer when the user picks a machine in the selector.
+
+`bundleVersion = sha256(plane.tar.gz)` is the canonical version; the renderer can show skew across machines.
 
 ## Scripts
 
-All scripts live in `scripts/`. They take named or positional args, emit structured output on stdout (usually JSON), log progress to stderr, and exit non-zero on failure. Every script sources `_common.sh`.
+All scripts live in `scripts/`. Per the universal contract (spec §3): single positional `<name>`, structured JSON outcome on stdout, NDJSON progress on stderr, exit 0 iff `ok=true`, `mark_broken` as the only failure exit, `flock` on `<name>.lock`. New scripts source `skills/_lib/provisioning.sh`.
 
 | Script | Purpose |
 |---|---|
-| `list.sh` | Print all machines (name, status, active flag). |
+| `list.sh` | Print all machines (name, status). |
 | `show.sh <name>` | Dump one machine's full record. |
-| `active.sh` | Print the currently active machine name (or `local`). |
-| `activate.sh <name>` | Set active machine. Electron opens tunnel. Refuses unknown names. |
-| `deactivate.sh` | Clear active (falls back to `local`). |
-| `status.sh <name>` | Live probe: SSH master, systemd services, /healthz, bundle version. Writes result back into the index. |
-| `reconnect-ssh.sh <name>` | Reopen the ControlMaster if it has dropped. A copy of the same script also lives in `machine-setup`, which uses it for its own internal flows. |
-| `trigger-deep-run.sh --provider P --prompt X --path DIR [--machine M] [--agent A] [--title T] [--spawned-by-session SID] [--spawned-by-role ROLE]` | **The only correct way to spawn a deep run.** Owns worktree prep end-to-end: calls `sync-repo.sh` internally, then POSTs to plane. Both the gecko agent and Electron main (for UI-initiated runs) call this. Emits JSON with `orchestratorId`, `sessionId`, `worktreePath`. `--spawned-by-session` / `--spawned-by-role` are optional provenance — pass them so `/orchestrators` can later be filtered by caller (e.g. "runs this gecko session spawned"). |
-| `sync-repo.sh <name> --path P --session-id SID` | Primitive invoked by `trigger-deep-run.sh`. Snapshots current tree (dirty included), pushes to shared bare repo on remote over the ControlMaster, materializes per-session worktree. Local machines skip the push. Rarely called directly — prefer `trigger-deep-run.sh`. |
-| `fetch-session-branch.sh --session-id SID --path LAPTOP_REPO [--machine M] [--branch NAME]` | **Claim** a deep run's result — make it addressable via `osci/<sid>` in the laptop's `.git` so the caller can `git checkout osci/<sid>`. For **remote** runs: fetches the branch from the remote bare over the existing ControlMaster (real network transfer). For **local** runs: queries plane for the worktree HEAD sha and runs `git branch -f osci/<sid> <sha>` — no data moves (objects are already in the shared `.git`), just the named ref is created on demand. This is the *only* place the `osci/<sid>` branch gets created for local runs, so unclaimed runs leave no branch behind. Emits JSON with `bareUrl`, `fetched`, `localRef`, `sha`. |
+| `verify.sh <name> [--kimi-port P] [--plane-port P]` | **Canonical health probe** (spec §4.5). Read-only. Three calling patterns: flags > `<name>.ports.json` snapshot > remote-loopback fallback. JSON outcome includes `ssh.ok`, `kimi.ok`, `plane.ok`, `providers.{claude,codex}`, `via`, `verifiedAt`. Used by Electron's machine selector probe, by `install.sh`'s last gate, and for manual diagnostics. |
+| `status.sh` | **Deprecated** — exec's verify.sh (spec §4.7). Kept as a back-compat shim for one release. New code should call verify.sh directly. |
+| `activate.sh <name>` | Asserts provisioning state + master health. Renderer's `desktop:machines-activate` IPC routes through Electron main's `cloudRun.activateMachine` (pure JS; this script is the user-facing skill entry, not the renderer path). |
+| `deactivate.sh` | Closes ControlMaster on demand. |
+| `reconnect-ssh.sh <name>` | Reopen the ControlMaster if it has dropped. (Duplicated in `machine-setup`.) |
+| `install-claude.sh <name>` | Install Claude Code CLI on a remote machine. Requires `status="ready"`. Failed install does NOT demote the machine to broken — sets `services.providers.claude.installed=false` and `lastProviderError.claude={stage,message,ts}`. Idempotent: rerun re-runs the smoke test. |
+| `install-codex.sh <name>` | Mirror of install-claude.sh for the Codex CLI. |
+| `sync-space.sh <name> --space-id ID --path P` | Per-space worktree sync. Mirrors `sync-repo.sh` but persistent per-space. Self-heals missing `remote.home` from SSH `$HOME`. Soft-skips no-HEAD and not-a-git-repo with `mode:"skipped"` (renderer renders as info toast). |
+| `trigger-deep-run.sh --provider P --prompt X --path DIR [--machine M] [--agent A] [--title T] [--spawned-by-session SID] [--spawned-by-role ROLE]` | **The only correct way to spawn a deep run.** Owns worktree prep end-to-end: calls `sync-repo.sh` internally, then POSTs to plane. Both the gecko agent and Electron main (for UI-initiated runs) call this. |
+| `sync-repo.sh <name> --path P --session-id SID` | Primitive invoked by `trigger-deep-run.sh`. Per-session snapshot push to shared bare repo on remote. Rarely called directly. |
+| `fetch-session-branch.sh --session-id SID --path LAPTOP_REPO [--machine M] [--branch NAME]` | **Claim** a deep run's result via `osci/<sid>` in the laptop's `.git`. For remote runs: fetches the branch over the existing ControlMaster. For local runs: `git branch -f osci/<sid> <sha>` from plane's reported HEAD. |
 
-### Common helpers (`_common.sh`)
+### Shared helpers (`_lib/provisioning.sh`)
 
-Every script sources `_common.sh`, which provides:
+New scripts source `skills/_lib/provisioning.sh` (spec §11). It provides:
 
-- `INDEX_PATH`, `SSH_DIR` — canonical paths (overridable via env).
-- `ensure_index` — create empty `index.json` if missing.
-- `write_index <json>` — atomic temp+rename, preserves 0600.
-- `machine_exists <name>`, `machine_get <name>` — registry reads.
-- `ssh_sock <name>`, `ssh_master_alive <name>` — tunnel state probes.
-- `ssh_base_opts <name>` — builds `-i key -p port -o ControlPath=sock ...` array.
+- `emit_progress <level> <stage> <msg>` — NDJSON progress on stderr.
+- `mark_broken <stage> <message> [extra-json]` — forensic write to `<name>.lasterror`, atomic index update, structured stdout.
+- `index_lock <name>` / `index_read` / `index_update` — per-machine flock + atomic merge via jq.
+- `with_timeout <secs> <stage> -- <cmd...>` — wrapped blocking ops with structured timeout.
+- `ssh_run <name> -- <cmd...>` — ControlMaster-aware ssh exec.
+- `ssh_pipe <name> [--env KEY=VAL ...] -- <local-script>` — pipe a local script over `ssh bash -s` with explicit env injection (the spec §4.2.2 contract).
+- `log_open <script>` / `remote_log_tail <name> <log-path> [<lines>]` — remote log creation + post-mortem fetch.
 
-A duplicated copy of `_common.sh` (and `reconnect-ssh.sh`) also lives in `machine-setup/scripts/` so each skill is self-contained — both skills carry their own copies, kept in sync at the world-model level.
-
-Always `source "$(dirname "$0")/_common.sh"` at the top of your script — do not duplicate these helpers inline.
+The legacy `_common.sh` is being phased out as scripts migrate. New scripts should use `_lib/provisioning.sh`; older scripts (sync-repo.sh, trigger-deep-run.sh, list.sh, show.sh, fetch-session-branch.sh) still source `_common.sh` until they're migrated.
 
 ## Workflows
 
@@ -143,28 +145,43 @@ Scripts resolve their own location via `$(dirname "$0")`, so invoke them directl
 
 **Always prefix invocations with `bash`** — `bash $SCRIPTS/trigger-deep-run.sh …`, not `$SCRIPTS/trigger-deep-run.sh …`. World-model sync does not preserve the executable bit, so direct invocation fails with "Permission denied" on every fresh sync. You can also `chmod +x $SCRIPTS/*.sh` once as a setup step, but the `bash` prefix is idempotent and works without that.
 
-### List, show, switch active
+### List, show, verify health
 
 ```bash
 SCRIPTS=${KIMI_WORK_DIR}/.openscientist/skills/machine-use/scripts
 bash $SCRIPTS/list.sh                     # all registered machines
 bash $SCRIPTS/show.sh osci-math           # one machine's full record
-bash $SCRIPTS/active.sh                   # the currently active machine
-bash $SCRIPTS/activate.sh osci-math       # Electron opens the tunnel
-bash $SCRIPTS/deactivate.sh               # falls back to "local"
+bash $SCRIPTS/verify.sh osci-math         # health probe (read-only)
 ```
 
-`activate.sh` refuses unknown names — register/provision the machine first via `machine-setup/setup.sh`. Multiple machines share the laptop's port space but only one is active at a time; Electron allocates dynamic LocalForward ports per machine.
+`verify.sh` is the canonical health probe. Outcome JSON includes `ssh.ok`, `kimi.ok`, `plane.ok`, `providers.{claude,codex}`, `via` (bridge | remote-loopback), and `verifiedAt`. The Electron renderer runs this against every machine on a 20s probe cadence; manual invocation is for diagnostics.
+
+### Switch active machine
+
+In day-to-day operation, the user clicks a machine in the renderer's selector and the Electron app handles activate/deactivate via `cloudRun.activateMachine`. The selector enables only `ready` machines whose latest probe has `kimiReachable=true`.
+
+For scripted/CLI flows, you can call `activate.sh` / `deactivate.sh` directly — they assert provisioning state and ControlMaster health.
 
 ### Runs aren't updating in the sidebar
 
 ```bash
-bash $SCRIPTS/status.sh osci-math           # look for sshMaster: "down" or services: "unreachable"
+bash $SCRIPTS/verify.sh osci-math           # look for ssh.ok, kimi.ok, plane.ok
 bash $SCRIPTS/reconnect-ssh.sh osci-math    # if master dropped
-bash $SCRIPTS/status.sh osci-math           # verify recovery
+bash $SCRIPTS/verify.sh osci-math           # verify recovery
 ```
 
-If services are down (SSH master up, but kimi/plane unit inactive), ssh into the machine and `systemctl --user status kimi plane` — likely a crash loop. Check `journalctl --user -u kimi -n 100` for the reason, then `systemctl --user restart`.
+If services are down (SSH master up, but kimi/plane returning non-200), ssh in and `systemctl --user status kimi plane` — likely a crash loop. Check `journalctl --user -u kimi -n 100` for the reason, then `systemctl --user restart`. If the machine was recently re-provisioned and verify still fails, read `~/.openscientist/machines/<name>.lasterror` (forensic floor) for the most recent structured failure.
+
+### Install a provider CLI on a remote
+
+```bash
+bash $SCRIPTS/install-claude.sh osci-math
+bash $SCRIPTS/install-codex.sh  osci-math
+```
+
+Both require `status="ready"`. The install runs `npm install -g @anthropic-ai/claude-code` (or `@openai/codex`) on the remote, then runs `<provider> --version` as a smoke test. On success, the machine record gains `services.providers.<provider> = {installed:true, version, installedAt, smokeTestedAt}` and any prior `lastProviderError.<provider>` is cleared.
+
+On failure, the machine's `status` stays `ready` — only `lastProviderError.<provider>` is set and `services.providers.<provider>.installed=false`. The base machine remains usable for `gecko` runs.
 
 ### Trigger a deep run (local or remote)
 
@@ -251,7 +268,7 @@ git -C "$LAPTOP_REPO" checkout "osci/$SID"
 | Symptom | First check | Fix |
 |---|---|---|
 | Deep run reports `status: completed` but `fetch-session-branch.sh` + `git checkout` shows an empty run | Get the worktree path: `curl -fsS -X POST $PLANE_SERVER_URL/sessions/<sid>/branch` (local) or `ssh <machine> curl -fsS -X POST http://127.0.0.1:5495/sessions/<sid>/branch` (remote). Then check it: `git -C <worktree> status --porcelain && git -C <worktree> log --oneline -5` (prefix with `ssh <machine>` for remote). If porcelain is non-empty and log shows only the pre-run base commit, the agent never committed its work. | This is an orchestrator-agent bug, not a transport issue. Recover in the worktree: `git -C <worktree> add -A && git -C <worktree> commit -m "Recover uncommitted work from session <sid>"` (prefix with `ssh <machine>` for remote). Then re-run `fetch-session-branch.sh --session-id <sid> --path "$LAPTOP_REPO" --machine <name>` — it will advance `osci/<sid>` to the new HEAD (local: `git branch -f` overwrites; remote: `git fetch --force` pulls the updated branch). Then `git -C "$LAPTOP_REPO" checkout osci/<sid>`. File the bug — the agent prompt for that role should enforce final-commit discipline. |
-| `status.sh` shows `sshMaster: down` | `ls -la $SSH_DIR/<name>.sock` | `reconnect-ssh.sh <name>` |
+| `verify.sh` reports `ssh.ok=false` | `ls -la ~/.openscientist/ssh/<name>.sock` | `reconnect-ssh.sh <name>` |
 | `/healthz` 200 locally but not through tunnel | `ssh -O check -S <sock> <name>` | Master is alive but LocalForward dropped — touch `index.json` to re-trigger Electron's forward setup, or `reconnect-ssh.sh`. |
 | Multiple machines share a port on the laptop | Expected — Electron allocates dynamic local ports per machine; only one is active at a time. | Use `active.sh` to see which. |
 | `--provider gecko` run fails and you're tempted to `npm install kimi-cli` or similar | `ssh <name> systemctl --user status kimi` — is kimi-server healthy? | **Do not install anything.** `gecko` is the kimi-server daemon at :5494 that `machine-setup/install.sh` already provisioned. There is no external kimi CLI. If kimi-server is unhealthy, check `journalctl --user -u kimi -n 100` and fix the daemon, or re-run `machine-setup/install.sh <name>`. If it's healthy and runs still fail, the cause is elsewhere (auth, network, task payload) — don't chase phantom packages. |
@@ -259,7 +276,7 @@ git -C "$LAPTOP_REPO" checkout "osci/$SID"
 
 ## What this skill does not do
 
-- It does not provision or install. To register a machine, install plane + kimi, or add provider CLIs, switch to `machine-setup`. Lifecycle entry points all live there; this skill is purely about operating an already-provisioned machine.
+- It does not provision or install kimi+plane. To register a machine and bring up the base stack, use `machine-setup/setup.sh`. Provider CLI installs (claude, codex) live in *this* skill since they require a `ready` machine.
 - It does not manage LocalForward rules. Electron owns tunnel port allocation; scripts only manage the ControlMaster.
 - `trigger-deep-run.sh` is the end of this skill's "spawn" surface. For *observing* a running orchestrator (sessions, messages, mail), curl plane directly:
   - **Local (laptop is the target)**: use `$PLANE_SERVER_URL` — Electron main exports it into `process.env` at startup, so every child (kimi-server, gecko Shell subprocesses, the IPC `trigger-deep-run` invocation) inherits it. **No fallback**: if it's unset, fail loudly rather than guessing a port. Hardcoding `127.0.0.1:5495` is wrong because dev/test setups may bind elsewhere, and even in prod the env var is the canonical source of truth.
