@@ -95,16 +95,13 @@ done
 # Canonicalize provider aliases. User-facing name is `gecko`; plane's wire
 # format is still `kimi` (deep backend — deliberately untouched). If either an
 # agent or the UI passes `gecko` / `openscientist-gecko`, rewrite it before
-# the POST so plane sees what it expects.
+# the POST so plane sees what it expects. claudecode and codex are passed
+# through verbatim — plane has providers for both.
 case "$provider" in
   gecko|openscientist-gecko) provider="kimi" ;;
+  kimi|claudecode|codex)     ;;
+  *) die "--provider must be one of: gecko, claudecode, codex (got: $provider)" ;;
 esac
-
-# Gecko/kimi-server is the only orchestrator backend supported. Claude Code and
-# Codex provider paths were removed when the desktop app went thin-client —
-# remote machines run a kimi-server bundle, not third-party CLIs.
-[[ "$provider" == "kimi" ]] || \
-  die "--provider must be 'gecko' (canonicalizes to 'kimi'); claudecode/codex are no longer supported (got: $provider)"
 
 [[ -z "$machine" ]] && machine="local"
 
