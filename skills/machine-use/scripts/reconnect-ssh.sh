@@ -18,10 +18,10 @@ if ssh_master_alive "$name"; then
   exit 0
 fi
 
-host="$(machine_field "$name" "host")"
-user="$(machine_field "$name" "user")"
+host="$(machine_field "$name" "ssh.host")"; [[ -z "$host" ]] && host="$(machine_field "$name" "host")"
+user="$(machine_field "$name" "ssh.user")"; [[ -z "$user" ]] && user="$(machine_field "$name" "user")"
 key="$(machine_field "$name" "ssh.keyPath")"
-port="$(machine_field "$name" "port")"
+port="$(machine_field "$name" "ssh.port")"; [[ -z "$port" ]] && port="$(machine_field "$name" "port")"
 [[ -z "$port" ]] && port=22
 
 sock="$(ssh_sock "$name")"

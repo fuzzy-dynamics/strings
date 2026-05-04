@@ -137,9 +137,9 @@ fi
 mapfile -t opts < <(ssh_base_opts "$name")
 target="$(ssh_target "$name")"
 sock="$(ssh_sock "$name")"
-host="$(machine_field "$name" "host")"
-user="$(machine_field "$name" "user")"
-port="$(machine_field "$name" "port")"; [[ -z "$port" ]] && port=22
+host="$(machine_field "$name" "ssh.host")"; [[ -z "$host" ]] && host="$(machine_field "$name" "host")"
+user="$(machine_field "$name" "ssh.user")"; [[ -z "$user" ]] && user="$(machine_field "$name" "user")"
+port="$(machine_field "$name" "ssh.port")"; [[ -z "$port" ]] && port="$(machine_field "$name" "port")"; [[ -z "$port" ]] && port=22
 
 remote_home="$(machine_field "$name" "remote.home")"
 if [[ -z "$remote_home" || "$remote_home" == "null" ]]; then

@@ -112,9 +112,9 @@ if ! ssh_master_alive "$machine"; then
 fi
 
 sock="$(ssh_sock "$machine")"
-host="$(machine_field "$machine" "host")"
-user="$(machine_field "$machine" "user")"
-port="$(machine_field "$machine" "port")"; [[ -z "$port" ]] && port=22
+host="$(machine_field "$machine" "ssh.host")"; [[ -z "$host" ]] && host="$(machine_field "$machine" "host")"
+user="$(machine_field "$machine" "ssh.user")"; [[ -z "$user" ]] && user="$(machine_field "$machine" "user")"
+port="$(machine_field "$machine" "ssh.port")"; [[ -z "$port" ]] && port="$(machine_field "$machine" "port")"; [[ -z "$port" ]] && port=22
 remote_home="$(machine_field "$machine" "remote.home")"
 [[ -z "$remote_home" ]] && die "no remote.home cached for $machine — run sync-repo.sh once first"
 
