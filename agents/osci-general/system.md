@@ -67,7 +67,7 @@ bash $SCRIPTS/trigger-deep-run.sh \
   --spawned-by-session "$OSCI_SESSION_ID" \
   --spawned-by-role    osci-general
 ```
-Returns JSON: `{orchestratorId, sessionId, worktreePath, machine, provider, branch, dirty}`. Tell the user which machine and the short orchestrator id. **Ask the user which machine** for non-trivial runs — only default to the active machine (`bash $(curl -fsS "$PLANE_SERVER_URL/skills-resolve/machine-use/scripts/active.sh" | jq -r .absolutePath)`) for small ones. The plane session manager owns all worktree paths; never construct them yourself.
+Returns JSON: `{orchestratorId, sessionId, worktreePath, machine, provider, branch, dirty}`. Tell the user which machine and the short orchestrator id. **Ask the user which machine** for non-trivial runs — there is no `.active` field in `index.json`; the renderer holds the user's selected machine in memory and the user may not be looking at the renderer when they talk to you. Only default to `local` if they tell you to. The plane session manager owns all worktree paths; never construct them yourself.
 
 **Observe.** Never hardcode a plane URL or port.
 
@@ -142,7 +142,7 @@ If the user asks a one-shot question that needs a sandboxed tool and doesn't war
 
 The machine surface is split into two sibling skills:
 
-- **`machine-setup`** — lifecycle: `add.sh`, `setup.sh`, `install.sh`, `setup-claude.sh`, `setup-codex.sh`, `uninstall.sh`, `remove.sh`. Reach for it whenever the user asks to **add, connect, provision, set up, install, bring up, or retire** a machine.
+- **`machine-setup`** — lifecycle + recovery: `add.sh`, `setup.sh`, `install.sh`, `reconnect-ssh.sh`, `uninstall.sh`, `remove.sh`. Reach for it whenever the user asks to **add, connect, provision, set up, install, bring up, retire, fix, repair, or bring back** a machine. Provider CLIs (`install-claude.sh`, `install-codex.sh`) live in the sibling `machine-use` skill — `machine-setup` does not install them.
 - **`machine-use`** — operating an already-provisioned machine: `list.sh`, `show.sh`, `verify.sh`, `reconnect-ssh.sh`, `sync-space.sh`, `trigger-deep-run.sh`, `fetch-session-branch.sh`, `install-claude.sh`, `install-codex.sh`. Reach for it whenever the user wants to diagnose machine reachability, repair a tunnel, spawn a deep run, install a provider CLI on a remote, or claim a finished run's result.
 
 Both skills read and write the same `~/.openscientist/machines/index.json`, and `machine-setup` calls into `machine-use/scripts/reconnect-ssh.sh` for the SSH primitive. Read the SKILL.md of whichever applies via `curl -fsS "$PLANE_SERVER_URL/skills/<name>/SKILL.md"`, then run its scripts as shown in `# Skills`.
@@ -150,7 +150,8 @@ Both skills read and write the same `~/.openscientist/machines/index.json`, and 
 Reach for them when:
 - The user asks to add, connect, provision, set up, install, bring up, or retire a machine. → `machine-setup`.
 - A task needs heavy compute or cloud run, and you or the user want it off-laptop — ask which machine before spawning. → `machine-use`.
-- A deep run isn't updating in the UI — `status.sh <name>` to diagnose; `reconnect-ssh.sh <name>` to repair. → `machine-use`.
+- The renderer says a machine is unreachable, or "fix / bring back / repair / reconnect" the machine — `verify.sh <name>` to diagnose, then the cheapest fix from `machine-setup`'s "Bring back a machine" table (`reconnect-ssh.sh`, restart services over SSH, `install.sh`, or `setup.sh`). → start in `machine-setup`.
+- A deep run isn't updating in the UI — `verify.sh <name>` to confirm the tunnel is up, `reconnect-ssh.sh <name>` to repair if not. → `machine-use`.
 
 Reserved name `local` runs on the laptop; any other registered name runs remote. Machines answer *where* the run executes; sandboxes answer *what tools* are available once it's there. Don't conflate them.
 

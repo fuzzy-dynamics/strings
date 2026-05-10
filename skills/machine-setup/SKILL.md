@@ -26,19 +26,22 @@ A **machine** is a remote Linux box (or the laptop itself, reserved name `local`
 
 This skill follows the contracts in `frontend/docs/machine-provisioning-spec.md`. Read that doc for the design rationale; this README is the agent-facing reference for *how to drive* the scripts.
 
-## State machine (spec §5)
+## Lifecycle
 
 ```
-unprovisioned --add.sh--> unprovisioned (entry exists, ssh not validated yet)
-unprovisioned --reconnect-ssh.sh--> setup-complete
-                                 \--> broken
-setup-complete --install.sh--> provisioning --[verify]--> ready
-                                          \--> broken
-ready --install.sh--> provisioning  (rerun preserves services.providers.*)
-                  \--> broken
+add.sh           → registers ssh creds in index.json; nothing on the remote yet
+reconnect-ssh.sh → opens the SSH ControlMaster (idempotent, repairs a dropped one)
+install.sh       → rsyncs the bundle, brings up kimi + plane via systemd,
+                   verifies via verify.sh; on success writes
+                   bundleVersion + provisionedAt + remote.{home,prefix,…}
+setup.sh         → wraps add → reconnect-ssh → install in one shot
+uninstall.sh     → stops services on remote, clears install dir
+                   (keeps the registry entry + services.providers)
+remove.sh        → deletes the registry entry (refuses if bundleVersion is set
+                   without --force, since that means a real install is live)
 ```
 
-The renderer's machine selector enables only `ready` machines. `provisioning` and `verifying` show a spinner; `broken` shows red with the `lastError.message` tooltip; `setup-complete` and `unprovisioned` show gray with a "run install.sh" hint.
+The renderer's machine selector enables a machine iff its **plane probe** says reachable (`bridgeStates[id].planeReachable === true`). The probe runs at app boot and every 20 s thereafter. `index.json` carries no live state — `status`, `lastError`, `lastProviderError`, `lastVerifiedAt`, and the top-level `active` pointer have all been removed.
 
 ## Where things live
 
@@ -79,20 +82,20 @@ Every script in this skill obeys:
 - **Stdout:** ends with one JSON document. Success: `{ok:true, name, stage:"done", ...}`. Failure: `{ok:false, name, stage, message, ...}`.
 - **Stderr:** NDJSON progress lines, one per stage transition.
 - **Exit 0** iff and only if `ok=true`.
-- **Failure path:** `mark_broken` writes `<name>.lasterror`, sets `status="broken"`, sets `lastError`, prints the JSON, exits 1.
+- **Failure path:** `mark_broken` appends a forensic line to `~/.openscientist/machines/<name>.lasterror`, prints the failure JSON on stdout, and exits 1. It does NOT touch `index.json` — live state is the renderer's bridge probe, the durable trail is `<name>.lasterror`.
 - **Locking:** `flock` on `<name>.lock` for the duration. A second concurrent invocation fails immediately with `{stage:"lock"}` rather than blocking.
 
 ## Scripts
 
 | Script | Purpose | Wrapper budget |
 |---|---|---|
-| `setup.sh <name> [--from-ssh-config ALIAS] [--host H --user U --key K [--port P]] [--force]` | **Preferred entry point.** Wraps `add` → `reconnect-ssh` → `install` in order. Skips `add` if the machine is already registered. | 425s |
-| `add.sh <name> [--force]` | Register entry as `unprovisioned`. Does NOT reach the machine. | 15s |
-| `reconnect-ssh.sh <name>` | Open or repair the SSH ControlMaster. Marks `setup-complete` on first success. | 90s |
-| `install.sh <name> [--bundle PATH]` | rsync bundle, pipe remote-stage.sh, run verify-from-laptop, write `ready`. | 360s |
+| `setup.sh <name> [--from-ssh-config ALIAS] [--host H --user U --key K [--port P]] [--force]` | **Preferred entry point.** Wraps `add` → `reconnect-ssh` → `install` in order. Skips `add` if the machine is already registered. Idempotent: re-running on a fully provisioned machine just re-installs (preserves `services.providers`). | 425s |
+| `add.sh <name> [--force]` | Register ssh creds in `index.json`. Does NOT reach the machine. | 15s |
+| `reconnect-ssh.sh <name>` | Open or repair the SSH ControlMaster. | 90s |
+| `install.sh <name> [--bundle PATH]` | rsync bundle, pipe `remote-stage.sh`, run `verify.sh` from laptop, write `bundleVersion` + `provisionedAt` + `remote.*`. | 360s |
 | `remote-stage.sh` | **Not invoked directly.** Piped over stdin by install.sh; runs on the remote. | (caller-bounded) |
-| `uninstall.sh <name>` | Stop services on remote, clear install dir. Keeps the machine in the registry. | 90s |
-| `remove.sh <name> [--force]` | Delete from registry. Refuses an active or ready machine without `--force`. | 5s |
+| `uninstall.sh <name>` | Stop services on remote, clear install dir, null out `bundleVersion` / `provisionedAt` / `remote.*` (preserves `services.providers`). | 90s |
+| `remove.sh <name> [--force]` | Delete from `index.json`. Refuses without `--force` if `bundleVersion` is set (run `uninstall.sh` first). | 5s |
 
 ## Workflows
 
@@ -136,17 +139,23 @@ else
 fi
 ```
 
-For long-running scripts where your tool harness times out before completion: do **not** assume failure. Read `index.json` instead. The `status` field is authoritative.
+For long-running scripts where your tool harness times out before completion: do **not** assume failure. Two independent signals tell you whether the script actually finished:
+
+1. **`<name>.lock`** — held by `flock` for the duration. If the lock is *not* held (try `flock -n -x ~/.openscientist/machines/<name>.lock -c true && echo released`), the script has exited.
+2. **`<name>.lasterror`** — append-only forensic NDJSON. If a new line was appended after your script started, that's a failure outcome you can read.
 
 ```bash
 NAME=osci-math
-until jq -re --arg n "$NAME" '.machines[$n].status | test("ready|broken")' ~/.openscientist/machines/index.json >/dev/null; do
-  sleep 3
-done
-jq --arg n "$NAME" '.machines[$n] | {status, lastError, bundleVersion}' ~/.openscientist/machines/index.json
+LOCK=~/.openscientist/machines/$NAME.lock
+until ! flock -n -x "$LOCK" -c true 2>/dev/null; do sleep 3; done
+# Lock released — read the structured outcome from <name>.lasterror's last
+# line (failure) or from the script's stdout (success). bundleVersion in
+# index.json being set means install.sh succeeded at least once.
+tail -1 ~/.openscientist/machines/$NAME.lasterror 2>/dev/null | jq .
+jq --arg n "$NAME" '.machines[$n] | {bundleVersion, provisionedAt}' ~/.openscientist/machines/index.json
 ```
 
-Never re-run `setup.sh` / `install.sh` while `status == "provisioning"` — you'll trip the per-machine `flock` and waste a round.
+Never re-run `setup.sh` / `install.sh` while the lock is held — you'll trip the per-machine `flock` and the new invocation will exit with `{stage:"lock"}` immediately.
 
 ### Reading `<name>.lasterror` (forensic floor)
 
@@ -156,23 +165,41 @@ If `mark_broken` ran, `~/.openscientist/machines/<name>.lasterror` has every fai
 tail -1 ~/.openscientist/machines/osci-math.lasterror | jq .
 ```
 
-This file is **immune to jq failures and disk-write contention** — it's written via `printf >>` before any structured index update is attempted. So even if the index update itself failed, the forensic line is still there.
+This file is **immune to jq failures and disk-write contention** — it's written via `printf >>` before any other I/O. It's the authoritative trail for "why did the last setup/install fail."
 
-### `index.json` half-write recovery
+### Bring back a machine
 
-If a previous Electron crash or SIGKILL left a machine in `provisioning` or `verifying` with no live process, the renderer's startup reaper (`cloudRun.init()` in the Electron app) downgrades it to `broken` with `lastError={stage:"reaper", message:"abandoned ... from prior session"}` after a 10-minute cutoff. From that point the machine is selectable for re-install.
+When a machine the user used before is no longer reachable (renderer shows amber dot, "Plane unreachable"), use **`verify.sh`** as the diagnosis primitive — it tells you which layer broke. Choose the cheapest fix that covers what's broken:
 
-If you see a `status: "provisioning"` that's clearly stale (no `flock` held, no recent log activity), and the renderer's reaper hasn't fired yet, force a manual reset by re-running `install.sh` — it acquires the lock and overwrites the state.
+```bash
+# 1. Diagnose. verify.sh gates on plane reachability; ssh + kimi results are
+#    diagnostics in the same JSON.
+SCRIPTS_USE=${KIMI_WORK_DIR}/.openscientist/skills/machine-use/scripts
+out=$(bash $SCRIPTS_USE/verify.sh osci-math)
+printf '%s\n' "$out" | jq '{ok, ssh:.ssh.ok, kimi:.kimi.ok, plane:.plane.ok, via, lastError:.message}'
+```
+
+Map the result to the right fix:
+
+| Symptom from `verify.sh` | Layer that's broken | Fix |
+|---|---|---|
+| `ssh.ok = false` | SSH ControlMaster died | `bash $SCRIPTS_SETUP/reconnect-ssh.sh osci-math` (cheap, no remote work). |
+| `ssh.ok = true`, `plane.ok = false` | Plane process dead on remote | `ssh osci-math 'systemctl --user restart plane.service kimi.service'`. Wait 5 s, re-run verify.sh. |
+| Plane still down after restart | systemd unit broken or bundle corrupt | `bash $SCRIPTS_SETUP/install.sh osci-math` — re-deploys the bundle and rewrites the systemd units. Preserves `services.providers`. |
+| `verify.sh` itself errors with `no such machine` | Index entry missing — remote was wiped or the user removed the entry | `bash $SCRIPTS_SETUP/setup.sh osci-math` — full register + install. Needs `~/.ssh/config` entry or explicit `--host/--user/--key`. |
+| Auth-related errors in remote logs (`401`, "missing token") | `~/.openscientist/auth.json` on remote is stale or missing | `bash $SCRIPTS_SETUP/install.sh osci-math` — the auth-copy stage re-syncs. Don't ask the user to re-login. |
+
+`SCRIPTS_SETUP=${KIMI_WORK_DIR}/.openscientist/skills/machine-setup/scripts`. After any fix, re-run `verify.sh` to confirm `ok=true`. Do not assume the renderer's dot will flip immediately — the periodic probe runs every 20 s.
 
 ### Retire a machine
 
 ```bash
 SCRIPTS=${KIMI_WORK_DIR}/.openscientist/skills/machine-setup/scripts
-bash $SCRIPTS/uninstall.sh osci-math       # stop + clear services on remote
-bash $SCRIPTS/remove.sh osci-math          # delete from index
+bash $SCRIPTS/uninstall.sh osci-math       # stop + clear services on remote, null out bundleVersion
+bash $SCRIPTS/remove.sh osci-math          # delete from index (now allowed since bundleVersion is null)
 ```
 
-`remove.sh` refuses an active or `ready` machine without `--force`.
+`remove.sh` refuses without `--force` when `bundleVersion` is set — that's the persistent signal that a real install is on the remote. Run `uninstall.sh` first, or pass `--force` if you've already cleaned the remote by hand.
 
 ## Troubleshooting
 
@@ -181,13 +208,13 @@ bash $SCRIPTS/remove.sh osci-math          # delete from index
 | `setup.sh` reports `{ok:false, stage:"bundle-resolve"}` | `ls -l ~/.openscientist/cloud-run` | Restart Electron — main maintains the symlink at startup. Do NOT prompt the user for `--bundle` unless they explicitly opted into a custom build. |
 | `setup.sh` reports `{stage:"remote-stage", remoteLogTail:"..."}` | `cat ~/.openscientist/machines/<name>.lasterror \| tail -1 \| jq .` | Read the embedded `remoteLogTail` and `serviceLogs.{kimi,plane}`. Common: `Cannot find module 'js-yaml'` means a stale bundle — rebuild via `frontend/scripts/build-cloud-run-bundle.sh` (the new build's smoke test catches missing deps). |
 | `setup.sh` reports `{stage:"verify-from-laptop", verifyOutput:"..."}` | `bash ${KIMI_WORK_DIR}/.openscientist/skills/machine-use/scripts/verify.sh <name>` | Run verify.sh standalone for a fresh probe. The remote services may have started but be returning non-200; check `journalctl --user -u kimi -u plane -n 50` over SSH. |
-| Tool harness "timed out" before script returned | `jq --arg n "<name>" '.machines[$n] \| {status, lastError}' ~/.openscientist/machines/index.json` | If `status` is `ready` or `broken`, the script finished — read the structured outcome. The harness exit code is not authoritative. |
-| `{stage:"lock", message:"another op in progress"}` | `ls -l ~/.openscientist/machines/<name>.lock`; `lsof ~/.openscientist/machines/<name>.lock` | Real concurrent invocation: wait. Stale lock from a SIGKILL: the renderer's startup reaper handles it after 10 min, OR delete the lockfile manually if no process holds it. |
+| Tool harness "timed out" before script returned | `flock -n -x ~/.openscientist/machines/<name>.lock -c true && echo released`; `tail -1 ~/.openscientist/machines/<name>.lasterror` | If the lock is released, the script finished. Last lasterror line gives the structured failure outcome (or no recent line if it succeeded). The harness exit code is not authoritative. |
+| `{stage:"lock", message:"another op in progress"}` | `ls -l ~/.openscientist/machines/<name>.lock`; `lsof ~/.openscientist/machines/<name>.lock` | Real concurrent invocation: wait. Stale lock from a SIGKILL: delete the lockfile manually if no process holds it (`lsof` returns nothing). |
 | Service won't survive reboot | `ssh <name> 'loginctl show-user $USER \| grep Linger'` | `ssh <name> 'sudo loginctl enable-linger $USER'`. `remote-stage.sh` attempts this with passwordless sudo but logs a warning if unavailable. |
 
 ## What this skill does NOT do
 
-- **Does not install provider CLIs.** Use `machine-use/install-claude.sh` and `machine-use/install-codex.sh` (spec §4.3, §4.4). Provider installs require `status="ready"` and live in the sibling skill because they're a runtime concern, not a provisioning one.
+- **Does not install provider CLIs.** Use `machine-use/install-claude.sh` and `machine-use/install-codex.sh`. Provider installs live in the sibling skill because they're a runtime concern, not a provisioning one.
 - **Does not run health probes.** Use `machine-use/verify.sh` (spec §4.5).
 - **Does not build the bundle.** That's `frontend/scripts/build-cloud-run-bundle.sh`. This skill consumes a prebuilt bundle from `~/.openscientist/cloud-run/<arch>/`.
 - **Does not manage LocalForward rules.** Electron's bridge owns tunnel port allocation; the renderer writes `<name>.ports.json` so verify.sh can find the forwarded ports.
