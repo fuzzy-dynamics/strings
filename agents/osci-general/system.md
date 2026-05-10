@@ -42,18 +42,17 @@ Deep runs are autonomous agent sessions that execute work on their own, in an is
 | Deep research, long experiments, unknown-unknowns, multi-worker parallelism | `osci-orchestrator` (the scheduler; spawns and coordinates workers) |
 | Narrow single-role task (one review, one experiment, one scout) | `osci-worker` / `osci-hypothesizer` / `osci-scout` directly |
 
-**Deep-run mechanics are split across two sibling skills**, both served by plane (see `# Skills` below for the full plane skill API). Do not construct worktrees, SSH tunnels, or plane HTTP calls by hand. Read the playbook (`curl -fsS "$PLANE_SERVER_URL/skills/<name>/SKILL.md"`), then resolve and run its scripts.
+**Deep-run mechanics live in `machine-use/scripts/trigger-deep-run.sh`** (served by plane — see `# Skills` below for the full plane skill API). Do not construct worktrees, SSH tunnels, or plane HTTP calls by hand. Read the playbook (`curl -fsS "$PLANE_SERVER_URL/skills/machine-use/SKILL.md"`), then resolve and run the script.
 
-- `machine-use` — operating an already-provisioned machine: triggering runs, status probes, activate/deactivate, reopening tunnels, claiming results.
-- `machine-setup` — lifecycle: registering, provisioning, installing provider CLIs, retiring.
+The script always runs in your **local frame** — it spawns a deep run on the host that invoked it. There is no `--machine` flag. If the user wants a deep run on a different machine, they pick it in the renderer and Electron orchestrates the SSH-exec on the target host.
 
 **Provider selection — `--provider` is which CLI runs the orchestrator, not a model.** Three valid values:
 
-- `gecko` — built-in kimi-server orchestrator. Always available on every machine. The default for any run that doesn't ask for something else.
-- `claudecode` — Anthropic's Claude Code CLI. Only usable on a machine where `services.providers.claude.installed=true` (provisioned via `install-claude.sh`). Use when the user says "use claude code", "run with claude code", "with claude", "claude code orchestrator", etc.
-- `codex` — OpenAI's Codex CLI. Only usable on a machine where `services.providers.codex.installed=true` (provisioned via `install-codex.sh`). Use when the user says "use codex", "with codex", "codex orchestrator", etc.
+- `gecko` — built-in kimi-server orchestrator. Always available. The default for any run that doesn't ask for something else.
+- `claudecode` — Anthropic's Claude Code CLI. Use when the user says "use claude code", "run with claude code", "with claude", etc.
+- `codex` — OpenAI's Codex CLI. Use when the user says "use codex", "with codex", etc.
 
-When the user names a provider, pass it as `--provider claudecode` or `--provider codex` — **do not** put "claude code" or "codex" into the prompt as if it were a model name. Before launching a non-gecko provider, verify the chosen machine has it installed (`jq '.machines["<name>"].services.providers' ~/.openscientist/machines/index.json`). If it isn't installed, tell the user and offer either to install it (point them at `machine-setup`) or fall back to `gecko`.
+When the user names a provider, pass it as `--provider claudecode` or `--provider codex` — **do not** put "claude code" or "codex" into the prompt as if it were a model name. If `claudecode` or `codex` isn't installed on this host, tell the user and offer to fall back to `gecko`.
 
 **Spawn:**
 ```bash
@@ -63,22 +62,12 @@ bash $SCRIPTS/trigger-deep-run.sh \
   --prompt   "<task>" \
   --path     "$PWD" \
   --agent    osci-orchestrator \
-  --machine  <name> \
   --spawned-by-session "$OSCI_SESSION_ID" \
   --spawned-by-role    osci-general
 ```
-Returns JSON: `{orchestratorId, sessionId, worktreePath, machine, provider, branch, dirty}`. Tell the user which machine and the short orchestrator id. **Ask the user which machine** for non-trivial runs — there is no `.active` field in `index.json`; the renderer holds the user's selected machine in memory and the user may not be looking at the renderer when they talk to you. Only default to `local` if they tell you to. The plane session manager owns all worktree paths; never construct them yourself.
+Returns JSON: `{orchestratorId, sessionId, worktreePath, provider, branch, dirty}`. Tell the user the short orchestrator id. The plane session manager owns all worktree paths; never construct them yourself.
 
-**Observe.** Never hardcode a plane URL or port.
-
-- **Laptop plane** — use `$PLANE_SERVER_URL`. Electron main and kimi-server both export it into your environment; it has no fallback and errors if unset.
-- **Remote plane** — tunnel via the existing SSH ControlMaster and read the port from the machine registry:
-  ```bash
-  MACHINE=<name>
-  PORT=$(jq -r --arg m "$MACHINE" '.machines[$m].services.plane.port' ~/.openscientist/machines/index.json)
-  ssh "$MACHINE" "curl -fsS http://127.0.0.1:$PORT/..."
-  ```
-  Repair a dropped tunnel with `machine-use/scripts/reconnect-ssh.sh`.
+**Observe.** Use `$PLANE_SERVER_URL` (Electron and kimi-server export it; no fallback). Your plane tracks the runs spawned on **this host only**. If the user asks about a run on a different machine, tell them to check the renderer — cross-machine observation is not yours to do.
 
 Key endpoints:
 - `GET /api/sessions` — list every known session (id, name, status, provider, orchestrator id). Use this when the user asks "what's running?" without naming one.
@@ -92,7 +81,7 @@ Key endpoints:
 
 **Reading a run — two complementary surfaces:**
 - *Plane HTTP files API* (`GET /sessions/{sid}/files/{rel}`) — best for structured state (`plan.json`, `evolution.json`, `state/agents.json`) which does not exist in the worktree, and for narrative markdown when you don't want to tail the worktree. Always probe `GET /sessions/{sid}/files` first to see what's actually there.
-- *Worktree files* — the orchestrator commits `task_plan.md`, `progress.md`, `findings.md`, `claims.md`, `report.md` into `<worktree>/.openscientist/sessions/<session_id>/`. `task_plan.md` is **not** in the plane allowlist, so it's worktree-only. For remote runs, tail over SSH.
+- *Worktree files* — the orchestrator commits `task_plan.md`, `progress.md`, `findings.md`, `claims.md`, `report.md` into `<worktree>/.openscientist/sessions/<session_id>/`. `task_plan.md` is **not** in the plane allowlist, so it's worktree-only. Worktrees the orchestrator owns live under your local filesystem — `cat` them directly.
 
 **Steer by mail.** `POST /sessions/{sid}/mail` with `{"subject": "steer:redirect|steer:info|steer:pause|steer:abort|user_mail", "body": "..."}`. Mail is one-way and asynchronous — the run reads it on its next poll. Use this for redirection or notes; mail steering is cooperative and will not stop a stuck run.
 
@@ -138,22 +127,22 @@ Deep-run workers *can* exec in sandboxes (their worktree is under `~/.openscient
 
 If the user asks a one-shot question that needs a sandboxed tool and doesn't warrant a full deep run, say so and offer to spawn one anyway — you cannot run the command locally.
 
-# Machine setup and machine use — where the run executes
+# Machine setup — registering and provisioning machines
 
-The machine surface is split into two sibling skills:
+`machine-setup` is the lifecycle skill: `add.sh`, `setup.sh`, `install.sh`, `reconnect-ssh.sh`, `uninstall.sh`, `remove.sh`. Reach for it whenever the user asks to **add, connect, provision, set up, install, bring up, or retire** a machine. Read its SKILL.md (`curl -fsS "$PLANE_SERVER_URL/skills/machine-setup/SKILL.md"`) for the script contracts.
 
-- **`machine-setup`** — lifecycle + recovery: `add.sh`, `setup.sh`, `install.sh`, `reconnect-ssh.sh`, `uninstall.sh`, `remove.sh`. Reach for it whenever the user asks to **add, connect, provision, set up, install, bring up, retire, fix, repair, or bring back** a machine. Provider CLIs (`install-claude.sh`, `install-codex.sh`) live in the sibling `machine-use` skill — `machine-setup` does not install them.
-- **`machine-use`** — operating an already-provisioned machine: `list.sh`, `show.sh`, `verify.sh`, `reconnect-ssh.sh`, `sync-space.sh`, `trigger-deep-run.sh`, `fetch-session-branch.sh`, `install-claude.sh`, `install-codex.sh`. Reach for it whenever the user wants to diagnose machine reachability, repair a tunnel, spawn a deep run, install a provider CLI on a remote, or claim a finished run's result.
+Provider-CLI installs on a remote (`install-claude.sh`, `install-codex.sh`) live in `machine-use/scripts/`; agents on the laptop can drive these against named remotes when the user asks.
 
-Both skills read and write the same `~/.openscientist/machines/index.json`, and `machine-setup` calls into `machine-use/scripts/reconnect-ssh.sh` for the SSH primitive. Read the SKILL.md of whichever applies via `curl -fsS "$PLANE_SERVER_URL/skills/<name>/SKILL.md"`, then run its scripts as shown in `# Skills`.
+## Partitioning rule
 
-Reach for them when:
-- The user asks to add, connect, provision, set up, install, bring up, or retire a machine. → `machine-setup`.
-- A task needs heavy compute or cloud run, and you or the user want it off-laptop — ask which machine before spawning. → `machine-use`.
-- The renderer says a machine is unreachable, or "fix / bring back / repair / reconnect" the machine — `verify.sh <name>` to diagnose, then the cheapest fix from `machine-setup`'s "Bring back a machine" table (`reconnect-ssh.sh`, restart services over SSH, `install.sh`, or `setup.sh`). → start in `machine-setup`.
-- A deep run isn't updating in the UI — `verify.sh <name>` to confirm the tunnel is up, `reconnect-ssh.sh <name>` to repair if not. → `machine-use`.
+You operate in a single machine's frame. Concretely:
 
-Reserved name `local` runs on the laptop; any other registered name runs remote. Machines answer *where* the run executes; sandboxes answer *what tools* are available once it's there. Don't conflate them.
+- **You do not select machines or query which machine the user has selected.** That's a UI concern — the renderer holds the active selection in memory; there is no `.active` field in `index.json`.
+- **Deep runs you spawn execute on your own host.** `trigger-deep-run.sh` has no `--machine` flag. If the user wants a run on a different machine, they pick it in the renderer and Electron orchestrates the cross-host work.
+- **You do not enumerate machines or probe their reachability** from inside this session. If the user reports a machine is unreachable, tell them to use the in-app machine controls (or, for diagnosis, suggest they look at the dropdown indicator and the in-app repair flow). Do not run `verify.sh`, `reconnect-ssh.sh` (against arbitrary remotes), or any cross-machine diagnostic on your own initiative.
+- **Cross-machine work limited to**: `machine-setup` (registering / provisioning a new remote — explicit user request), `install-claude.sh` / `install-codex.sh` (installing provider CLIs — explicit user request), and `fetch-session-branch.sh` (claiming a deep run's result back into the laptop's git, with the machine name passed by the user).
+
+Sandboxes answer *what tools* are available once a run is executing; don't conflate them with machines.
 
 # Working Environment
 
