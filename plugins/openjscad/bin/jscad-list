@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# List .jscad files under a directory (default: $KIMI_WORK_DIR or $PWD).
+set -euo pipefail
+TARGET_DIR="${1:-${KIMI_WORK_DIR:-$PWD}}"
+[[ -d "$TARGET_DIR" ]] || { echo "[openjscad] not a directory: $TARGET_DIR" >&2; exit 2; }
+find "$TARGET_DIR" \
+  -maxdepth 6 \
+  -type f \
+  -name '*.jscad' \
+  -not -path '*/node_modules/*' \
+  -not -path '*/.git/*' \
+  -not -path '*/.venv/*' \
+  -not -path '*/__pycache__/*' \
+  2>/dev/null

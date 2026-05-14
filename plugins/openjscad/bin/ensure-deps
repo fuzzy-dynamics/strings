@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+# Idempotent dependency bootstrap for the openjscad plugin.
+#
+# Two parts:
+#   1. Server-side: npm install @jscad/modeling + @jscad/stl-serializer into
+#      data/node_modules/. Reads server/package.json.
+#   2. Browser-side: download three.min.js + STLLoader + OrbitControls
+#      (Three.js r147 — last UMD-friendly release) into ui/vendor/.
+#
+# Both are skipped if already present, so subsequent activations are fast.
+
+set -euo pipefail
+
+PLUGIN_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+DATA_DIR="$PLUGIN_DIR/data"
+SERVER_DIR="$PLUGIN_DIR/server"
+VENDOR_DIR="$PLUGIN_DIR/ui/vendor"
+NODE_MODULES="$DATA_DIR/node_modules"
+
+# ── 1) Server-side: jscad packages ────────────────────────────────────
+if [[ ! -d "$NODE_MODULES/@jscad/modeling" ]] || [[ ! -d "$NODE_MODULES/@jscad/stl-serializer" ]]; then
+  if ! command -v npm &> /dev/null; then
+    echo "[openjscad] npm not found on PATH — install Node.js first" >&2
+    exit 127
+  fi
+  echo "[openjscad] installing @jscad packages into data/node_modules (~30s)..." >&2
+  mkdir -p "$DATA_DIR"
+  # Copy server/package.json as data/package.json so npm installs there.
+  cp "$SERVER_DIR/package.json" "$DATA_DIR/package.json"
+  ( cd "$DATA_DIR" && npm install --no-audit --no-fund --silent )
+fi
+
+# ── 2) Browser-side: Three.js bundles ─────────────────────────────────
+mkdir -p "$VENDOR_DIR"
+THREE_VER="0.147.0"
+
+fetch_if_missing() {
+  local url="$1"
+  local target="$2"
+  if [[ -s "$target" ]]; then return; fi
+  echo "[openjscad] downloading $(basename "$target")..." >&2
+  if command -v curl &> /dev/null; then
+    curl -sSfL "$url" -o "$target"
+  elif command -v wget &> /dev/null; then
+    wget -q "$url" -O "$target"
+  else
+    echo "[openjscad] need curl or wget to download Three.js" >&2
+    exit 1
+  fi
+}
+
+fetch_if_missing \
+  "https://cdn.jsdelivr.net/npm/three@${THREE_VER}/build/three.min.js" \
+  "$VENDOR_DIR/three.min.js"
+
+fetch_if_missing \
+  "https://cdn.jsdelivr.net/npm/three@${THREE_VER}/examples/js/loaders/STLLoader.js" \
+  "$VENDOR_DIR/STLLoader.js"
+
+fetch_if_missing \
+  "https://cdn.jsdelivr.net/npm/three@${THREE_VER}/examples/js/controls/OrbitControls.js" \
+  "$VENDOR_DIR/OrbitControls.js"
+
+echo "[openjscad] deps ready (modeling=$(node -e "console.log(require('$NODE_MODULES/@jscad/modeling/package.json').version)" 2>/dev/null || echo '?'), three=${THREE_VER})" >&2

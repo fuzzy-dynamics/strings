@@ -1,0 +1,8 @@
+{
+  "name": "witsoc-plugin-server",
+  "version": "0.1.0",
+  "description": "HTTP fronter for the witsoc CLI",
+  "private": true,
+  "main": "index.js",
+  "dependencies": {}
+}

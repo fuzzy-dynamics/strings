@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# Idempotent dep bootstrap: just downloads Three.js r147 (UMD-friendly)
+# into ui/vendor/. The flow solver itself uses zero npm packages.
+
+set -euo pipefail
+
+PLUGIN_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+VENDOR="$PLUGIN_DIR/ui/vendor"
+mkdir -p "$VENDOR"
+
+THREE_VER="0.147.0"
+
+fetch() {
+  local url="$1"; local target="$2"
+  if [[ -s "$target" ]]; then return; fi
+  echo "[aerodynamics] downloading $(basename "$target")..." >&2
+  if command -v curl &> /dev/null; then
+    curl -sSfL "$url" -o "$target"
+  elif command -v wget &> /dev/null; then
+    wget -q "$url" -O "$target"
+  else
+    echo "[aerodynamics] need curl or wget on PATH" >&2; exit 1
+  fi
+}
+
+fetch "https://cdn.jsdelivr.net/npm/three@${THREE_VER}/build/three.min.js"               "$VENDOR/three.min.js"
+fetch "https://cdn.jsdelivr.net/npm/three@${THREE_VER}/examples/js/controls/OrbitControls.js" "$VENDOR/OrbitControls.js"
+
+echo "[aerodynamics] deps ready (three=${THREE_VER})" >&2

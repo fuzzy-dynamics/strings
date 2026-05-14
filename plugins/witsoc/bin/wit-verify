@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Run `wit verify` from the plugin's bundled venv.
+set -euo pipefail
+PLUGIN_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+"$PLUGIN_DIR/bin/ensure-deps" >/dev/null 2>&1 || "$PLUGIN_DIR/bin/ensure-deps"
+exec "$PLUGIN_DIR/data/venv/bin/wit" verify "$@"

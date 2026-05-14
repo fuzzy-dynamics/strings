@@ -1,0 +1,1182 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Aerodynamics — OpenScientist plugin</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="/_plugin-runtime/theme.css">
+
+  <script src="vendor/three.min.js"></script>
+  <script src="vendor/OrbitControls.js"></script>
+
+  <style>
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      display: flex;
+      background: hsl(var(--background));
+      color: hsl(var(--foreground));
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 12px;
+      overflow: hidden;
+    }
+
+    /* ─── Viewport (left side) ───────────────────────────────────────── */
+    .viewport {
+      flex: 1 1 auto;
+      position: relative;
+      min-width: 0;
+      overflow: hidden;
+    }
+    #canvas { width: 100%; height: 100%; display: block; }
+
+    /* Top-right info chips (over canvas) */
+    .chip-row {
+      position: absolute;
+      top: 14px;
+      right: 14px;
+      display: flex;
+      gap: 8px;
+      z-index: 5;
+    }
+    .chip {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: hsl(var(--card));
+      border: 1px solid hsl(var(--border));
+      border-radius: 10px;
+      padding: 8px 12px;
+      font-size: 11px;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    }
+    .chip .icon {
+      width: 26px;
+      height: 26px;
+      border-radius: 7px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(135deg, #ffd47a, #ff7e5f);
+      font-size: 13px;
+    }
+    .chip .label { color: hsl(var(--muted-foreground)); font-size: 10px; line-height: 1.2; }
+    .chip .value { color: hsl(var(--foreground)); font-weight: 600; font-size: 12px; line-height: 1.2; }
+
+    /* Camera controls (vertical icon strip) */
+    .cam-tools {
+      position: absolute;
+      top: 90px;
+      right: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      z-index: 5;
+    }
+    .cam-tools button {
+      width: 36px; height: 36px;
+      background: hsl(var(--card));
+      border: 1px solid hsl(var(--border));
+      border-radius: 8px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: hsl(var(--foreground));
+      font-size: 14px;
+    }
+    .cam-tools button:hover { background: hsl(var(--muted)); }
+    .cam-tools button.active { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); border-color: hsl(var(--primary)); }
+
+    /* Tiny axes gizmo (just labels, lightweight) */
+    .gizmo {
+      position: absolute;
+      top: 14px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      z-index: 5;
+    }
+    .gizmo-circle {
+      width: 56px; height: 56px;
+      border-radius: 50%;
+      background: hsl(var(--card));
+      border: 1px solid hsl(var(--border));
+      position: relative;
+    }
+    .gizmo-axis {
+      position: absolute;
+      width: 18px; height: 18px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+      font-weight: 600;
+      color: white;
+    }
+    .gizmo-axis.x { background: #ff5e6c; right: 4px; top: 50%; transform: translateY(-50%); }
+    .gizmo-axis.y { background: #5cd069; left: 4px; bottom: 8px; }
+    .gizmo-axis.z { background: #4d8eff; left: 50%; top: 4px; transform: translateX(-50%); }
+
+    /* ─── Bottom overlay (legends + pills + axis slider) ─────────────── */
+    .bottom-overlay {
+      position: absolute;
+      bottom: 14px;
+      left: 14px;
+      right: 14px;
+      display: grid;
+      grid-template-columns: auto 1fr auto 1fr auto;
+      gap: 14px;
+      align-items: end;
+      pointer-events: none;
+      z-index: 5;
+    }
+    .bottom-overlay > * { pointer-events: auto; }
+
+    /* Cps + Velocity legends */
+    .legend {
+      display: flex; flex-direction: column; gap: 4px;
+      padding: 4px 0;
+      font-size: 10px;
+      color: hsl(var(--muted-foreground));
+    }
+    .legend.right { align-items: flex-end; }
+    .legend-bar {
+      width: 220px; height: 14px;
+      border-radius: 2px;
+    }
+    .legend-bar.cps {
+      background: linear-gradient(90deg,
+        hsl(0 0% 70%) 0%,
+        hsl(120 70% 50%) 12%,
+        hsl(75 80% 50%) 50%,
+        hsl(20 90% 55%) 85%,
+        hsl(0 80% 50%) 100%);
+    }
+    .legend-bar.velocity {
+      background: linear-gradient(90deg,
+        hsl(220 80% 55%) 0%,
+        hsl(180 70% 50%) 25%,
+        hsl(120 70% 50%) 50%,
+        hsl(50 90% 55%) 75%,
+        hsl(0 80% 55%) 100%);
+    }
+    .legend .ticks {
+      display: flex;
+      justify-content: space-between;
+      font-family: ui-monospace, SFMono-Regular, monospace;
+    }
+    .legend-title {
+      font-size: 10px;
+      color: hsl(var(--muted-foreground));
+    }
+
+    /* Pill control (segmented) */
+    .pill {
+      display: inline-flex;
+      background: hsl(var(--card));
+      border: 1px solid hsl(var(--border));
+      border-radius: 999px;
+      padding: 4px;
+      gap: 2px;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    }
+    .pill button {
+      border: none; background: transparent;
+      padding: 6px 14px;
+      border-radius: 999px;
+      font: inherit; font-size: 11px; color: hsl(var(--muted-foreground));
+      cursor: pointer;
+      display: inline-flex; align-items: center; gap: 6px;
+    }
+    .pill button.active {
+      background: hsl(var(--card));
+      color: hsl(217 91% 60%);
+      box-shadow: 0 0 0 1px hsl(217 91% 60% / 0.4) inset;
+    }
+    .pill button:hover:not(.active) { color: hsl(var(--foreground)); }
+    .pill button .ic { font-size: 13px; }
+
+    /* Axis-slider center group (Y/Z toggle + slider) */
+    .axis-group {
+      display: flex; flex-direction: column; gap: 6px;
+      align-items: center;
+    }
+    .axis-toggle {
+      display: inline-flex;
+      background: hsl(var(--card));
+      border: 1px solid hsl(var(--border));
+      border-radius: 999px;
+      padding: 3px;
+    }
+    .axis-toggle button {
+      border: none; background: transparent;
+      padding: 3px 14px;
+      border-radius: 999px;
+      font: inherit; font-size: 11px;
+      cursor: pointer;
+      color: hsl(var(--muted-foreground));
+    }
+    .axis-toggle button.active {
+      background: hsl(217 91% 60% / 0.12);
+      color: hsl(217 91% 60%);
+    }
+    .axis-slider {
+      width: 360px;
+      background: hsl(var(--card));
+      border: 1px solid hsl(var(--border));
+      border-radius: 999px;
+      padding: 4px 10px;
+    }
+    .axis-slider input[type="range"] {
+      width: 100%; margin: 0; padding: 0; height: 16px;
+    }
+
+    /* ─── Right sidebar ──────────────────────────────────────────────── */
+    .right-sidebar {
+      flex: 0 0 360px;
+      max-width: 360px;
+      height: 100%;
+      min-height: 0;            /* let overflow-y kick in (flex items default to min-height: auto) */
+      border-left: 1px solid hsl(var(--border));
+      background: hsl(var(--card));
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    /* Same trick for the viewport — keep it from co-stealing height. */
+    .viewport { min-height: 0; }
+    .card {
+      border: 1px solid hsl(var(--border));
+      border-radius: 12px;
+      background: hsl(var(--background));
+      overflow: hidden;
+    }
+    .card-header {
+      padding: 12px 14px;
+      font-size: 13px;
+      font-weight: 600;
+      display: flex; justify-content: space-between; align-items: center;
+      cursor: pointer;
+      user-select: none;
+    }
+    .card-header .chevron { font-size: 11px; color: hsl(var(--muted-foreground)); transition: transform 0.15s; }
+    .card.collapsed .chevron { transform: rotate(-90deg); }
+    .card-body { padding: 0 14px 14px; }
+    .card.collapsed .card-body { display: none; }
+
+    /* Coefficient row */
+    .coef-row {
+      display: grid;
+      grid-template-columns: 1fr auto auto;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 0;
+      border-bottom: 1px solid hsl(var(--border) / 0.6);
+    }
+    .coef-row:last-child { border-bottom: none; }
+    .coef-label { font-size: 12px; }
+    .coef-tag {
+      font-size: 10px;
+      font-family: ui-monospace, SFMono-Regular, monospace;
+      padding: 2px 7px;
+      border-radius: 5px;
+      background: hsl(var(--muted));
+      color: hsl(var(--muted-foreground));
+    }
+    .coef-value {
+      font-size: 17px;
+      font-weight: 600;
+      font-family: ui-monospace, SFMono-Regular, monospace;
+      min-width: 64px; text-align: right;
+    }
+    .coef-row.sub .coef-label { color: hsl(var(--muted-foreground)); font-size: 11px; }
+    .coef-row.sub .coef-value { font-size: 13px; font-weight: 500; }
+
+    .twin-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+      padding: 10px 0 4px;
+    }
+    .twin-row > div { display: flex; flex-direction: column; gap: 4px; }
+    .twin-row .twin-label { font-size: 12px; }
+    .twin-row .twin-value-row { display: flex; align-items: center; gap: 8px; }
+    .twin-row .twin-value { font-size: 17px; font-weight: 600; font-family: ui-monospace, SFMono-Regular, monospace; }
+
+    /* Sliders inside cards */
+    .ctrl-row {
+      display: grid;
+      grid-template-columns: 1fr auto auto;
+      gap: 8px;
+      align-items: center;
+      padding: 6px 0;
+    }
+    .ctrl-row label { font-size: 11px; color: hsl(var(--muted-foreground)); }
+    .ctrl-row input[type="range"] { width: 130px; }
+    .ctrl-row b {
+      font-family: ui-monospace, SFMono-Regular, monospace;
+      font-size: 11px;
+      min-width: 32px; text-align: right;
+      color: hsl(var(--foreground));
+    }
+    .ctrl-row select {
+      width: 100%;
+      grid-column: 1 / -1;
+      padding: 5px 8px;
+      font: inherit; font-size: 11px;
+      border: 1px solid hsl(var(--border));
+      border-radius: 5px;
+      background: hsl(var(--background));
+      color: hsl(var(--foreground));
+    }
+
+    /* Models list */
+    .models-list { display: flex; flex-direction: column; gap: 2px; padding-top: 4px; }
+    .model-group-h {
+      font-size: 9px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.08em;
+      color: hsl(var(--muted-foreground) / 0.7);
+      padding: 6px 0 2px;
+    }
+    .model-item {
+      padding: 5px 10px;
+      cursor: pointer;
+      font-size: 11px;
+      border-radius: 5px;
+      color: hsl(var(--foreground));
+      opacity: 0.85;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .model-item.stl { font-family: ui-monospace, SFMono-Regular, monospace; }
+    .model-item:hover { background: hsl(var(--muted) / 0.6); }
+    .model-item.active {
+      background: hsl(217 91% 60% / 0.1);
+      color: hsl(217 91% 60%);
+      opacity: 1;
+    }
+
+    /* Charts */
+    .chart-section {
+      padding: 12px 0;
+      border-top: 1px solid hsl(var(--border) / 0.6);
+    }
+    .chart-section:first-child { border-top: none; padding-top: 4px; }
+    .chart-title { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+    .chart-meta {
+      display: flex; align-items: center; gap: 6px;
+      font-size: 11px; color: hsl(var(--muted-foreground));
+    }
+    .chart-big {
+      font-size: 16px; font-weight: 600; margin: 2px 0 8px;
+      font-family: ui-monospace, SFMono-Regular, monospace;
+    }
+    .chart-svg { width: 100%; height: 130px; display: block; }
+    .chart-svg .axis-line { stroke: hsl(var(--border)); stroke-width: 1; }
+    .chart-svg .grid-line { stroke: hsl(var(--border) / 0.4); stroke-width: 1; stroke-dasharray: 2 3; }
+    .chart-svg .tick-text { fill: hsl(var(--muted-foreground)); font-size: 9px; font-family: ui-monospace, SFMono-Regular, monospace; }
+    .chart-svg .axis-text { fill: hsl(var(--muted-foreground)); font-size: 10px; }
+    .chart-svg .curve { fill: none; stroke-width: 2; }
+    .chart-svg .marker { fill: hsl(var(--foreground)); }
+
+    /* Status overlay (full-canvas while solving / errors) */
+    .status-overlay {
+      position: absolute; inset: 0;
+      display: flex; align-items: center; justify-content: center;
+      pointer-events: none;
+      color: hsl(var(--muted-foreground));
+      font-size: 12px;
+      z-index: 4;
+    }
+    .status-overlay.err { color: hsl(var(--destructive)); }
+    .status-overlay span {
+      padding: 6px 12px;
+      background: hsl(var(--card) / 0.92);
+      border: 1px solid hsl(var(--border));
+      border-radius: 6px;
+    }
+  </style>
+</head>
+<body>
+  <div class="viewport">
+    <canvas id="canvas"></canvas>
+
+    <!-- Axes gizmo (decorative, fixed position) -->
+    <div class="gizmo">
+      <div class="gizmo-circle">
+        <div class="gizmo-axis x">X</div>
+        <div class="gizmo-axis y">Y</div>
+        <div class="gizmo-axis z">Z</div>
+      </div>
+    </div>
+
+    <!-- Top-right info chips -->
+    <div class="chip-row">
+      <div class="chip">
+        <div class="icon">⚙</div>
+        <div>
+          <div class="label">Velocity:</div>
+          <div class="value" id="chip-velocity">— m/s</div>
+        </div>
+      </div>
+      <div class="chip">
+        <div>
+          <div class="label">Orientation:</div>
+          <div class="value">Yaw: 0°</div>
+        </div>
+      </div>
+      <div class="chip">
+        <div>
+          <div class="label">Accuracy:</div>
+          <div class="value">Inviscid</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Camera tools -->
+    <div class="cam-tools">
+      <button id="btn-axes-toggle" title="Toggle axes helper">▣</button>
+      <button id="btn-rotate"      title="Toggle auto-rotate">↻</button>
+      <button id="btn-fullscreen"  title="Re-fit camera">⛶</button>
+    </div>
+
+    <!-- Bottom overlay -->
+    <div class="bottom-overlay">
+      <div class="legend left">
+        <div class="legend-title">Cps</div>
+        <div class="legend-bar cps"></div>
+        <div class="ticks"><span>0</span><span>0.5</span><span>1</span></div>
+      </div>
+
+      <div class="pill" id="pill-shading">
+        <button data-shading="off"      class="active"><span class="ic">👁‍🗨</span>None</button>
+        <button data-shading="pressure"><span class="ic">⥥</span>Pressure</button>
+        <button data-shading="friction"><span class="ic">≈</span>Friction</button>
+      </div>
+
+      <div class="axis-group">
+        <div class="axis-toggle" id="axis-toggle">
+          <button data-axis="Y">Y</button>
+          <button data-axis="Z" class="active">Z</button>
+        </div>
+        <div class="axis-slider">
+          <input id="axis-pos" type="range" min="-2" max="2" step="0.05" value="0">
+        </div>
+      </div>
+
+      <div class="pill" id="pill-viz">
+        <button data-viz="off"        ><span class="ic">👁‍🗨</span>None</button>
+        <button data-viz="streamlines" class="active"><span class="ic">≋</span>Streamlines</button>
+        <button data-viz="drag"       ><span class="ic">☁</span>Wake</button>
+        <button data-viz="noise"      ><span class="ic">|||</span>Noise</button>
+      </div>
+
+      <div class="legend right">
+        <div class="legend-title">Velocity (m/s)</div>
+        <div class="legend-bar velocity"></div>
+        <div class="ticks"><span>0</span><span>18.75</span><span>37.5</span><span>56.25</span><span>75</span></div>
+      </div>
+    </div>
+
+    <div id="status" class="status-overlay" style="display:none"><span></span></div>
+  </div>
+
+  <!-- ─── Right sidebar ───────────────────────────────────────────── -->
+  <aside class="right-sidebar">
+
+    <!-- Models -->
+    <div class="card" id="card-models">
+      <div class="card-header" data-toggle="card-models">
+        <span>Model</span>
+        <span class="chevron">▾</span>
+      </div>
+      <div class="card-body">
+        <div class="model-group-h">Built-in</div>
+        <div class="models-list" id="builtins-list">
+          <div class="model-item active" data-builtin="teardrop">Teardrop</div>
+          <div class="model-item"        data-builtin="sphere">Sphere</div>
+          <div class="model-item"        data-builtin="ellipsoid">Ellipsoid</div>
+        </div>
+        <div class="model-group-h">Workspace .stl</div>
+        <div class="models-list" id="stl-list">
+          <div class="model-item" style="opacity:0.5">Looking…</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Solver settings -->
+    <div class="card collapsed" id="card-solver">
+      <div class="card-header" data-toggle="card-solver">
+        <span>Solver Settings</span>
+        <span class="chevron">▾</span>
+      </div>
+      <div class="card-body">
+        <div class="ctrl-row"><label>Streamlines/row</label><input id="n-streamlines" type="range" min="10" max="160" value="50"><b id="n-streamlines-v">50</b></div>
+        <div class="ctrl-row"><label>Rows</label><input id="y-rows" type="range" min="1" max="10" value="4"><b id="y-rows-v">4</b></div>
+        <div class="ctrl-row"><label>U∞ (m/s)</label><input id="u-inf" type="range" min="1" max="80" step="0.5" value="50"><b id="u-inf-v">50</b></div>
+        <div class="ctrl-row"><label>Tube radius</label><input id="tube-radius" type="range" min="0.3" max="3" step="0.1" value="1.0"><b id="tube-radius-v">1.0</b></div>
+        <div class="ctrl-row"><label>Wake</label><input id="wake-amp" type="range" min="0" max="1.5" step="0.05" value="0.55"><b id="wake-amp-v">0.55</b></div>
+      </div>
+    </div>
+
+    <!-- Aerodynamic Coefficients -->
+    <div class="card" id="card-aero">
+      <div class="card-header" data-toggle="card-aero">
+        <span>Aerodynamic Coefficients</span>
+        <span class="chevron">▾</span>
+      </div>
+      <div class="card-body">
+        <div class="coef-row">
+          <span class="coef-label">Drag Coefficient</span>
+          <span class="coef-tag">Cd</span>
+          <span class="coef-value" id="aero-Cd">—</span>
+        </div>
+        <div class="coef-row sub">
+          <span class="coef-label">Drag Area</span>
+          <span class="coef-tag">CdA</span>
+          <span class="coef-value" id="aero-CdA">—</span>
+        </div>
+        <div class="coef-row">
+          <span class="coef-label">Lift Coefficient</span>
+          <span class="coef-tag">Cl</span>
+          <span class="coef-value" id="aero-Cl">—</span>
+        </div>
+        <div class="coef-row sub">
+          <span class="coef-label">Front Lift Coefficient</span>
+          <span class="coef-tag">Cl(f)</span>
+          <span class="coef-value" id="aero-Clf">—</span>
+        </div>
+        <div class="coef-row sub">
+          <span class="coef-label">Rear Lift Coefficient</span>
+          <span class="coef-tag">Cl(r)</span>
+          <span class="coef-value" id="aero-Clr">—</span>
+        </div>
+        <div class="twin-row">
+          <div>
+            <span class="twin-label">Lift/Drag Ratio</span>
+            <div class="twin-value-row"><span class="coef-tag">L/D</span><span class="twin-value" id="aero-LD">—</span></div>
+          </div>
+          <div>
+            <span class="twin-label">Frontal area</span>
+            <div class="twin-value-row"><span class="coef-tag">A</span><span class="twin-value" id="aero-A">—</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Drag Coefficient (placeholder collapse) -->
+    <div class="card collapsed" id="card-drag">
+      <div class="card-header" data-toggle="card-drag">
+        <span>Drag Coefficient</span>
+        <span class="chevron">▾</span>
+      </div>
+      <div class="card-body">
+        <p style="font-size:11px; color:hsl(var(--muted-foreground)); margin:6px 0;">
+          Drag is estimated from body slenderness + wake amplitude. For solver-derived Cd, plug in OpenFOAM via the plugin's bin/start-server.
+        </p>
+      </div>
+    </div>
+
+    <!-- Aerodynamic Curves -->
+    <div class="card" id="card-curves">
+      <div class="card-header" data-toggle="card-curves">
+        <span>Aerodynamic Curves</span>
+        <span class="chevron">▾</span>
+      </div>
+      <div class="card-body">
+        <div class="chart-section">
+          <div class="chart-title">Drag Force Curve</div>
+          <div class="chart-meta">Drag Force <span class="coef-tag">Fd(N)</span></div>
+          <div class="chart-big" id="aero-Fd-now">— N</div>
+          <svg id="chart-drag" class="chart-svg" viewBox="0 0 320 130"></svg>
+        </div>
+        <div class="chart-section">
+          <div class="chart-title">Power Curve</div>
+          <div class="chart-meta">Power <span class="coef-tag">P(kW)</span></div>
+          <div class="chart-big" id="aero-P-now">— kW</div>
+          <svg id="chart-power" class="chart-svg" viewBox="0 0 320 130"></svg>
+        </div>
+      </div>
+    </div>
+
+  </aside>
+
+<script>
+  const os = window.acquireOSApi();
+
+  // ─── State ──────────────────────────────────────────────────────────
+  let WORKTREE = null;
+  let CURRENT = { kind: "builtin", value: "teardrop" };
+  let WORKSPACE_STLS = [];
+  let LAST_LINES = null;
+  let LAST_BODY  = null;
+  let SHADING    = "off";
+  let VIZ_MODE   = "streamlines";
+  let AXIS       = "Z";
+  let AUTO_ROTATE = false;
+  let SHOW_AXES = true;
+
+  // ─── Theme — bg follows host (white/black via --background CSS var) ──
+  function readBgColor() {
+    const cs = getComputedStyle(document.documentElement);
+    const raw = cs.getPropertyValue("--background").trim();
+    const parts = raw.split(/\s+/);
+    if (parts.length < 3) return { r: 1, g: 1, b: 1 };
+    const h = parseFloat(parts[0]) || 0;
+    const s = (parseFloat(parts[1]) || 0) / 100;
+    const l = (parseFloat(parts[2]) || 100) / 100;
+    return hslToRgb01(h / 360, s, l);
+  }
+  function applyBgFromTheme() {
+    const c = readBgColor();
+    if (typeof scene !== "undefined" && scene.background) scene.background.setRGB(c.r, c.g, c.b);
+    if (typeof renderer !== "undefined") renderer.setClearColor(new THREE.Color(c.r, c.g, c.b), 1);
+  }
+  function applyTheme(payload) {
+    const mode = payload && payload.mode;
+    document.documentElement.classList.toggle("dark", mode === "dark");
+    const font = payload && payload.font;
+    if (font && font.body) document.body.style.fontFamily = font.body;
+    applyBgFromTheme();
+  }
+  os.theme.get().then(applyTheme).catch(() => applyTheme({ mode: "light" }));
+  os.theme.subscribe(applyTheme);
+
+  // ─── Three.js setup ───────────────────────────────────────────────────
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(1, 1, 1);
+
+  const camera = new THREE.PerspectiveCamera(32, 1, 0.5, 5000);
+  camera.position.set(38, 14, 70);
+  camera.lookAt(0, 0, 0);
+
+  const renderer = new THREE.WebGLRenderer({
+    canvas: document.getElementById("canvas"),
+    antialias: true,
+  });
+  renderer.setPixelRatio(window.devicePixelRatio || 1);
+  applyBgFromTheme();
+
+  const controls = new THREE.OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.08;
+
+  scene.add(new THREE.AmbientLight(0xffffff, 0.65));
+  const key = new THREE.DirectionalLight(0xffffff, 0.55);
+  key.position.set(20, 35, 20); scene.add(key);
+  const fill = new THREE.DirectionalLight(0xffffff, 0.3);
+  fill.position.set(-30, 10, -20); scene.add(fill);
+
+  const AXES = new THREE.AxesHelper(40);
+  scene.add(AXES);
+
+  let bodyMesh = null;
+  const streamlineGroup = new THREE.Group();
+  scene.add(streamlineGroup);
+
+  const tubeMaterial = new THREE.MeshStandardMaterial({
+    vertexColors: true, roughness: 0.42, metalness: 0.05, side: THREE.DoubleSide,
+  });
+
+  let LAST_BODY_SIZE = 30;
+
+  function resize() {
+    const v = document.querySelector(".viewport");
+    const w = v.clientWidth, h = v.clientHeight;
+    renderer.setSize(w, h, false);
+    camera.aspect = w / Math.max(1, h);
+    camera.updateProjectionMatrix();
+  }
+  window.addEventListener("resize", resize);
+  setTimeout(resize, 0);
+
+  function tick() {
+    requestAnimationFrame(tick);
+    if (AUTO_ROTATE && bodyMesh) {
+      const ang = 0.0025;
+      const c = Math.cos(ang), s = Math.sin(ang);
+      const px = camera.position.x, pz = camera.position.z;
+      camera.position.x = px * c - pz * s;
+      camera.position.z = px * s + pz * c;
+      camera.lookAt(0, 0, 0);
+    }
+    controls.update();
+    renderer.render(scene, camera);
+  }
+  tick();
+
+  // ─── Color LUTs ──────────────────────────────────────────────────────
+  function speedToColor(t) {
+    const tt = Math.min(1, Math.max(0, t));
+    const hue = 120 - 85 * tt;
+    return hslToRgb01(hue / 360, 0.65 + 0.25 * tt, 0.55 - 0.05 * tt);
+  }
+  function jetColor(t) {
+    const x = Math.min(1, Math.max(0, t));
+    let r, g, b;
+    if (x < 0.125)      { r = 0; g = 0; b = 0.5 + 4 * x; }
+    else if (x < 0.375) { r = 0; g = 4 * (x - 0.125); b = 1; }
+    else if (x < 0.625) { r = 4 * (x - 0.375); g = 1; b = 1 - 4 * (x - 0.375); }
+    else if (x < 0.875) { r = 1; g = 1 - 4 * (x - 0.625); b = 0; }
+    else                { r = 1 - 4 * (x - 0.875); g = 0; b = 0; }
+    return { r, g, b };
+  }
+  function hslToRgb01(h, s, l) {
+    if (s === 0) return { r: l, g: l, b: l };
+    const hue2rgb = (p, q, t) => {
+      if (t < 0) t += 1; if (t > 1) t -= 1;
+      if (t < 1/6) return p + (q - p) * 6 * t;
+      if (t < 1/2) return q;
+      if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+      return p;
+    };
+    const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+    const p = 2 * l - q;
+    return { r: hue2rgb(p, q, h + 1/3), g: hue2rgb(p, q, h), b: hue2rgb(p, q, h - 1/3) };
+  }
+
+  // ─── Body + tube rendering (existing logic) ───────────────────────────
+  function renderBody(b) {
+    if (bodyMesh) {
+      scene.remove(bodyMesh);
+      bodyMesh.geometry.dispose();
+      bodyMesh.material.dispose();
+    }
+    LAST_BODY = b;
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute("position", new THREE.BufferAttribute(new Float32Array(b.positions), 3));
+    if (b.indices && b.indices.length) {
+      geom.setIndex(new THREE.BufferAttribute(new Uint32Array(b.indices), 1));
+    }
+    geom.computeVertexNormals();
+    geom.computeBoundingBox();
+    const isStl = b.type === "stl";
+    const mat = new THREE.MeshStandardMaterial({
+      color: 0xf6f7f9, roughness: 0.7, metalness: 0.0, flatShading: isStl, vertexColors: false,
+    });
+    bodyMesh = new THREE.Mesh(geom, mat);
+    scene.add(bodyMesh);
+
+    const size = new THREE.Vector3();
+    geom.boundingBox.getSize(size);
+    const maxDim = Math.max(size.x, size.y, size.z) || 10;
+    LAST_BODY_SIZE = maxDim;
+    AXES.scale.setScalar(Math.max(20, maxDim));
+    AXES.visible = SHOW_AXES;
+    const fitDist = maxDim * 2.4;
+    camera.position.set(fitDist * 0.85, fitDist * 0.32, fitDist * 0.95);
+    camera.near = 0.1; camera.far = 50 * maxDim;
+    camera.updateProjectionMatrix();
+    controls.target.set(0, 0, 0);
+    controls.update();
+    applyOverlay();
+  }
+
+  function applyOverlay() {
+    if (!bodyMesh || !LAST_BODY) return;
+    const geom = bodyMesh.geometry;
+    if (SHADING === "off") {
+      geom.deleteAttribute("color");
+      bodyMesh.material.vertexColors = false;
+      bodyMesh.material.color.setHex(0xf6f7f9);
+      bodyMesh.material.needsUpdate = true;
+      return;
+    }
+    const arr = SHADING === "pressure" ? LAST_BODY.pressure : LAST_BODY.friction;
+    if (!arr || !arr.length) return;
+    let mn = Infinity, mx = -Infinity;
+    for (const v of arr) { if (v < mn) mn = v; if (v > mx) mx = v; }
+    const range = Math.max(1e-6, mx - mn);
+    const colors = new Float32Array(arr.length * 3);
+    for (let i = 0; i < arr.length; i++) {
+      const t = (arr[i] - mn) / range;
+      const c = jetColor(t);
+      colors[i * 3] = c.r; colors[i * 3 + 1] = c.g; colors[i * 3 + 2] = c.b;
+    }
+    geom.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+    bodyMesh.material.vertexColors = true;
+    bodyMesh.material.color.setHex(0xffffff);
+    bodyMesh.material.needsUpdate = true;
+  }
+
+  const RED_TURB = { r: 0.95, g: 0.18, b: 0.12 };
+  function buildTube(line, sMin, sMax, tubeRadius) {
+    const n = line.speeds.length;
+    if (n < 2) return null;
+    const points = new Array(n);
+    for (let i = 0; i < n; i++) {
+      points[i] = new THREE.Vector3(line.positions[i*3], line.positions[i*3+1], line.positions[i*3+2]);
+    }
+    const curve = new THREE.CatmullRomCurve3(points, false, "catmullrom", 0.5);
+    const tubularSegs = Math.min(Math.max(n * 2, 16), 140);
+    const radialSegs = 8;
+    const geom = new THREE.TubeGeometry(curve, tubularSegs, tubeRadius, radialSegs, false);
+    const range = Math.max(1e-6, sMax - sMin);
+    const stripVerts = radialSegs + 1;
+    const totalVerts = geom.attributes.position.count;
+    const colors = new Float32Array(totalVerts * 3);
+    const turbs = line.turbs || [];
+    for (let v = 0; v < totalVerts; v++) {
+      const idx = Math.min(n - 1, Math.floor((Math.floor(v / stripVerts) / tubularSegs) * n));
+      const t = (line.speeds[idx] - sMin) / range;
+      const base = speedToColor(t);
+      const turb = Math.min(1, turbs[idx] || 0);
+      const w = turb * turb * (3 - 2 * turb);
+      colors[v * 3]     = base.r + (RED_TURB.r - base.r) * w;
+      colors[v * 3 + 1] = base.g + (RED_TURB.g - base.g) * w;
+      colors[v * 3 + 2] = base.b + (RED_TURB.b - base.b) * w;
+    }
+    geom.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+    return geom;
+  }
+
+  function renderStreamlines(lines, sMin, sMax) {
+    while (streamlineGroup.children.length) {
+      const c = streamlineGroup.children.pop();
+      if (c.geometry) c.geometry.dispose();
+    }
+    if (VIZ_MODE === "off") return;
+    const radiusMult = parseFloat(document.getElementById("tube-radius").value) || 1.0;
+    const tubeRadius = LAST_BODY_SIZE * 0.008 * radiusMult;
+    for (const l of lines) {
+      const geom = buildTube(l, sMin, sMax, tubeRadius);
+      if (!geom) continue;
+      streamlineGroup.add(new THREE.Mesh(geom, tubeMaterial));
+    }
+  }
+
+  // ─── Aero panel + charts ─────────────────────────────────────────────
+  function fmtNum(n, dp = 3) {
+    if (n == null || !Number.isFinite(n)) return "—";
+    return Math.abs(n) >= 100 ? n.toFixed(0) : n.toFixed(dp);
+  }
+  function fmtForce(n) {
+    if (n == null || !Number.isFinite(n)) return "— N";
+    if (n >= 1000) return n.toFixed(2) + " N";
+    return n.toFixed(2) + " N";
+  }
+  function fmtPower(n) {
+    if (n == null || !Number.isFinite(n)) return "— kW";
+    return n.toFixed(2) + " kW";
+  }
+
+  function setAero(aero, U) {
+    if (!aero) return;
+    document.getElementById("aero-Cd").textContent  = fmtNum(aero.Cd);
+    document.getElementById("aero-CdA").textContent = fmtNum(aero.CdA, 3) + " m²";
+    document.getElementById("aero-Cl").textContent  = fmtNum(aero.Cl);
+    document.getElementById("aero-Clf").textContent = fmtNum(aero.Cl_f);
+    document.getElementById("aero-Clr").textContent = fmtNum(aero.Cl_r);
+    document.getElementById("aero-LD").textContent  = fmtNum(aero.L_D);
+    document.getElementById("aero-A").textContent   = fmtNum(aero.A, 3) + " m²";
+    document.getElementById("aero-Fd-now").textContent = fmtForce(aero.drag_force_now);
+    document.getElementById("aero-P-now").textContent  = fmtPower(aero.power_now_kW);
+    drawCurve("chart-drag",  aero.drag_curve,  "Fd",   "u", U, "hsl(220 85% 55%)", aero.drag_force_now, " N");
+    drawCurve("chart-power", aero.power_curve, "P_kW", "u", U, "hsl(0 75% 55%)",   aero.power_now_kW,    " kW");
+  }
+
+  function drawCurve(svgId, points, yKey, xKey, marker_x, color, marker_y, marker_unit) {
+    const svg = document.getElementById(svgId);
+    if (!svg || !points || !points.length) return;
+    const W = 320, H = 130, padL = 28, padR = 12, padT = 8, padB = 24;
+    const xMax = points[points.length - 1][xKey];
+    const yMax = Math.max(1, Math.max(...points.map((p) => p[yKey])));
+    const niceTop = Math.pow(10, Math.ceil(Math.log10(yMax)));
+    const yTop = Math.ceil((yMax * 1.05) / (niceTop / 4)) * (niceTop / 4);
+    const xToPx = (x) => padL + (x / xMax) * (W - padL - padR);
+    const yToPx = (y) => H - padB - (y / yTop) * (H - padT - padB);
+
+    const path = points.map((p, i) =>
+      (i === 0 ? "M " : "L ") + xToPx(p[xKey]).toFixed(1) + " " + yToPx(p[yKey]).toFixed(1)
+    ).join(" ");
+
+    // Y ticks: 4 evenly spaced
+    const yTicks = [];
+    for (let i = 0; i <= 3; i++) {
+      const v = (yTop / 3) * i;
+      yTicks.push({ v, y: yToPx(v) });
+    }
+    // X ticks: 0, 20, 40, 60, 80
+    const xTicks = [0, 20, 40, 60, 80].filter((x) => x <= xMax + 1e-3);
+
+    let html = "";
+    // grid + axis
+    for (const t of yTicks) {
+      html += `<line class="grid-line" x1="${padL}" y1="${t.y}" x2="${W - padR}" y2="${t.y}"></line>`;
+      html += `<text class="tick-text" x="${padL - 4}" y="${t.y + 3}" text-anchor="end">${Math.round(t.v).toLocaleString()}</text>`;
+    }
+    html += `<line class="axis-line" x1="${padL}" y1="${H - padB}" x2="${W - padR}" y2="${H - padB}"></line>`;
+    for (const x of xTicks) {
+      const px = xToPx(x);
+      html += `<text class="tick-text" x="${px}" y="${H - padB + 12}" text-anchor="middle">${x}</text>`;
+    }
+    html += `<text class="axis-text" x="${(W - padR + padL) / 2}" y="${H - 2}" text-anchor="middle">Velocity (m/s)</text>`;
+    // curve
+    html += `<path class="curve" d="${path}" stroke="${color}"></path>`;
+    // marker at current U
+    if (marker_x != null && marker_x <= xMax + 1e-3) {
+      const px = xToPx(marker_x);
+      const py = yToPx(marker_y || 0);
+      html += `<line class="grid-line" x1="${px}" y1="${padT}" x2="${px}" y2="${H - padB}"></line>`;
+      html += `<circle class="marker" cx="${px}" cy="${py}" r="3.5"></circle>`;
+      const tag = (marker_y != null && Number.isFinite(marker_y)) ? marker_y.toFixed(2) + marker_unit : "";
+      // black tooltip background
+      const tw = tag.length * 5.4 + 12;
+      html += `<rect x="${px - tw / 2}" y="${py - 18}" width="${tw}" height="14" rx="3" fill="hsl(var(--foreground))"></rect>`;
+      html += `<text x="${px}" y="${py - 8}" text-anchor="middle" font-size="9" fill="hsl(var(--background))" font-family="ui-monospace, SFMono-Regular, monospace">${tag}</text>`;
+    }
+    svg.innerHTML = html;
+  }
+
+  // ─── Solve + bootstrap ────────────────────────────────────────────────
+  function showStatus(text, isErr) {
+    const el = document.getElementById("status");
+    el.style.display = "flex";
+    el.classList.toggle("err", !!isErr);
+    el.querySelector("span").textContent = text;
+  }
+  function hideStatus() { document.getElementById("status").style.display = "none"; }
+
+  async function solve() {
+    showStatus("Solving…");
+    try {
+      const n        = document.getElementById("n-streamlines").value;
+      const rows     = document.getElementById("y-rows").value;
+      const U        = document.getElementById("u-inf").value;
+      const wake     = document.getElementById("wake-amp").value;
+      const axisVal  = document.getElementById("axis-pos").value;
+      const yOff = AXIS === "Y" ? axisVal : 0;
+      const zOff = AXIS === "Z" ? axisVal : 0;
+      const qs = `&n=${n}&yRows=${rows}&yOffset=${yOff}&zOffset=${zOff}&U=${U}&wake=${wake}`;
+      const url = CURRENT.kind === "stl"
+        ? "/plugins/aerodynamics/proxy/api/solve-stl?path=" + encodeURIComponent(CURRENT.value) + qs
+        : `/plugins/aerodynamics/proxy/api/solve?body=${CURRENT.value}${qs}`;
+      const r = await fetch(url, { cache: "no-store" });
+      if (!r.ok) {
+        let detail = "";
+        try { detail = (await r.json()).message || ""; } catch {}
+        throw new Error("HTTP " + r.status + (detail ? ": " + detail : ""));
+      }
+      const data = await r.json();
+      LAST_LINES = { lines: data.streamlines, sMin: data.info.s_min, sMax: data.info.s_max };
+      renderBody(data.body);
+      renderStreamlines(data.streamlines, data.info.s_min, data.info.s_max);
+      setAero(data.aero, parseFloat(U));
+      document.getElementById("chip-velocity").textContent = (+U).toFixed(1) + " m/s";
+      hideStatus();
+    } catch (e) {
+      showStatus("Solve failed: " + (e.message || String(e)), true);
+    }
+  }
+
+  async function bootstrap() {
+    try {
+      const info = await os.plugin.info();
+      if (info.status !== "running" || !info.port) {
+        showStatus("Plugin server not running — plane-tool plugins activate aerodynamics", true);
+        return;
+      }
+    } catch (e) {
+      showStatus("Bridge error: " + (e.message || e), true);
+      return;
+    }
+    try {
+      const session = await os.session.info();
+      WORKTREE = session.worktree || session.folder || null;
+    } catch { /* keep null */ }
+    await refreshStlList();
+    await solve();
+  }
+
+  // ─── Sidebar models list ──────────────────────────────────────────────
+  function highlightModels() {
+    document.querySelectorAll(".model-item").forEach((el) => el.classList.remove("active"));
+    if (CURRENT.kind === "builtin") {
+      const el = document.querySelector(`.model-item[data-builtin="${CURRENT.value}"]`);
+      if (el) el.classList.add("active");
+    } else if (CURRENT.kind === "stl") {
+      const el = document.querySelector(`.model-item[data-stl="${CSS.escape(CURRENT.value)}"]`);
+      if (el) el.classList.add("active");
+    }
+  }
+  function renderStlList() {
+    const list = document.getElementById("stl-list");
+    list.innerHTML = "";
+    if (!WORKTREE) {
+      list.innerHTML = '<div class="model-item" style="opacity:0.5">No worktree.</div>';
+      return;
+    }
+    if (WORKSPACE_STLS.length === 0) {
+      list.innerHTML = '<div class="model-item" style="opacity:0.5">No .stl files in worktree.</div>';
+      return;
+    }
+    for (const f of WORKSPACE_STLS) {
+      const div = document.createElement("div");
+      div.className = "model-item stl";
+      div.dataset.stl = f.abs;
+      div.title = f.abs;
+      div.textContent = f.rel;
+      div.addEventListener("click", () => {
+        CURRENT = { kind: "stl", value: f.abs };
+        highlightModels();
+        solve();
+      });
+      list.appendChild(div);
+    }
+    highlightModels();
+  }
+  async function refreshStlList() {
+    if (!WORKTREE) return;
+    try {
+      const r = await os.workspace.list();
+      const files = (r.files || []).filter((p) => p.toLowerCase().endsWith(".stl"));
+      WORKSPACE_STLS = files.map((rel) => ({ rel, abs: WORKTREE + "/" + rel }));
+    } catch { WORKSPACE_STLS = []; }
+    renderStlList();
+  }
+  document.querySelectorAll("[data-builtin]").forEach((el) => {
+    el.addEventListener("click", () => {
+      CURRENT = { kind: "builtin", value: el.dataset.builtin };
+      highlightModels();
+      solve();
+    });
+  });
+  setInterval(refreshStlList, 8000);
+
+  // ─── Sliders + bottom pills ───────────────────────────────────────────
+  function bindRange(id, on) {
+    const r = document.getElementById(id);
+    const v = document.getElementById(id + "-v");
+    const update = () => { v.textContent = r.value; if (on) on(); };
+    r.addEventListener("input", update);
+    update();
+  }
+  bindRange("n-streamlines");
+  bindRange("y-rows");
+  bindRange("u-inf");
+  bindRange("tube-radius", () => {
+    if (LAST_LINES) renderStreamlines(LAST_LINES.lines, LAST_LINES.sMin, LAST_LINES.sMax);
+  });
+  bindRange("wake-amp", debounce(solve, 150));
+
+  // Axis slider — debounced re-solve
+  const axisInput = document.getElementById("axis-pos");
+  axisInput.addEventListener("input", debounce(solve, 120));
+  document.querySelectorAll("#axis-toggle button").forEach((b) => {
+    b.addEventListener("click", () => {
+      AXIS = b.dataset.axis;
+      document.querySelectorAll("#axis-toggle button").forEach((x) => x.classList.toggle("active", x.dataset.axis === AXIS));
+      solve();
+    });
+  });
+
+  // Body shading pill
+  document.querySelectorAll("#pill-shading button").forEach((b) => {
+    b.addEventListener("click", () => {
+      SHADING = b.dataset.shading;
+      document.querySelectorAll("#pill-shading button").forEach((x) => x.classList.toggle("active", x.dataset.shading === SHADING));
+      applyOverlay();
+    });
+  });
+
+  // Viz pill (None / Streamlines / Wake / Noise)
+  document.querySelectorAll("#pill-viz button").forEach((b) => {
+    b.addEventListener("click", () => {
+      VIZ_MODE = b.dataset.viz;
+      document.querySelectorAll("#pill-viz button").forEach((x) => x.classList.toggle("active", x.dataset.viz === VIZ_MODE));
+      if (VIZ_MODE === "drag") {
+        document.getElementById("wake-amp").value = "1.2";
+        document.getElementById("wake-amp-v").textContent = "1.2";
+        solve();
+      } else if (VIZ_MODE === "noise") {
+        document.getElementById("wake-amp").value = "1.5";
+        document.getElementById("wake-amp-v").textContent = "1.5";
+        solve();
+      } else if (VIZ_MODE === "off") {
+        renderStreamlines([], 0, 1);
+      } else {
+        if (LAST_LINES) renderStreamlines(LAST_LINES.lines, LAST_LINES.sMin, LAST_LINES.sMax);
+      }
+    });
+  });
+
+  // Card collapse toggles
+  document.querySelectorAll(".card-header").forEach((h) => {
+    h.addEventListener("click", () => h.parentElement.classList.toggle("collapsed"));
+  });
+
+  // Camera tools
+  document.getElementById("btn-axes-toggle").addEventListener("click", () => {
+    SHOW_AXES = !SHOW_AXES;
+    AXES.visible = SHOW_AXES;
+    document.getElementById("btn-axes-toggle").classList.toggle("active", SHOW_AXES);
+  });
+  document.getElementById("btn-rotate").addEventListener("click", () => {
+    AUTO_ROTATE = !AUTO_ROTATE;
+    document.getElementById("btn-rotate").classList.toggle("active", AUTO_ROTATE);
+  });
+  document.getElementById("btn-fullscreen").addEventListener("click", () => {
+    if (!LAST_BODY) return;
+    const size = LAST_BODY_SIZE || 30;
+    const fitDist = size * 2.4;
+    camera.position.set(fitDist * 0.85, fitDist * 0.32, fitDist * 0.95);
+    controls.target.set(0, 0, 0);
+    controls.update();
+  });
+
+  function debounce(fn, ms) {
+    let t = null;
+    return () => {
+      clearTimeout(t);
+      t = setTimeout(fn, ms);
+    };
+  }
+
+  // ─── Iframe commands ────────────────────────────────────────────────
+  os.events.on("iframe-command", (params) => {
+    if (!params || !params.command) return;
+    const args = params.args || [];
+    const cmd = params.command;
+    if (cmd === "body" && args[0]) {
+      CURRENT = { kind: "builtin", value: args[0] };
+      highlightModels(); solve();
+    } else if (cmd === "stl" && args[0]) {
+      const abs = args[0].startsWith("/") ? args[0] : (WORKTREE ? WORKTREE + "/" + args[0] : args[0]);
+      CURRENT = { kind: "stl", value: abs };
+      highlightModels(); solve();
+    } else if (cmd === "speed" && args[0]) {
+      document.getElementById("u-inf").value = args[0];
+      document.getElementById("u-inf-v").textContent = args[0];
+      solve();
+    } else if (cmd === "shading" && args[0]) {
+      SHADING = args[0];
+      document.querySelectorAll("#pill-shading button").forEach((b) => b.classList.toggle("active", b.dataset.shading === SHADING));
+      applyOverlay();
+    } else if (cmd === "wake" && args[0] !== undefined) {
+      document.getElementById("wake-amp").value = args[0];
+      document.getElementById("wake-amp-v").textContent = args[0];
+      solve();
+    } else if (cmd === "y-offset" && args[0]) {
+      AXIS = "Y";
+      document.querySelectorAll("#axis-toggle button").forEach((x) => x.classList.toggle("active", x.dataset.axis === AXIS));
+      document.getElementById("axis-pos").value = args[0];
+      solve();
+    } else if (cmd === "solve") {
+      solve();
+    } else if (cmd === "rotate") {
+      document.getElementById("btn-rotate").click();
+    }
+  });
+
+  bootstrap();
+</script>
+</body>
+</html>

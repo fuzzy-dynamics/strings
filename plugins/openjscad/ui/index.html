@@ -1,0 +1,574 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>OpenJSCAD — OpenScientist plugin</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="/_plugin-runtime/theme.css">
+
+  <!-- Three.js (r147 UMD) — bundled in vendor/, downloaded by ensure-deps.
+       STLLoader is no longer required: the server emits JSON groups so the
+       iframe can build BufferGeometry per-color without parsing STL. -->
+  <script src="vendor/three.min.js"></script>
+  <script src="vendor/OrbitControls.js"></script>
+
+  <style>
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      display: flex;
+      flex-direction: column;
+      background: hsl(var(--background));
+      color: hsl(var(--foreground));
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 12px;
+      overflow: hidden;
+    }
+
+    /* Toolbar */
+    .toolbar {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 6px 12px;
+      border-bottom: 1px solid hsl(var(--border));
+      background: hsl(var(--card));
+    }
+    .toolbar .title-label {
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: hsl(var(--muted-foreground));
+    }
+    .toolbar .meta {
+      font-family: ui-monospace, SFMono-Regular, monospace;
+      font-size: 11px;
+      color: hsl(var(--muted-foreground));
+    }
+    .toolbar .spacer { flex: 1; }
+    .toolbar button {
+      padding: 4px 9px;
+      font-size: 11px;
+      font-weight: 500;
+      border: 1px solid hsl(var(--border));
+      border-radius: 4px;
+      background: transparent;
+      color: hsl(var(--foreground));
+      cursor: pointer;
+    }
+    .toolbar button.active { background: hsl(var(--muted)); }
+    .toolbar button:hover { opacity: 0.85; }
+
+    .dot {
+      display: inline-block;
+      width: 7px;
+      height: 7px;
+      border-radius: 1px;
+      background: hsl(var(--muted-foreground) / 0.6);
+      vertical-align: middle;
+      margin-right: 4px;
+    }
+    .dot.ok      { background: hsl(142 71% 45%); }
+    .dot.err     { background: hsl(var(--destructive)); }
+    .dot.pending { background: hsl(var(--primary)); animation: blink 1s ease-in-out infinite; }
+    @keyframes blink { 0%, 100% { opacity: 1 } 50% { opacity: 0.3 } }
+
+    /* Two-pane layout */
+    .layout {
+      flex: 1 1 auto;
+      display: grid;
+      grid-template-columns: minmax(180px, 260px) 1fr;
+      min-height: 0;
+    }
+
+    /* Left sidebar */
+    .sidebar {
+      border-right: 1px solid hsl(var(--border));
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      background: hsl(var(--card));
+    }
+    .sidebar .head {
+      padding: 8px 10px;
+      border-bottom: 1px solid hsl(var(--border));
+    }
+    .sidebar input[type="text"] {
+      width: 100%;
+      padding: 5px 8px;
+      font-size: 11px;
+      border: 1px solid hsl(var(--border));
+      border-radius: 4px;
+      background: hsl(var(--background));
+      color: hsl(var(--foreground));
+      outline: none;
+    }
+    .sidebar input[type="text"]:focus { border-color: hsl(var(--ring)); }
+    .sidebar .files {
+      flex: 1 1 auto;
+      overflow-y: auto;
+      padding: 4px 0;
+      font-family: ui-monospace, SFMono-Regular, monospace;
+      font-size: 11px;
+    }
+    .file-item {
+      padding: 4px 10px;
+      cursor: pointer;
+      color: hsl(var(--foreground));
+      opacity: 0.85;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      border-left: 2px solid transparent;
+    }
+    .file-item:hover { background: hsl(var(--muted) / 0.5); }
+    .file-item.active {
+      background: hsl(var(--muted));
+      border-left-color: hsl(var(--primary));
+      opacity: 1;
+    }
+    .file-empty {
+      padding: 14px 10px;
+      font-size: 11px;
+      color: hsl(var(--muted-foreground));
+      text-align: center;
+    }
+    .group-header {
+      padding: 8px 10px 4px;
+      font-size: 9px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: hsl(var(--muted-foreground) / 0.7);
+    }
+
+    /* Right viewer */
+    .viewer {
+      position: relative;
+      min-height: 0;
+      overflow: hidden;
+      background: hsl(var(--background));
+    }
+    #canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+    .overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      pointer-events: none;
+      color: hsl(var(--muted-foreground));
+      text-align: center;
+    }
+    .overlay.err { color: hsl(var(--destructive)); }
+    .overlay .title { font-size: 13px; font-weight: 600; color: hsl(var(--foreground)); }
+    .overlay .body { font-size: 11px; max-width: 460px; line-height: 1.55; }
+    .overlay pre {
+      font-family: ui-monospace, SFMono-Regular, monospace;
+      font-size: 10px;
+      padding: 8px 12px;
+      background: hsl(var(--card));
+      border: 1px solid hsl(var(--border));
+      border-radius: 5px;
+      text-align: left;
+      max-width: 540px;
+      overflow: auto;
+      pointer-events: auto;
+    }
+
+    .info-tag {
+      position: absolute;
+      bottom: 8px;
+      left: 8px;
+      padding: 3px 7px;
+      font-family: ui-monospace, SFMono-Regular, monospace;
+      font-size: 10px;
+      color: hsl(var(--muted-foreground));
+      background: hsl(var(--card) / 0.85);
+      border: 1px solid hsl(var(--border));
+      border-radius: 3px;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="toolbar">
+    <span id="status-dot" class="dot pending"></span>
+    <span class="title-label">OpenJSCAD</span>
+    <span id="status-meta" class="meta">starting…</span>
+    <span class="spacer"></span>
+    <button id="btn-axes" class="active" title="Toggle axes helper">axes</button>
+    <button id="btn-wire" title="Toggle wireframe">wireframe</button>
+    <button id="btn-refresh" title="Re-render current file">refresh</button>
+  </div>
+
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="head">
+        <input id="filter" type="text" placeholder="filter…" autocomplete="off" />
+      </div>
+      <div id="files" class="files"></div>
+    </aside>
+
+    <div class="viewer">
+      <canvas id="canvas"></canvas>
+      <div id="overlay" class="overlay">
+        <div class="title">Pick a file</div>
+        <div class="body">Add a <code>.jscad</code> file to your worktree. It'll appear in the sidebar — click to render.</div>
+      </div>
+      <div id="info-tag" class="info-tag" style="display:none"></div>
+    </div>
+  </div>
+
+<script>
+  const os = window.acquireOSApi();
+
+  // ─── State ──────────────────────────────────────────────────────────
+  let WORKTREE = null;
+  let PLUGIN_INSTALL_DIR = null;
+  let SAMPLES = [];           // [{rel, abs, group: "samples"}]
+  let WORKSPACE = [];         // [{rel, abs, group: "workspace"}]
+  let SELECTED_ABS = null;
+  let WIREFRAME = false;
+  let SHOW_AXES = true;
+  let MESHES = [];            // current Three.js meshes (one per color group)
+  let COLOR_OVERRIDE = null;  // hex string or null — set via iframe-bash `color`
+
+  // ─── Theme ──────────────────────────────────────────────────────────
+  function applyTheme(payload) {
+    const mode = payload && payload.mode;
+    document.documentElement.classList.toggle("dark", mode === "dark");
+    if (RENDERER) {
+      const bg = mode === "dark" ? 0x0b0b0d : 0xffffff;
+      RENDERER.setClearColor(bg, 1);
+    }
+    const font = payload && payload.font;
+    if (font && font.body) document.body.style.fontFamily = font.body;
+  }
+  os.theme.get().then(applyTheme).catch(() => applyTheme({ mode: "light" }));
+  os.theme.subscribe(applyTheme);
+
+  // ─── Three.js init ──────────────────────────────────────────────────
+  const SCENE = new THREE.Scene();
+  const CAMERA = new THREE.PerspectiveCamera(45, 1, 0.1, 5000);
+  CAMERA.position.set(60, 60, 80);
+  CAMERA.lookAt(0, 0, 0);
+
+  const RENDERER = new THREE.WebGLRenderer({
+    canvas: document.getElementById("canvas"),
+    antialias: true,
+  });
+  RENDERER.setPixelRatio(window.devicePixelRatio || 1);
+
+  const CONTROLS = new THREE.OrbitControls(CAMERA, RENDERER.domElement);
+  CONTROLS.enableDamping = true;
+  CONTROLS.dampingFactor = 0.08;
+
+  const ambient = new THREE.AmbientLight(0xffffff, 0.45);
+  SCENE.add(ambient);
+  const key = new THREE.DirectionalLight(0xffffff, 0.7);
+  key.position.set(80, 100, 60);
+  SCENE.add(key);
+  const fill = new THREE.DirectionalLight(0xffffff, 0.25);
+  fill.position.set(-60, -40, -80);
+  SCENE.add(fill);
+
+  const AXES = new THREE.AxesHelper(40);
+  SCENE.add(AXES);
+
+  function resize() {
+    const v = document.querySelector(".viewer");
+    const w = v.clientWidth, h = v.clientHeight;
+    RENDERER.setSize(w, h, false);
+    CAMERA.aspect = w / h;
+    CAMERA.updateProjectionMatrix();
+  }
+  window.addEventListener("resize", resize);
+  setTimeout(resize, 0);
+
+  function tick() {
+    requestAnimationFrame(tick);
+    CONTROLS.update();
+    RENDERER.render(SCENE, CAMERA);
+  }
+  tick();
+
+  // ─── Overlay (status panel inside the viewer) ────────────────────────
+  function showOverlay(title, body, hint, isErr) {
+    const el = document.getElementById("overlay");
+    el.style.display = "flex";
+    el.classList.toggle("err", !!isErr);
+    el.innerHTML =
+      '<div class="title">' + escapeHtml(title) + '</div>' +
+      '<div class="body">' + escapeHtml(body) + '</div>' +
+      (hint ? '<pre>' + escapeHtml(hint) + '</pre>' : '');
+  }
+  function hideOverlay() {
+    document.getElementById("overlay").style.display = "none";
+  }
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, (c) => ({
+      "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;",
+    }[c]));
+  }
+
+  // ─── Bootstrap: ensure server is up + fetch initial file lists ──────
+  async function init() {
+    document.getElementById("status-dot").className = "dot pending";
+    document.getElementById("status-meta").textContent = "checking server…";
+
+    try {
+      const info = await os.plugin.info();
+      if (info.status !== "running" || !info.port) {
+        document.getElementById("status-dot").className = "dot err";
+        document.getElementById("status-meta").textContent = info.status || "stopped";
+        showOverlay(
+          "Plugin server not running",
+          "Start it with: plane-tool plugins activate openjscad",
+          "If activation just failed, check ~/.openscientist/plugins/openjscad/runtime/stderr.log",
+          true,
+        );
+        return;
+      }
+      PLUGIN_INSTALL_DIR = info.install_path || null;
+
+      // Server is up. Fetch info to confirm modeling version.
+      const r = await fetch("/plugins/openjscad/proxy/api/info", { cache: "no-store" });
+      const apiInfo = r.ok ? await r.json() : null;
+      document.getElementById("status-dot").className = "dot ok";
+      document.getElementById("status-meta").textContent =
+        apiInfo
+          ? "@jscad/modeling " + apiInfo.modeling_version + " · port " + info.port
+          : "running @ " + info.port;
+    } catch (e) {
+      document.getElementById("status-dot").className = "dot err";
+      document.getElementById("status-meta").textContent = "bridge error";
+      showOverlay("Bridge error", e.message || String(e), null, true);
+      return;
+    }
+
+    // Session info → worktree.
+    try {
+      const session = await os.session.info();
+      WORKTREE = session.worktree || session.folder || null;
+    } catch { /* keep null */ }
+
+    // Built-in samples — paths are absolute under the plugin install dir
+    // because /api/render takes filesystem absolute paths.
+    if (PLUGIN_INSTALL_DIR) {
+      const base = PLUGIN_INSTALL_DIR + "/samples";
+      SAMPLES = [
+        { rel: "samples/cube.jscad",   abs: base + "/cube.jscad",   group: "samples" },
+        { rel: "samples/sphere.jscad", abs: base + "/sphere.jscad", group: "samples" },
+        { rel: "samples/gear.jscad",   abs: base + "/gear.jscad",   group: "samples" },
+      ];
+    }
+
+    await refreshWorkspaceList();
+  }
+
+  // ─── Workspace file list ────────────────────────────────────────────
+  async function refreshWorkspaceList() {
+    if (!WORKTREE) {
+      WORKSPACE = [];
+      renderFileList();
+      return;
+    }
+    try {
+      const r = await os.workspace.list();
+      const all = (r.files || []).filter((p) => p.toLowerCase().endsWith(".jscad"));
+      WORKSPACE = all.map((rel) => ({ rel, abs: WORKTREE + "/" + rel, group: "workspace" }));
+    } catch (e) {
+      WORKSPACE = [];
+    }
+    renderFileList();
+  }
+
+  function renderFileList() {
+    const filter = document.getElementById("filter").value.trim().toLowerCase();
+    const filesEl = document.getElementById("files");
+    filesEl.innerHTML = "";
+
+    const groups = [
+      { label: "workspace", items: WORKSPACE.filter((f) => !filter || f.rel.toLowerCase().includes(filter)) },
+      { label: "samples",   items: SAMPLES.filter((f) => !filter || f.rel.toLowerCase().includes(filter)) },
+    ];
+    let any = false;
+    for (const g of groups) {
+      if (g.items.length === 0) continue;
+      any = true;
+      const hd = document.createElement("div");
+      hd.className = "group-header";
+      hd.textContent = g.label + "  (" + g.items.length + ")";
+      filesEl.appendChild(hd);
+      for (const f of g.items) {
+        const div = document.createElement("div");
+        div.className = "file-item" + (f.abs === SELECTED_ABS ? " active" : "");
+        div.textContent = f.rel;
+        div.title = f.abs;
+        div.addEventListener("click", () => selectFile(f.abs));
+        filesEl.appendChild(div);
+      }
+    }
+    if (!any) {
+      const empty = document.createElement("div");
+      empty.className = "file-empty";
+      empty.textContent = WORKTREE
+        ? "No .jscad files in worktree."
+        : "Worktree unavailable.";
+      filesEl.appendChild(empty);
+    }
+  }
+  document.getElementById("filter").addEventListener("input", renderFileList);
+
+  // ─── Render selected file ───────────────────────────────────────────
+  async function selectFile(abs) {
+    SELECTED_ABS = abs;
+    renderFileList();
+    showOverlay("Rendering…", abs.split("/").slice(-1)[0], null, false);
+
+    try {
+      let url = "/plugins/openjscad/proxy/api/render?path=" + encodeURIComponent(abs);
+      if (COLOR_OVERRIDE) url += "&color=" + encodeURIComponent(COLOR_OVERRIDE);
+      const r = await fetch(url, { cache: "no-store" });
+      if (!r.ok) {
+        let detail = "";
+        try { detail = (await r.json()).message || ""; } catch {}
+        throw new Error("HTTP " + r.status + (detail ? ": " + detail : ""));
+      }
+      const data = await r.json();
+      installGroups(data.groups || [], data.triangle_count || 0, abs);
+      hideOverlay();
+    } catch (e) {
+      showOverlay("Render failed", e.message || String(e), abs, true);
+    }
+  }
+
+  function clearMeshes() {
+    for (const m of MESHES) {
+      SCENE.remove(m);
+      if (m.geometry) m.geometry.dispose();
+      if (m.material) m.material.dispose();
+    }
+    MESHES = [];
+  }
+
+  function installGroups(groups, triCount, abs) {
+    clearMeshes();
+    if (!groups.length) {
+      showOverlay("Empty scene", "Render produced no geometry. Does main() return a geom3?", abs, true);
+      return;
+    }
+
+    const overall = new THREE.Box3();
+    let totalVerts = 0;
+
+    for (const g of groups) {
+      const positions = new Float32Array(g.positions);
+      totalVerts += positions.length / 3;
+      const geom = new THREE.BufferGeometry();
+      geom.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+      geom.computeVertexNormals();
+      geom.computeBoundingBox();
+      overall.union(geom.boundingBox);
+
+      const c = g.color || [0.42, 0.65, 1.0, 1.0];
+      const color = new THREE.Color(c[0], c[1], c[2]);
+      const opacity = c[3] != null ? c[3] : 1.0;
+      const material = new THREE.MeshStandardMaterial({
+        color,
+        metalness: 0.08,
+        roughness: 0.55,
+        flatShading: false,
+        wireframe: WIREFRAME,
+        transparent: opacity < 1.0,
+        opacity,
+      });
+      const mesh = new THREE.Mesh(geom, material);
+      SCENE.add(mesh);
+      MESHES.push(mesh);
+    }
+
+    // Frame and center against the union of all bucket boxes.
+    const size = new THREE.Vector3();
+    overall.getSize(size);
+    const center = new THREE.Vector3();
+    overall.getCenter(center);
+    for (const m of MESHES) m.position.sub(center);
+
+    const maxDim = Math.max(size.x, size.y, size.z) || 10;
+    AXES.scale.setScalar(Math.max(20, maxDim));
+    const fitDist = maxDim * 2.2;
+    CAMERA.position.set(fitDist, fitDist * 0.8, fitDist);
+    CAMERA.near = 0.01 * maxDim;
+    CAMERA.far = 100 * maxDim;
+    CAMERA.updateProjectionMatrix();
+    CONTROLS.target.set(0, 0, 0);
+    CONTROLS.update();
+
+    const tag = document.getElementById("info-tag");
+    tag.style.display = "block";
+    tag.textContent =
+      abs.split("/").slice(-1)[0] +
+      "  ·  " + Math.round(triCount || (totalVerts / 3)).toLocaleString() + " tris" +
+      "  ·  " + groups.length + " color group" + (groups.length === 1 ? "" : "s") +
+      "  ·  " + size.x.toFixed(1) + " × " + size.y.toFixed(1) + " × " + size.z.toFixed(1) +
+      (COLOR_OVERRIDE ? "  ·  override #" + COLOR_OVERRIDE : "");
+  }
+
+  // ─── Toolbar buttons ────────────────────────────────────────────────
+  document.getElementById("btn-axes").addEventListener("click", () => {
+    SHOW_AXES = !SHOW_AXES;
+    AXES.visible = SHOW_AXES;
+    document.getElementById("btn-axes").classList.toggle("active", SHOW_AXES);
+  });
+  document.getElementById("btn-wire").addEventListener("click", () => {
+    WIREFRAME = !WIREFRAME;
+    for (const m of MESHES) m.material.wireframe = WIREFRAME;
+    document.getElementById("btn-wire").classList.toggle("active", WIREFRAME);
+  });
+  document.getElementById("btn-refresh").addEventListener("click", async () => {
+    await refreshWorkspaceList();
+    if (SELECTED_ABS) selectFile(SELECTED_ABS);
+  });
+
+  // ─── Iframe commands from the host ──────────────────────────────────
+  os.events.on("iframe-command", (params) => {
+    if (!params || !params.command) return;
+    const args = params.args || [];
+    if (params.command === "show" && args[0]) {
+      const abs = args[0].startsWith("/") ? args[0] : (WORKTREE ? WORKTREE + "/" + args[0] : args[0]);
+      selectFile(abs);
+    } else if (params.command === "wireframe") {
+      document.getElementById("btn-wire").click();
+    } else if (params.command === "axes") {
+      document.getElementById("btn-axes").click();
+    } else if (params.command === "refresh") {
+      document.getElementById("btn-refresh").click();
+    } else if (params.command === "color" && args[0]) {
+      // Override color for subsequent renders. Strip leading # for the URL.
+      COLOR_OVERRIDE = String(args[0]).replace(/^#/, "");
+      if (SELECTED_ABS) selectFile(SELECTED_ABS);
+    } else if (params.command === "clear-color") {
+      COLOR_OVERRIDE = null;
+      if (SELECTED_ABS) selectFile(SELECTED_ABS);
+    }
+  });
+
+  // Periodic refresh of the workspace list (every 8s) so newly-created
+  // .jscad files show up without a manual refresh.
+  setInterval(refreshWorkspaceList, 8000);
+
+  init();
+</script>
+</body>
+</html>

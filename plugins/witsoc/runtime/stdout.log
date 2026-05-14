@@ -1,0 +1,18 @@
+[witsoc] listening on 127.0.0.1:53603, pid=91331
+[witsoc] received SIGTERM, exiting
+[witsoc] listening on 127.0.0.1:54797, pid=93921
+[witsoc] received SIGINT, exiting
+[witsoc] listening on 127.0.0.1:61892, pid=5441
+[witsoc] received SIGINT, exiting
+[witsoc] listening on 127.0.0.1:62443, pid=6616
+[witsoc] received SIGINT, exiting
+[witsoc] listening on 127.0.0.1:63686, pid=7478
+[witsoc] received SIGTERM, exiting
+[witsoc] listening on 127.0.0.1:49592, pid=12258
+[witsoc] received SIGINT, exiting
+[witsoc] listening on 127.0.0.1:49890, pid=13697
+[witsoc] received SIGINT, exiting
+[witsoc] listening on 127.0.0.1:51068, pid=15670
+[witsoc] received SIGINT, exiting
+[witsoc] listening on 127.0.0.1:51484, pid=17207
+[witsoc] received SIGINT, exiting

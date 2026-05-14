@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# List .wit files under a directory (default: $KIMI_WORK_DIR or $PWD).
+set -euo pipefail
+TARGET_DIR="${1:-${KIMI_WORK_DIR:-$PWD}}"
+[[ -d "$TARGET_DIR" ]] || { echo "[wit-list] not a directory: $TARGET_DIR" >&2; exit 2; }
+find "$TARGET_DIR" \
+  -maxdepth 8 \
+  -type f \
+  -name '*.wit' \
+  -not -path '*/node_modules/*' \
+  -not -path '*/.venv/*' \
+  -not -path '*/__pycache__/*' \
+  -not -path '*/.git/*' \
+  2>/dev/null

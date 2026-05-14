@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+# Idempotent venv bootstrap for the witsoc plugin.
+#
+# Creates `data/venv/` and installs the witsoc Python package into it.
+# Source resolution order:
+#   1. $WITSOC_SOURCE  (if it has a pyproject.toml)
+#   2. ~/Development/witsoc/witsoc/
+#   3. PyPI fallback (`pip install witsoc`)
+
+set -euo pipefail
+
+PLUGIN_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+VENV_DIR="$PLUGIN_DIR/data/venv"
+VENV_WIT="$VENV_DIR/bin/wit"
+
+if [[ -x "$VENV_WIT" ]]; then
+  exit 0
+fi
+
+PY=$(command -v python3 || command -v python || true)
+if [[ -z "$PY" ]]; then
+  echo "[witsoc] no python3 on PATH — install Python 3.10+" >&2
+  exit 127
+fi
+
+is_witsoc_source() {
+  [[ -n "$1" && -d "$1" && -f "$1/pyproject.toml" ]] || return 1
+  grep -qE '^[[:space:]]*name[[:space:]]*=[[:space:]]*"(witsoc|wit-lang)"' "$1/pyproject.toml" 2>/dev/null
+}
+
+SOURCE=""
+if [[ -n "${WITSOC_SOURCE:-}" ]] && is_witsoc_source "$WITSOC_SOURCE"; then
+  SOURCE="$WITSOC_SOURCE"
+elif is_witsoc_source "$HOME/Development/witsoc/witsoc"; then
+  SOURCE="$HOME/Development/witsoc/witsoc"
+fi
+
+mkdir -p "$(dirname "$VENV_DIR")"
+echo "[witsoc] creating venv at $VENV_DIR (one-time, ~20s)..." >&2
+"$PY" -m venv "$VENV_DIR" >&2
+
+VENV_PIP="$VENV_DIR/bin/pip"
+"$VENV_PIP" install --quiet --upgrade pip >&2
+
+if [[ -n "$SOURCE" ]]; then
+  echo "[witsoc] installing editable from $SOURCE" >&2
+  "$VENV_PIP" install --quiet -e "$SOURCE" >&2
+else
+  echo "[witsoc] installing witsoc from PyPI (fallback)" >&2
+  if ! "$VENV_PIP" install --quiet witsoc 2>&2; then
+    echo "[witsoc] PyPI install failed — set WITSOC_SOURCE=/path/to/witsoc and retry" >&2
+    exit 1
+  fi
+fi
+
+if [[ ! -x "$VENV_WIT" ]]; then
+  echo "[witsoc] install completed but $VENV_WIT is missing" >&2
+  exit 1
+fi
+
+VER=$("$VENV_DIR/bin/python" -c "import importlib.metadata as m; print(m.version('wit-lang'))" 2>/dev/null || echo "unknown")
+echo "[witsoc] venv ready: wit-lang $VER" >&2

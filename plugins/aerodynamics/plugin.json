@@ -1,0 +1,47 @@
+{
+  "id": "aerodynamics",
+  "version": "0.1.0",
+  "displayName": "Aerodynamics",
+  "description": "Analytical potential-flow visualization. Traces streamlines around a 3D body and renders them coloured by local speed.",
+  "publisher": "openscientist",
+  "engines": { "openscientist": "^0.1.0" },
+  "activationEvents": [
+    "onPluginUse:aerodynamics",
+    "onIframeUse:aerodynamics"
+  ],
+  "capabilities": [
+    "session.info",
+    "theme.subscribe",
+    "plugin.info",
+    "workspace.list"
+  ],
+  "contributes": {
+    "bin": [
+      { "id": "aero-solve", "command": "bin/aero-solve", "description": "Solve a flow case and dump JSON to stdout" }
+    ],
+    "server": {
+      "command": ["bin/start-server"],
+      "port_env": "PORT",
+      "health": "/health",
+      "ready_timeout_ms": 60000
+    },
+    "ui": {
+      "entry": "index.html",
+      "title": "Aerodynamics",
+      "panel": "side",
+      "iframe_commands": [
+        { "name": "body",        "args": "<sphere|teardrop|ellipsoid>",   "description": "Switch built-in body shape and re-solve" },
+        { "name": "stl",         "args": "<absolute-path-to-.stl>",       "description": "Load an STL file from disk; bounding ellipsoid drives the flow approximation" },
+        { "name": "streamlines", "args": "<count>",                       "description": "Streamlines per vertical row (5–160)" },
+        { "name": "rows",        "args": "<rows>",                        "description": "Vertical rows seeded (1–10)" },
+        { "name": "y-offset",    "args": "<offset>",                      "description": "Body-relative Y offset of the streamline sheet (-2 to +2). Slides existing streamlines along the axis without re-seeding more rows." },
+        { "name": "speed",       "args": "<u_inf>",                       "description": "Inlet velocity U∞ (0.1–10)" },
+        { "name": "radius",      "args": "<multiplier>",                  "description": "Tube radius multiplier (0.3–3.0); 1 = auto-sized to body" },
+        { "name": "wake",        "args": "<amplitude>",                   "description": "Wake/turbulence amplitude (0–1.5). 0 = clean potential flow; higher values inject curl-noise vortex shedding behind the body and tint streamlines red where strongest." },
+        { "name": "shading",     "args": "<off|pressure|friction>",       "description": "Recolour body surface: off (matte), pressure (Cp via jet LUT, red=stagnation/blue=accelerated), friction (|v|/U∞)" },
+        { "name": "solve",                                                "description": "Re-run the solver with current settings" },
+        { "name": "rotate",                                               "description": "Toggle slow auto-rotation of the camera" }
+      ]
+    }
+  }
+}

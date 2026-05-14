@@ -1,0 +1,34 @@
+{
+  "id": "hello-world",
+  "version": "0.2.0",
+  "displayName": "Hello World",
+  "description": "Reference plugin: bin/ tool, HTTP server, and an iframe UI that talks to it.",
+  "publisher": "openscientist",
+  "engines": { "openscientist": "^0.1.0" },
+  "activationEvents": [
+    "onPluginUse:hello-world",
+    "onIframeUse:hello-world"
+  ],
+  "capabilities": [
+    "session.info",
+    "theme.subscribe",
+    "workspace.list",
+    "workspace.read"
+  ],
+  "contributes": {
+    "bin": [
+      { "id": "hello", "command": "bin/hello", "description": "Print a friendly greeting" }
+    ],
+    "server": {
+      "command": ["node", "server/index.js"],
+      "port_env": "PORT",
+      "health": "/health",
+      "ready_timeout_ms": 8000
+    },
+    "ui": {
+      "entry": "index.html",
+      "title": "Hello World",
+      "panel": "side"
+    }
+  }
+}

@@ -1,0 +1,953 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Witsoc — semiformal math</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="/_plugin-runtime/theme.css">
+  <style>
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      display: flex; flex-direction: column;
+      background: hsl(var(--background));
+      color: hsl(var(--foreground));
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 12px;
+      overflow: hidden;
+    }
+
+    /* ─── Top tab bar ───────────────────────────────────────────────── */
+    .tabs {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 6px 12px;
+      border-bottom: 1px solid hsl(var(--border));
+      background: hsl(var(--card));
+    }
+    .tab {
+      padding: 6px 14px;
+      font-size: 12px;
+      border: 1px solid transparent;
+      border-radius: 6px;
+      background: transparent;
+      color: hsl(var(--muted-foreground));
+      cursor: pointer;
+    }
+    .tab.active {
+      background: hsl(var(--background));
+      color: hsl(var(--foreground));
+      border-color: hsl(var(--border));
+    }
+    .tab:hover:not(.active) { color: hsl(var(--foreground)); }
+
+    .tabs .spacer { flex: 1; }
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 11px;
+      background: hsl(var(--muted));
+      color: hsl(var(--muted-foreground));
+    }
+    .chip b { color: hsl(var(--foreground)); font-weight: 500; }
+    .chip.verified  { background: hsl(142 71% 45% / 0.15); color: hsl(142 60% 30%); }
+    .chip.rejected  { background: hsl(var(--destructive) / 0.15); color: hsl(var(--destructive)); }
+    .chip.unverified{ background: hsl(var(--muted)); }
+
+    /* ─── Main panes (one tab at a time) ────────────────────────────── */
+    .panes { flex: 1 1 auto; min-height: 0; position: relative; }
+    .pane {
+      position: absolute; inset: 0;
+      display: none;
+      min-height: 0;
+    }
+    .pane.active { display: flex; }
+
+    /* ─── Proofs tab: 3-column layout ────────────────────────────────── */
+    #pane-proofs { flex-direction: row; }
+    .files-col {
+      flex: 0 0 220px;
+      border-right: 1px solid hsl(var(--border));
+      background: hsl(var(--card));
+      display: flex; flex-direction: column;
+      overflow-y: auto;
+      min-height: 0;
+    }
+    .files-col h4 {
+      margin: 10px 12px 4px;
+      font-size: 9px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: hsl(var(--muted-foreground) / 0.7);
+    }
+    .file-item {
+      padding: 6px 12px;
+      cursor: pointer;
+      font-family: ui-monospace, SFMono-Regular, monospace;
+      font-size: 11px;
+      color: hsl(var(--foreground)); opacity: 0.85;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      border-left: 2px solid transparent;
+    }
+    .file-item:hover { background: hsl(var(--muted) / 0.5); }
+    .file-item.active {
+      background: hsl(var(--muted));
+      border-left-color: hsl(217 91% 60%);
+      color: hsl(217 91% 60%);
+      opacity: 1;
+    }
+    .files-col .empty { padding: 10px 12px; font-size: 11px; color: hsl(var(--muted-foreground)); }
+    .files-col .actions {
+      padding: 10px 12px; border-top: 1px solid hsl(var(--border));
+      display: flex; flex-direction: column; gap: 6px;
+    }
+    .btn {
+      padding: 5px 9px;
+      font: inherit; font-size: 11px;
+      border: 1px solid hsl(var(--border));
+      border-radius: 5px;
+      background: transparent;
+      color: hsl(var(--foreground));
+      cursor: pointer;
+      text-align: left;
+    }
+    .btn:hover { background: hsl(var(--muted) / 0.6); }
+    .btn.primary {
+      border-color: hsl(217 91% 60%);
+      background: hsl(217 91% 60%);
+      color: hsl(var(--primary-foreground));
+    }
+    .btn.primary:hover { opacity: 0.92; }
+
+    /* Source pane */
+    .src-col {
+      flex: 1 1 0;
+      min-width: 0;
+      min-height: 0;
+      border-right: 1px solid hsl(var(--border));
+      display: flex;
+      flex-direction: column;
+    }
+    .src-col header {
+      padding: 8px 12px;
+      border-bottom: 1px solid hsl(var(--border));
+      font-size: 11px;
+      color: hsl(var(--muted-foreground));
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .src-col header b { color: hsl(var(--foreground)); }
+    pre.src {
+      flex: 1 1 auto; min-height: 0;
+      overflow: auto;
+      margin: 0;
+      padding: 10px 12px 24px 4px;
+      font-family: ui-monospace, SFMono-Regular, monospace;
+      font-size: 11.5px;
+      line-height: 1.55;
+      tab-size: 2;
+      counter-reset: l;
+    }
+    pre.src .ln {
+      display: inline-block;
+      width: 32px;
+      text-align: right;
+      padding-right: 8px;
+      color: hsl(var(--muted-foreground) / 0.45);
+      user-select: none;
+    }
+    pre.src .lbl       { color: hsl(217 91% 60%); font-weight: 600; }
+    pre.src .kw        { color: hsl(280 70% 55%); font-weight: 500; }
+    pre.src .kind      { color: hsl(30 80% 50%); font-weight: 600; }
+    pre.src .by        { color: hsl(142 50% 40%); }
+    pre.src .com       { color: hsl(var(--muted-foreground) / 0.65); }
+    pre.src .ln.hi { background: hsl(217 91% 60% / 0.1); border-left: 2px solid hsl(217 91% 60%); }
+
+    /* Tree pane */
+    .tree-col {
+      flex: 0 0 360px;
+      min-width: 280px;
+      display: flex; flex-direction: column;
+      min-height: 0;
+    }
+    .tree-col header {
+      padding: 8px 12px;
+      border-bottom: 1px solid hsl(var(--border));
+      font-size: 11px; font-weight: 600;
+      display: flex; gap: 8px; align-items: center;
+    }
+    .tree-col .filter-pill {
+      display: inline-flex; gap: 2px;
+      background: hsl(var(--card));
+      border: 1px solid hsl(var(--border));
+      border-radius: 999px;
+      padding: 2px;
+    }
+    .tree-col .filter-pill button {
+      border: none; background: transparent;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font: inherit; font-size: 10px;
+      cursor: pointer;
+      color: hsl(var(--muted-foreground));
+    }
+    .tree-col .filter-pill button.active {
+      background: hsl(217 91% 60% / 0.12);
+      color: hsl(217 91% 60%);
+    }
+    .tree {
+      flex: 1 1 auto;
+      overflow-y: auto;
+      padding: 6px 0;
+    }
+    .step {
+      padding: 4px 12px;
+      font-size: 11.5px;
+      cursor: pointer;
+      display: flex; align-items: baseline; gap: 6px;
+      border-left: 2px solid transparent;
+    }
+    .step:hover { background: hsl(var(--muted) / 0.5); }
+    .step.active { background: hsl(var(--muted)); border-left-color: hsl(217 91% 60%); }
+    .step .dot {
+      display: inline-block;
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: hsl(var(--muted-foreground) / 0.45);
+      flex: 0 0 auto;
+    }
+    .step.accept .dot { background: hsl(142 71% 45%); }
+    .step.reject .dot { background: hsl(var(--destructive)); }
+    .step.gap    .dot { background: hsl(38 90% 55%); }
+    .step .lbl  { font-family: ui-monospace, SFMono-Regular, monospace; color: hsl(217 91% 60%); font-weight: 600; }
+    .step .kw   { color: hsl(280 70% 55%); font-size: 10px; font-weight: 500; }
+    .step .claim {
+      flex: 1 1 0; min-width: 0;
+      color: hsl(var(--foreground)); opacity: 0.85;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .tree-empty { padding: 14px 12px; font-size: 11px; color: hsl(var(--muted-foreground)); }
+
+    /* Step detail */
+    .detail {
+      flex: 0 0 auto;
+      max-height: 50%;
+      border-top: 1px solid hsl(var(--border));
+      background: hsl(var(--card));
+      overflow-y: auto;
+      padding: 10px 12px;
+      font-size: 11px;
+      display: none;
+    }
+    .detail.open { display: block; }
+    .detail h5 {
+      margin: 6px 0 3px;
+      font-size: 9px; font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: hsl(var(--muted-foreground) / 0.7);
+    }
+    .detail .premise {
+      font-family: ui-monospace, SFMono-Regular, monospace;
+      font-size: 11px;
+      color: hsl(var(--foreground));
+      padding: 2px 0;
+      cursor: pointer;
+    }
+    .detail .premise:hover { color: hsl(217 91% 60%); }
+
+    /* Verdict editor */
+    .verdict-area {
+      flex: 0 0 auto;
+      border-top: 1px solid hsl(var(--border));
+      padding: 10px 12px;
+      background: hsl(var(--card));
+      display: flex; flex-direction: column; gap: 6px;
+    }
+    .verdict-area textarea {
+      width: 100%;
+      min-height: 60px;
+      max-height: 180px;
+      resize: vertical;
+      font-family: ui-monospace, SFMono-Regular, monospace;
+      font-size: 11px;
+      padding: 6px 8px;
+      background: hsl(var(--background));
+      color: hsl(var(--foreground));
+      border: 1px solid hsl(var(--border));
+      border-radius: 4px;
+      outline: none;
+    }
+    .verdict-area .row {
+      display: flex; gap: 6px; align-items: center;
+      font-size: 10px; color: hsl(var(--muted-foreground));
+    }
+
+    /* ─── Soc tab: 2-column ──────────────────────────────────────────── */
+    #pane-soc { flex-direction: row; }
+    .soc-files {
+      flex: 0 0 200px;
+      border-right: 1px solid hsl(var(--border));
+      background: hsl(var(--card));
+      overflow-y: auto;
+    }
+    .soc-main {
+      flex: 1 1 0;
+      overflow-y: auto;
+      padding: 14px 18px;
+    }
+    .soc-card {
+      margin-bottom: 14px;
+      border: 1px solid hsl(var(--border));
+      border-radius: 8px;
+      padding: 12px 14px;
+      background: hsl(var(--background));
+    }
+    .soc-card h3 { margin: 0 0 8px; font-size: 13px; font-weight: 600; }
+    .soc-card .goal { font-size: 12px; color: hsl(var(--foreground)); }
+
+    .soc-progress { display: flex; align-items: center; gap: 10px; }
+    .soc-progress .bar {
+      flex: 1 1 0;
+      height: 6px;
+      background: hsl(var(--muted));
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .soc-progress .fill {
+      height: 100%;
+      background: hsl(217 91% 60%);
+      transition: width 200ms ease;
+    }
+
+    .queue-item, .insight-item {
+      padding: 6px 0;
+      border-bottom: 1px solid hsl(var(--border) / 0.5);
+      display: flex; align-items: baseline; gap: 8px;
+    }
+    .queue-item:last-child, .insight-item:last-child { border-bottom: none; }
+    .queue-item .check {
+      flex: 0 0 14px; height: 14px;
+      border: 1px solid hsl(var(--border));
+      border-radius: 3px;
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: 10px;
+    }
+    .queue-item.done .check { background: hsl(142 71% 45%); color: white; border-color: hsl(142 71% 45%); }
+    .queue-item .text { flex: 1 1 0; font-size: 12px; }
+    .queue-item.done .text { color: hsl(var(--muted-foreground)); text-decoration: line-through; }
+
+    .empty-msg { font-size: 11px; color: hsl(var(--muted-foreground)); font-style: italic; }
+
+    /* ─── Status overlay ─────────────────────────────────────────────── */
+    .status-bar {
+      flex: 0 0 auto;
+      border-top: 1px solid hsl(var(--border));
+      padding: 4px 12px;
+      font-size: 11px;
+      font-family: ui-monospace, SFMono-Regular, monospace;
+      color: hsl(var(--muted-foreground));
+      background: hsl(var(--card));
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .status-bar.err { color: hsl(var(--destructive)); }
+    .dot {
+      display: inline-block;
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: hsl(var(--muted-foreground) / 0.5);
+    }
+    .dot.ok { background: hsl(142 71% 45%); }
+    .dot.err { background: hsl(var(--destructive)); }
+    .dot.pending { background: hsl(217 91% 60%); animation: blink 1s infinite; }
+    @keyframes blink { 0%,100% { opacity: 1 } 50% { opacity: 0.3 } }
+  </style>
+</head>
+<body>
+  <div class="tabs">
+    <button class="tab active" data-tab="proofs">Proofs</button>
+    <button class="tab"        data-tab="soc">Soc Memory</button>
+    <span class="spacer"></span>
+    <span id="chip-status" class="chip unverified"><span class="dot"></span>UNVERIFIED</span>
+    <span id="chip-file"   class="chip"><span>File:</span><b>—</b></span>
+    <span id="chip-steps"  class="chip"><span>Steps</span><b>0</b></span>
+  </div>
+
+  <div class="panes">
+    <!-- ─── PROOFS TAB ────────────────────────────────────────────── -->
+    <div id="pane-proofs" class="pane active">
+      <aside class="files-col">
+        <h4>Workspace .wit</h4>
+        <div id="wit-files"><div class="empty">Looking…</div></div>
+        <div class="actions">
+          <button class="btn"         id="btn-refresh">Refresh list</button>
+          <button class="btn"         id="btn-check">Run check</button>
+          <button class="btn primary" id="btn-verify">Run verify (all)</button>
+          <button class="btn"         id="btn-context">Show contexts</button>
+        </div>
+      </aside>
+
+      <div class="src-col">
+        <header>
+          <span>Source</span>
+          <b id="src-name">—</b>
+          <span class="spacer" style="flex:1"></span>
+          <span id="src-info" style="color:hsl(var(--muted-foreground));"></span>
+        </header>
+        <pre id="src" class="src"><code class="empty-msg">Pick a .wit file to view</code></pre>
+      </div>
+
+      <div class="tree-col">
+        <header>
+          <span>Proof tree</span>
+          <span class="spacer" style="flex:1"></span>
+          <span class="filter-pill" id="filter-pill">
+            <button data-filter="all"     class="active">all</button>
+            <button data-filter="reject">rejected</button>
+            <button data-filter="gap">gap</button>
+            <button data-filter="accept">accept</button>
+          </span>
+        </header>
+        <div id="tree" class="tree"><div class="tree-empty">No file selected.</div></div>
+        <div id="detail" class="detail"></div>
+        <div class="verdict-area">
+          <div class="row">
+            <span>Paste verifier verdicts (one line per step), then save:</span>
+          </div>
+          <textarea id="verdict-input" placeholder="[1] ACCEPT: standard result, cited correctly
+[2] ACCEPT: algebra checks
+[3.1] REJECT: sign error in expansion"></textarea>
+          <div class="row" style="display:flex; gap:6px; align-items:center;">
+            <button class="btn"         id="btn-clear-verdicts">Clear</button>
+            <button class="btn primary" id="btn-save-receipt">Save receipt</button>
+            <span style="flex:1"></span>
+            <span id="receipt-info"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ─── SOC TAB ───────────────────────────────────────────────── -->
+    <div id="pane-soc" class="pane">
+      <aside class="soc-files">
+        <h4 style="margin:10px 12px 4px;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:hsl(var(--muted-foreground)/0.7);">Workspace .soc</h4>
+        <div id="soc-files"><div class="empty">Looking…</div></div>
+        <div class="actions" style="padding:10px 12px; border-top:1px solid hsl(var(--border));">
+          <button class="btn"         id="btn-soc-refresh">Refresh</button>
+          <button class="btn primary" id="btn-soc-init">New .soc</button>
+        </div>
+      </aside>
+      <div class="soc-main">
+        <div class="soc-card">
+          <h3>Goal</h3>
+          <p id="soc-goal" class="goal empty-msg">Pick a .soc file</p>
+        </div>
+        <div class="soc-card">
+          <h3>Progress</h3>
+          <div class="soc-progress">
+            <span id="soc-progress-text" style="font-family:ui-monospace,SFMono-Regular,monospace;font-size:11px;">— / —</span>
+            <div class="bar"><div id="soc-progress-fill" class="fill" style="width:0%"></div></div>
+            <span id="soc-since" style="font-size:10px;color:hsl(var(--muted-foreground));">— since insight</span>
+          </div>
+        </div>
+        <div class="soc-card">
+          <h3>Queue</h3>
+          <div id="soc-queue"><div class="empty-msg">No queue items.</div></div>
+        </div>
+        <div class="soc-card">
+          <h3>Insights</h3>
+          <div id="soc-insights"><div class="empty-msg">No insights logged yet.</div></div>
+        </div>
+        <div class="soc-card">
+          <h3>Log</h3>
+          <div id="soc-log"><div class="empty-msg">No log entries yet.</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="status-bar" class="status-bar"><span id="status-dot" class="dot"></span><span id="status-text">Ready.</span></div>
+
+<script>
+  const os = window.acquireOSApi();
+
+  // ─── State ────────────────────────────────────────────────────────────
+  let WORKTREE = null;
+  let WIT_FILES = [];
+  let SOC_FILES = [];
+  let CURRENT_WIT = null;       // absolute path of selected .wit
+  let CURRENT_SOC = null;
+  let LAST_PARSED = null;       // {status, module, claims, proofs}
+  let LAST_RECEIPT = null;      // verifier audit json (or null)
+  let SELECTED_STEP = null;
+  let TAB = "proofs";
+  let FILTER = "all";
+
+  // ─── Theme — bg follows host (white/black via --background) ──────────
+  function applyTheme(payload) {
+    const mode = payload && payload.mode;
+    document.documentElement.classList.toggle("dark", mode === "dark");
+    const font = payload && payload.font;
+    if (font && font.body) document.body.style.fontFamily = font.body;
+  }
+  os.theme.get().then(applyTheme).catch(() => applyTheme({ mode: "light" }));
+  os.theme.subscribe(applyTheme);
+
+  // ─── Status bar ───────────────────────────────────────────────────────
+  function setStatus(text, kind = "ok") {
+    document.getElementById("status-text").textContent = text;
+    const bar = document.getElementById("status-bar");
+    bar.classList.toggle("err", kind === "err");
+    const dot = document.getElementById("status-dot");
+    dot.className = "dot";
+    if (kind === "err")   dot.classList.add("err");
+    if (kind === "pending") dot.classList.add("pending");
+    if (kind === "ok")    dot.classList.add("ok");
+  }
+
+  // ─── Bootstrap ────────────────────────────────────────────────────────
+  async function bootstrap() {
+    setStatus("Connecting…", "pending");
+    try {
+      const info = await os.plugin.info();
+      if (info.status !== "running" || !info.port) {
+        setStatus("Plugin server not running.", "err");
+        return;
+      }
+    } catch (e) {
+      setStatus("Bridge error: " + (e.message || e), "err");
+      return;
+    }
+
+    try {
+      const session = await os.session.info();
+      WORKTREE = session.worktree || session.folder || null;
+    } catch { /* keep null */ }
+
+    if (!WORKTREE) {
+      setStatus("No worktree available.", "err");
+      return;
+    }
+
+    await refreshFiles();
+    setStatus("Ready.");
+  }
+
+  // ─── File listing ─────────────────────────────────────────────────────
+  async function refreshFiles() {
+    if (!WORKTREE) return;
+    try {
+      const r = await fetch("/plugins/witsoc/proxy/api/list?dir=" + encodeURIComponent(WORKTREE), { cache: "no-store" });
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      const data = await r.json();
+      WIT_FILES = data.wit_files || [];
+      SOC_FILES = data.soc_files || [];
+    } catch (e) {
+      setStatus("List failed: " + (e.message || e), "err");
+      WIT_FILES = []; SOC_FILES = [];
+    }
+    renderWitList();
+    renderSocList();
+  }
+  function renderWitList() {
+    const el = document.getElementById("wit-files");
+    el.innerHTML = "";
+    if (!WIT_FILES.length) { el.innerHTML = '<div class="empty">No .wit files.</div>'; return; }
+    for (const f of WIT_FILES) {
+      const div = document.createElement("div");
+      div.className = "file-item" + (f.path === CURRENT_WIT ? " active" : "");
+      div.title = f.path;
+      div.textContent = f.rel;
+      div.addEventListener("click", () => openWit(f.path));
+      el.appendChild(div);
+    }
+  }
+  function renderSocList() {
+    const el = document.getElementById("soc-files");
+    el.innerHTML = "";
+    if (!SOC_FILES.length) { el.innerHTML = '<div class="empty">No .soc files.</div>'; return; }
+    for (const f of SOC_FILES) {
+      const div = document.createElement("div");
+      div.className = "file-item" + (f.path === CURRENT_SOC ? " active" : "");
+      div.title = f.path;
+      div.textContent = f.rel;
+      div.addEventListener("click", () => openSoc(f.path));
+      el.appendChild(div);
+    }
+  }
+
+  // ─── Open / parse / display .wit ──────────────────────────────────────
+  async function openWit(absPath) {
+    CURRENT_WIT = absPath;
+    SELECTED_STEP = null;
+    document.getElementById("src-name").textContent = absPath.split("/").slice(-1)[0];
+    setStatus("Loading…", "pending");
+    try {
+      const [parsedR, sourceR] = await Promise.all([
+        fetch("/plugins/witsoc/proxy/api/parse?path=" + encodeURIComponent(absPath), { method: "POST" }),
+        fetch("/plugins/witsoc/proxy/api/file?path="  + encodeURIComponent(absPath)),
+      ]);
+      const parsed = await parsedR.json();
+      const source = await sourceR.text();
+      LAST_PARSED  = parsed.parsed;
+      LAST_RECEIPT = parsed.receipt;
+      renderSource(source);
+      renderTree();
+      renderHeader();
+      renderWitList();
+      setStatus("Loaded " + absPath.split("/").slice(-1)[0]);
+    } catch (e) {
+      setStatus("Open failed: " + (e.message || e), "err");
+    }
+  }
+
+  function renderHeader() {
+    const status = (LAST_PARSED && LAST_PARSED.status) || "UNVERIFIED";
+    const chip = document.getElementById("chip-status");
+    chip.className = "chip " + status.toLowerCase();
+    chip.innerHTML = '<span class="dot"></span>' + status;
+    document.getElementById("chip-file").innerHTML = "<span>File:</span><b>" + (CURRENT_WIT ? CURRENT_WIT.split("/").slice(-1)[0] : "—") + "</b>";
+    const stepCount = (LAST_PARSED && LAST_PARSED.proofs)
+      ? LAST_PARSED.proofs.reduce((n, p) => n + p.steps.length, 0) : 0;
+    document.getElementById("chip-steps").innerHTML = "<span>Steps</span><b>" + stepCount + "</b>";
+  }
+
+  // ─── Source view (line-numbered, regex-highlighted) ─────────────────
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+  }
+  function highlightLine(line) {
+    // Comment lines (-- prefix) → muted
+    if (/^\s*--/.test(line)) return '<span class="com">' + escapeHtml(line) + "</span>";
+    let out = escapeHtml(line);
+    // Step labels [N] / [N.M]
+    out = out.replace(/\[(\d+(?:\.\d+)*)\]/g, '<span class="lbl">[$1]</span>');
+    // Top-level claim kinds
+    out = out.replace(/\b(MODULE|THEOREM|LEMMA|PROPOSITION|COROLLARY|CONJECTURE|ALGORITHM|REDUCTION|DEFINE|PROOF\s+OF|GIVEN|CLAIM|IMPORT|EXPORT)\b/g,
+                       '<span class="kind">$1</span>');
+    // Step keywords
+    out = out.replace(/\b(HAVE|SHOW|ASSUME|LET|CONSIDER|SUFFICES|CASE|CITE|GAP|QED)\b/g,
+                       '<span class="kw">$1</span>');
+    // BY ...
+    out = out.replace(/\b(BY)\b/g, '<span class="by">BY</span>');
+    return out;
+  }
+  function renderSource(src) {
+    const lines = src.split(/\r?\n/);
+    const out = [];
+    for (let i = 0; i < lines.length; i++) {
+      out.push('<span data-ln="' + (i + 1) + '"><span class="ln">' + (i + 1) + "</span>" + highlightLine(lines[i]) + "</span>\n");
+    }
+    document.getElementById("src").innerHTML = "<code>" + out.join("") + "</code>";
+  }
+  function highlightLineNum(n) {
+    document.querySelectorAll("pre.src .ln.hi").forEach((el) => el.classList.remove("hi"));
+    if (!n) return;
+    const wrap = document.querySelector('pre.src [data-ln="' + n + '"]');
+    if (wrap) {
+      const lnEl = wrap.querySelector(".ln");
+      if (lnEl) lnEl.classList.add("hi");
+      wrap.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+  }
+
+  // ─── Proof tree ───────────────────────────────────────────────────────
+  function verdictFor(label) {
+    if (!LAST_RECEIPT) return null;
+    const verdicts = LAST_RECEIPT.verdicts || LAST_RECEIPT.steps || [];
+    for (const v of verdicts) {
+      const lbl = v.label || v.step || v.id;
+      if (lbl === label) return v.verdict || v.status || null;
+    }
+    return null;
+  }
+  function renderTree() {
+    const treeEl = document.getElementById("tree");
+    treeEl.innerHTML = "";
+    if (!LAST_PARSED || !LAST_PARSED.proofs.length) {
+      treeEl.innerHTML = '<div class="tree-empty">No proof blocks parsed.</div>';
+      return;
+    }
+    for (const proof of LAST_PARSED.proofs) {
+      const h = document.createElement("div");
+      h.style.cssText = "padding:6px 12px 2px;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:hsl(var(--muted-foreground)/0.7);";
+      h.textContent = "PROOF · " + proof.name;
+      treeEl.appendChild(h);
+
+      for (const step of proof.steps) {
+        const verdict = (verdictFor(step.label) || "").toLowerCase();
+        if (FILTER !== "all" && !verdict.startsWith(FILTER)) continue;
+        const div = document.createElement("div");
+        div.className = "step" +
+          (verdict.startsWith("accept") ? " accept" :
+           verdict.startsWith("reject") ? " reject" :
+           verdict.startsWith("gap")    ? " gap"    : "") +
+          (SELECTED_STEP === step.label ? " active" : "");
+        div.dataset.label = step.label;
+        div.dataset.line = step.line;
+        div.innerHTML =
+          '<span class="dot"></span>' +
+          '<span class="lbl">[' + step.label + "]</span>" +
+          '<span class="kw">' + step.keyword + "</span>" +
+          '<span class="claim">' + escapeHtml(step.claim || "") + "</span>";
+        div.addEventListener("click", () => selectStep(step));
+        treeEl.appendChild(div);
+      }
+      if (proof.qed) {
+        const div = document.createElement("div");
+        div.className = "step";
+        div.style.opacity = "0.7";
+        div.innerHTML =
+          '<span class="dot"></span>' +
+          '<span class="lbl">QED</span>' +
+          '<span class="claim">BY ' + escapeHtml(proof.qed.by || "") + "</span>";
+        treeEl.appendChild(div);
+      }
+    }
+  }
+
+  function selectStep(step) {
+    SELECTED_STEP = step.label;
+    renderTree();
+    highlightLineNum(step.line);
+    showDetail(step);
+  }
+
+  function showDetail(step) {
+    const d = document.getElementById("detail");
+    d.classList.add("open");
+    const verdict = verdictFor(step.label);
+    let html = "";
+    html += '<h5>Step [' + step.label + "]</h5>";
+    html += '<div><span class="lbl">[' + step.label + "]</span> <span class=\"kw\">" + step.keyword + "</span> " + escapeHtml(step.claim) + "</div>";
+    if (step.by) {
+      html += "<h5>By</h5><div>" + escapeHtml(step.by) + "</div>";
+    }
+    // Find referenced step labels in the BY clause and link to them.
+    if (step.by) {
+      const refs = (step.by.match(/\[(\d+(?:\.\d+)*)\]/g) || []).map((s) => s.slice(1, -1));
+      if (refs.length) {
+        html += '<h5>Premises (cited)</h5>';
+        for (const r of refs) {
+          html += '<div class="premise" data-jump="' + r + '">[' + r + "]</div>";
+        }
+      }
+    }
+    if (verdict) {
+      html += "<h5>Verdict</h5><div>" + escapeHtml(verdict) + "</div>";
+    } else {
+      html += '<h5>Verdict</h5><div class="empty-msg">no verdict yet — paste verifier output below</div>';
+    }
+    d.innerHTML = html;
+    d.querySelectorAll(".premise").forEach((el) => {
+      el.addEventListener("click", () => {
+        const lbl = el.dataset.jump;
+        for (const proof of (LAST_PARSED.proofs || [])) {
+          for (const s of proof.steps) {
+            if (s.label === lbl) { selectStep(s); return; }
+          }
+        }
+      });
+    });
+  }
+
+  // ─── Run check / verify ───────────────────────────────────────────────
+  async function runCheck() {
+    if (!CURRENT_WIT) return;
+    setStatus("wit check…", "pending");
+    try {
+      const r = await fetch("/plugins/witsoc/proxy/api/check?path=" + encodeURIComponent(CURRENT_WIT), { method: "POST" });
+      const data = await r.json();
+      const tail = (data.stdout + "\n" + data.stderr).trim().split("\n").slice(-2).join(" · ");
+      setStatus("check exit=" + data.exit_code + (tail ? "  " + tail : ""), data.exit_code === 0 ? "ok" : "err");
+    } catch (e) { setStatus("check failed: " + (e.message || e), "err"); }
+  }
+  async function runVerify(step = null) {
+    if (!CURRENT_WIT) return;
+    setStatus("wit verify…", "pending");
+    try {
+      let url = "/plugins/witsoc/proxy/api/verify?path=" + encodeURIComponent(CURRENT_WIT);
+      if (step) url += "&step=" + encodeURIComponent(step);
+      const r = await fetch(url, { method: "POST" });
+      const data = await r.json();
+      const ta = document.getElementById("verdict-input");
+      // Pre-populate the textarea with the contexts so the user can show
+      // them to a verifier and then paste verdicts back over the top.
+      ta.value = data.stdout || "";
+      setStatus("verify exit=" + data.exit_code + " — context shown in textarea; paste verdicts back over it",
+                data.exit_code === 0 ? "ok" : "err");
+    } catch (e) { setStatus("verify failed: " + (e.message || e), "err"); }
+  }
+  async function runContext() {
+    if (!CURRENT_WIT) return;
+    setStatus("wit context…", "pending");
+    try {
+      const r = await fetch("/plugins/witsoc/proxy/api/context?path=" + encodeURIComponent(CURRENT_WIT), { method: "POST" });
+      const data = await r.json();
+      const ta = document.getElementById("verdict-input");
+      ta.value = data.stdout || "";
+      setStatus("context exit=" + data.exit_code, data.exit_code === 0 ? "ok" : "err");
+    } catch (e) { setStatus("context failed: " + (e.message || e), "err"); }
+  }
+  async function saveReceipt() {
+    if (!CURRENT_WIT) return;
+    const body = document.getElementById("verdict-input").value;
+    if (!body.trim()) { setStatus("nothing to save", "err"); return; }
+    setStatus("wit receipt…", "pending");
+    try {
+      const r = await fetch("/plugins/witsoc/proxy/api/receipt?path=" + encodeURIComponent(CURRENT_WIT), {
+        method: "POST", body,
+      });
+      const data = await r.json();
+      LAST_RECEIPT = data.receipt;
+      // Re-fetch parse so the .wit file's updated -- Status: header reflects.
+      await openWit(CURRENT_WIT);
+      setStatus("receipt saved (exit=" + data.exit_code + ")", data.exit_code === 0 ? "ok" : "err");
+      document.getElementById("receipt-info").textContent = LAST_RECEIPT
+        ? (LAST_RECEIPT.status || LAST_RECEIPT.final_verdict || "saved")
+        : "saved";
+    } catch (e) { setStatus("receipt failed: " + (e.message || e), "err"); }
+  }
+
+  // ─── Soc tab ──────────────────────────────────────────────────────────
+  async function openSoc(absPath) {
+    CURRENT_SOC = absPath;
+    setStatus("Loading .soc…", "pending");
+    try {
+      const r = await fetch("/plugins/witsoc/proxy/api/soc?path=" + encodeURIComponent(absPath));
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      const data = await r.json();
+      renderSoc(data.parsed);
+      renderSocList();
+      setStatus("Loaded " + absPath.split("/").slice(-1)[0]);
+    } catch (e) { setStatus("Open .soc failed: " + (e.message || e), "err"); }
+  }
+
+  function renderSoc(s) {
+    document.getElementById("soc-goal").textContent = s.goal || "(no goal set)";
+    document.getElementById("soc-goal").classList.toggle("empty-msg", !s.goal);
+
+    const a = s.progress_a, b = s.progress_b;
+    document.getElementById("soc-progress-text").textContent =
+      (a == null ? "—" : a) + " / " + (b == null ? "—" : b);
+    const pct = (a != null && b > 0) ? Math.min(100, (a / b) * 100) : 0;
+    document.getElementById("soc-progress-fill").style.width = pct + "%";
+    document.getElementById("soc-since").textContent =
+      (s.insights_since == null ? "—" : s.insights_since) + " since insight";
+
+    const qel = document.getElementById("soc-queue");
+    qel.innerHTML = "";
+    if (!s.queue.length) qel.innerHTML = '<div class="empty-msg">No queue items.</div>';
+    for (const q of s.queue) {
+      const div = document.createElement("div");
+      div.className = "queue-item" + (q.done ? " done" : "");
+      div.innerHTML =
+        '<span class="check">' + (q.done ? "✓" : "") + "</span>" +
+        '<span class="text">' + escapeHtml(q.text) + "</span>";
+      qel.appendChild(div);
+    }
+
+    const iel = document.getElementById("soc-insights");
+    iel.innerHTML = "";
+    if (!s.insights.length) iel.innerHTML = '<div class="empty-msg">No insights logged yet.</div>';
+    for (const ins of s.insights) {
+      const div = document.createElement("div");
+      div.className = "insight-item";
+      div.innerHTML = '<span class="text">• ' + escapeHtml(ins.text) + "</span>";
+      iel.appendChild(div);
+    }
+
+    const lel = document.getElementById("soc-log");
+    lel.innerHTML = "";
+    if (!s.log.length) lel.innerHTML = '<div class="empty-msg">No log entries yet.</div>';
+    for (const item of s.log) {
+      const div = document.createElement("div");
+      div.className = "insight-item";
+      div.innerHTML = '<span class="text" style="font-family:ui-monospace,SFMono-Regular,monospace;font-size:11px;">' + escapeHtml(item.text) + "</span>";
+      lel.appendChild(div);
+    }
+  }
+
+  // ─── Tab switching ────────────────────────────────────────────────────
+  function setTab(t) {
+    TAB = t;
+    document.querySelectorAll(".tab").forEach((b) => b.classList.toggle("active", b.dataset.tab === t));
+    document.querySelectorAll(".pane").forEach((p) => p.classList.toggle("active", p.id === "pane-" + t));
+  }
+  document.querySelectorAll(".tab").forEach((b) => b.addEventListener("click", () => setTab(b.dataset.tab)));
+
+  // Filter pill
+  document.querySelectorAll("#filter-pill button").forEach((b) => {
+    b.addEventListener("click", () => {
+      FILTER = b.dataset.filter;
+      document.querySelectorAll("#filter-pill button").forEach((x) => x.classList.toggle("active", x === b));
+      renderTree();
+    });
+  });
+
+  // Buttons
+  document.getElementById("btn-refresh").addEventListener("click", refreshFiles);
+  document.getElementById("btn-check").addEventListener("click", runCheck);
+  document.getElementById("btn-verify").addEventListener("click", () => runVerify(null));
+  document.getElementById("btn-context").addEventListener("click", runContext);
+  document.getElementById("btn-clear-verdicts").addEventListener("click", () => {
+    document.getElementById("verdict-input").value = "";
+  });
+  document.getElementById("btn-save-receipt").addEventListener("click", saveReceipt);
+  document.getElementById("btn-soc-refresh").addEventListener("click", refreshFiles);
+  document.getElementById("btn-soc-init").addEventListener("click", async () => {
+    if (!WORKTREE) return;
+    try {
+      const target = WORKTREE + "/research.soc";
+      const r = await fetch("/plugins/witsoc/proxy/api/soc?path=" + encodeURIComponent(target), {
+        method: "POST",
+        body: "# Soc Working Memory\n\nGOAL: <one-line statement>\n\nPROGRESS: 0 / 0\nINSIGHTS_SINCE_LAST_UPDATE: 0\n\nQUEUE:\n  - [ ] First sub-problem\n\nINSIGHTS:\n  - (none yet)\n\nLOG:\n  -\n",
+      });
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      await refreshFiles();
+      await openSoc(target);
+      setStatus("created " + target);
+    } catch (e) { setStatus("init .soc failed: " + (e.message || e), "err"); }
+  });
+
+  // Iframe commands
+  os.events.on("iframe-command", (params) => {
+    if (!params || !params.command) return;
+    const args = params.args || [];
+    const cmd = params.command;
+    if (cmd === "open"     && args[0]) {
+      const abs = args[0].startsWith("/") ? args[0] : (WORKTREE ? WORKTREE + "/" + args[0] : args[0]);
+      if (abs.endsWith(".soc")) { setTab("soc"); openSoc(abs); }
+      else { setTab("proofs"); openWit(abs); }
+    }
+    else if (cmd === "check")        runCheck();
+    else if (cmd === "verify")       runVerify(args[0] || null);
+    else if (cmd === "context")      runContext();
+    else if (cmd === "save-receipt") saveReceipt();
+    else if (cmd === "tab"  && args[0]) setTab(args[0] === "soc" ? "soc" : "proofs");
+    else if (cmd === "focus" && args[0] && LAST_PARSED) {
+      for (const proof of LAST_PARSED.proofs) {
+        for (const s of proof.steps) {
+          if (s.label === args[0]) { selectStep(s); return; }
+        }
+      }
+    }
+  });
+
+  setInterval(refreshFiles, 12000);
+
+  bootstrap();
+</script>
+</body>
+</html>
