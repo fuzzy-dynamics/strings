@@ -1,6 +1,6 @@
 ---
 name: planning-with-files
-description: Manus-style file-based persistent memory for long-running deep agents. Maintains task_plan.md (phases + decisions + errors), findings.md (discoveries), progress.md (session log), report.md (final deliverable), claims.md (numbered claims with confidence) inside `.openscientist/sessions/<session-id>/`. Use whenever a task spans many tool calls and you need to survive context compaction or worker handoffs. **Stacks cleanly on top of any other meta-skill** (autoresearch, lit-review, …) — it never owns the work, only the bookkeeping. The frontend deep-run window reads these files directly; updating them is how the user sees progress. Activated by both orchestrator and workers.
+description: Manus-style file-based persistent memory for long-running deep agents. Maintains the deep-run UI files in `$PLANE_SESSION_DIR` (`plan.json`, findings.md, progress.md, report.md, claims.md, optional preview.html) and mirrors markdown state into `.openscientist/sessions/<run-session-id>/` for git history. Use whenever a task spans many tool calls and you need to survive context compaction or worker handoffs. **Stacks cleanly on top of any other meta-skill** (autoresearch, lit-review, …) — it never owns the work, only the bookkeeping. The frontend deep-run window reads `$PLANE_SESSION_DIR` through the plane files API; updating those files is how the user sees progress. Activated by both orchestrator and workers.
 metadata:
   skill-author: OpenScientist
 category: memory
@@ -12,29 +12,44 @@ The context window is RAM. The filesystem is disk. **Anything important goes to 
 
 ## 0. Where the files live, and who writes them
 
-For a deep run with session id `$SESSION` (set by the orchestrator at start: `SESSION="session-$(openssl rand -hex 4)"`), the canonical files are:
+For an orchestrator deep run, the UI-visible canonical files live directly in the orchestrator's `$PLANE_SESSION_DIR`:
+
+```
+$PLANE_SESSION_DIR/
+  plan.json       # the Plan panel: phases + tasks, valid JSON
+  findings.md     # evidence the orchestrator has surfaced
+  progress.md     # session log: one line per significant event, time-ordered
+  report.md       # the final deliverable for the user
+  claims.md       # numbered claims with confidence + provenance
+  preview.html    # optional: live HTML the deep-run window renders
+```
+
+The orchestrator also keeps a git-backed mirror in the worktree:
 
 ```
 .openscientist/sessions/$SESSION/
+  plan.json       # mirror of the UI plan
   task_plan.md     # the plan: task, phases, decisions, errors, paths
-  findings.md      # what scouts/workers discovered (raw evidence + provenance)
-  progress.md      # session log: one line per significant event, time-ordered
-  report.md        # the final deliverable for the user
-  claims.md        # numbered claims with confidence + provenance
-  preview.html     # optional — live HTML the deep-run window renders
+  findings.md      # mirror of the UI findings
+  progress.md      # mirror of the UI progress log
+  report.md        # mirror of the UI report
+  claims.md        # mirror of the UI claims
+  preview.html     # mirror of the UI preview, if present
   agents/
     <session-id>/  # one directory per worker / hypothesizer / scout — their private scratch
 ```
 
-The frontend deep-run window reads the canonical paths directly — they are the source of every panel the user looks at. Update them; the user sees the update on the next 5-second poll.
+The frontend deep-run window reads `$PLANE_SESSION_DIR` through the plane files API. The worktree mirror exists for commits, pull-back, and worker scratch. Update both; the user sees `$PLANE_SESSION_DIR` on the next poll, and the Evolution panel sees the mirror commit.
 
 ### Single-writer rule for the canonical files
 
-The **orchestrator** is the only writer of `task_plan.md`, `progress.md`, `findings.md`, `claims.md`, `report.md`, `preview.html`. Children (workers, hypothesizers, scouts) **never** edit those files. They:
+The **orchestrator** is the only writer of `$PLANE_SESSION_DIR/plan.json`, `progress.md`, `findings.md`, `claims.md`, `report.md`, `preview.html`, and the worktree mirror's `task_plan.md`. Children (workers, hypothesizers, scouts) **never** edit those files. They:
 
 - commit their work to their own branches (per-experiment commits, structured trailers);
-- write any longer-form notes / drafts into their own scratch directory under `agents/<their-session-id>/`;
+- write any longer-form notes / drafts into their own scratch directory under `.openscientist/sessions/$SESSION/agents/<their-session-id>/`;
 - mail the orchestrator a short pointer when something is ready.
+
+When spawning a child, pass the scratch path as a literal path in the prompt. Do not use `$PLANE_SESSION_DIR` in child prompts to mean the orchestrator's directory; each child gets its own `$PLANE_SESSION_DIR`.
 
 The orchestrator wakes on the mail, reads the pointer's target (commit trailers or scratch file), transcribes the relevant facts into the canonical file, and commits. This single-writer discipline keeps the canonical files coherent (no concurrent edits, no merge conflicts on prose, one editorial voice) and makes the audit trail straightforward.
 
@@ -42,18 +57,36 @@ Whether you are the orchestrator or a child, this is the rule:
 
 | Role         | Writes to                                                  | Reads               |
 |---           |---                                                         |---                  |
-| Orchestrator | the canonical files; no scratch dir of its own              | everything          |
-| Worker       | candidate branch (commits) + `agents/<own-id>/` scratch     | canonical files (read-only) + own branch |
-| Hypothesizer | `agents/<own-id>/` scratch                                  | canonical files + git tree |
-| Scout        | `agents/<own-id>/` scratch                                  | canonical files + external sources |
+| Orchestrator | `$PLANE_SESSION_DIR` UI files + worktree mirror; no scratch dir of its own | everything          |
+| Worker       | candidate branch (commits) + `agents/<own-id>/` scratch     | worktree mirror (read-only) + own branch |
+| Hypothesizer | `agents/<own-id>/` scratch                                  | worktree mirror + git tree |
+| Scout        | `agents/<own-id>/` scratch                                  | worktree mirror + external sources |
 
-If `$SESSION` is unset, set it now (orchestrator only) and `mkdir -p .openscientist/sessions/$SESSION`.
+If `$SESSION` is unset, set it now from `$PLANE_SESSION_ID` (orchestrator only). Children use the `SESSION` value the orchestrator passed in their spawn prompt. If the orchestrator's `$PLANE_SESSION_ID` or `$PLANE_SESSION_DIR` is missing, block visibly instead of choosing a random id.
 
 ## 1. The five rules
 
 ### 1.1 Plan before act
 
-Before any non-trivial work, `task_plan.md` exists with at minimum:
+Before any non-trivial work, `$PLANE_SESSION_DIR/plan.json` exists with at minimum:
+
+```json
+{
+  "phases": [
+    { "name": "Bootstrap", "description": "Initialize the run", "subphases": [] },
+    { "name": "Work", "description": "Execute the task", "subphases": [] },
+    { "name": "Synthesis", "description": "Write the final report", "subphases": [] }
+  ],
+  "tasks": [
+    { "task_name": "Create run files", "phase": "Bootstrap", "status": "completed" },
+    { "task_name": "Choose workflow", "phase": "Bootstrap", "status": "running" }
+  ]
+}
+```
+
+Valid task statuses are `pending`, `running`, `completed`, `failed`, and `skipped`.
+
+The worktree mirror's `task_plan.md` also exists with at minimum:
 
 ```markdown
 ## Task
@@ -68,11 +101,11 @@ Before any non-trivial work, `task_plan.md` exists with at minimum:
 - ...
 ```
 
-Phases are 3–7 chunks, each completable in a known number of orchestrator loops. If you cannot name them yet, write `Phase 1: Recon — figure out the phases` and start there.
+Phases are 3–7 chunks, each completable in a known number of orchestrator loops. If you cannot name them yet, write `Phase 1: Recon — figure out the phases` and start there. Keep `plan.json` and `task_plan.md` in sync whenever phase or task status changes.
 
 ### 1.2 Read before decide
 
-Before any *strategic* decision (what to do next, whether to spawn a worker, whether to terminate), read `task_plan.md`. Yes, every time. The cost is small; the cost of having drifted from your stated goal is large.
+Before any *strategic* decision (what to do next, whether to spawn a worker, whether to terminate), read the worktree mirror's `task_plan.md`. Yes, every time. The cost is small; the cost of having drifted from your stated goal is large.
 
 ### 1.3 Write after find
 
@@ -99,18 +132,39 @@ Three-strike rule: **never** repeat the exact same failing action. Each retry mu
 
 ### 1.5 Commit after update
 
-Every meaningful update to `task_plan.md` / `findings.md` / `progress.md` / `report.md` / `claims.md` is followed by a git commit on the worktree's session branch. The Evolution panel of the deep-run window shows your commits — uncommitted updates are invisible.
+Every meaningful update to `$PLANE_SESSION_DIR/plan.json` / `findings.md` / `progress.md` / `report.md` / `claims.md` is mirrored into `.openscientist/sessions/$SESSION/` and followed by a git commit on the worktree's session branch. The Evolution panel of the deep-run window shows your commits — uncommitted mirror updates are invisible.
 
 ```bash
 git add .openscientist/sessions/$SESSION/
-git commit -m "<file>: <one-line of what changed>"
+git -c user.email=openscientist@fydy.ai -c user.name=OpenScientist commit -m "<file>: <one-line of what changed>"
 ```
+
+Do not run `git config --global`; provider home directories can be read-only.
 
 ## 2. File-by-file conventions
 
+### `plan.json`
+
+The Plan panel's data source. It lives in `$PLANE_SESSION_DIR/plan.json` and is mirrored to `.openscientist/sessions/$SESSION/plan.json`.
+
+Keep it valid JSON. Phases are stable containers. Tasks are the live status rows the user scans while the run is active.
+
+```json
+{
+  "phases": [
+    { "name": "Bootstrap", "description": "Initialize the run", "subphases": [] }
+  ],
+  "tasks": [
+    { "task_name": "Create run files", "phase": "Bootstrap", "status": "completed" }
+  ]
+}
+```
+
+Every task's `phase` must exactly match a phase `name`. `subphase` is optional, but if present it must match a listed subphase. Do not put markdown in this file.
+
 ### `task_plan.md`
 
-The plan, the phases, the open questions, the decisions, the errors. Always current. Sections, in order:
+The detailed plan mirror in `.openscientist/sessions/$SESSION/task_plan.md`. The UI does not poll this file directly, but the orchestrator and workers use it for recovery and decisions. Always current. Sections, in order:
 
 ```markdown
 ## Task            (verbatim user task — never edit)
@@ -124,11 +178,11 @@ The plan, the phases, the open questions, the decisions, the errors. Always curr
 ## Active workers  (table: session-id | role | path-id | status | last-mail-at)
 ```
 
-`## Active workers` is the orchestrator's local view of `get-relatives`; refresh every loop.
+`## Active workers` is the orchestrator's local view of `get-relatives`; refresh every loop. When this file changes phase or task status, update `plan.json` in the same turn.
 
 ### `progress.md`
 
-The chronological log. One line per significant event. Read top-down to recover state.
+The chronological log. It lives in `$PLANE_SESSION_DIR/progress.md` and is mirrored to the worktree. One line per significant event. Read top-down to recover state.
 
 ```markdown
 ## <ISO timestamp>
@@ -139,7 +193,7 @@ What counts as significant: a phase transition, a worker spawn, a worker mail yo
 
 ### `findings.md`
 
-Raw evidence, **transcribed by the orchestrator** from worker / scout scratch entries and worker commit trailers. Append-only.
+Raw evidence, **transcribed by the orchestrator** from worker / scout scratch entries and worker commit trailers. It lives in `$PLANE_SESSION_DIR/findings.md` and is mirrored to the worktree. Append-only.
 
 ```markdown
 ## <ISO timestamp> — <one-line claim>
@@ -148,11 +202,11 @@ Reported by: <worker-session-id>
 Notes: <1–3 sentences>
 ```
 
-Workers and scouts write findings to their own scratch directory at `agents/<their-id>/findings.md`, then mail the orchestrator a pointer ("3 new findings at <path>"). The orchestrator opens the scratch, picks the entries worth surfacing to the user, transcribes them here (compressed, deduplicated, attributed), commits.
+Workers and scouts write findings to the literal scratch path the orchestrator assigned, usually `.openscientist/sessions/$SESSION/agents/<their-id>/findings.md`, then mail the orchestrator a pointer ("3 new findings at <path>"). The orchestrator opens the scratch, picks the entries worth surfacing to the user, transcribes them here (compressed, deduplicated, attributed), mirrors, and commits.
 
 ### `claims.md`
 
-Distilled claims with confidence. The integrator worker drafts entries in its scratch dir during synthesis; the **orchestrator** transcribes them into this canonical file and commits.
+Distilled claims with confidence. The integrator worker drafts entries in its scratch dir during synthesis; the **orchestrator** transcribes them into `$PLANE_SESSION_DIR/claims.md`, mirrors, and commits.
 
 ```markdown
 ## C1 — <claim, one sentence>
@@ -165,7 +219,7 @@ Numbered, monotonic — `C1`, `C2`, ... — so other files can cite by id.
 
 ### `report.md`
 
-The user-facing deliverable. Shape depends on the task: a paper, a technical report, a benchmark write-up, a summary. Driven by the active research/writing meta-skill. The integrator worker writes a draft (`agents/<id>/report.draft.md`) during synthesis; the **orchestrator** transcribes it here.
+The user-facing deliverable. Shape depends on the task: a paper, a technical report, a benchmark write-up, a summary. Driven by the active research/writing meta-skill. The integrator worker writes a draft (`agents/<id>/report.draft.md`) during synthesis; the **orchestrator** transcribes it into `$PLANE_SESSION_DIR/report.md`, mirrors, and commits.
 
 Minimum every report has:
 
@@ -189,7 +243,7 @@ Cite specific commits and `findings.md` entries — never claim a result without
 
 ### `preview.html` (optional)
 
-If the deliverable benefits from a rendered view (a chart, a styled report, an interactive demo), the integrator worker drops a draft at `agents/<id>/preview.draft.html`; the **orchestrator** promotes it to the canonical `preview.html`. The deep-run window's Preview panel renders it live. Skip if not relevant.
+If the deliverable benefits from a rendered view (a chart, a styled report, an interactive demo), the integrator worker drops a draft at `agents/<id>/preview.draft.html`; the **orchestrator** promotes it to `$PLANE_SESSION_DIR/preview.html`, mirrors, and commits. The deep-run window's Preview panel renders it live. Skip if not relevant.
 
 ## 3. Stacks on top of other meta-skills
 

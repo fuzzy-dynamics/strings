@@ -12,16 +12,22 @@ This skill defines how the orchestrator runs an autoresearch loop. It assumes yo
 
 The pattern is Karpathy-style: a small number of independent paths, each owned end-to-end by one biased worker that hill-climbs on a measurable metric, with the orchestrator watching the trajectory, intervening only when paths plateau, regress, or hit a strategic decision. **Reasoning is the git tree. Mail is a pointer.** Workers commit every experiment; you read the git log to see what they tried.
 
-If `${SESSION}` is unset for you, set it now: `SESSION="session-$(openssl rand -hex 4)"`. Reuse the same `$SESSION` for the entire run.
+If `${SESSION}` is unset for you, set it from the plane session: `SESSION="$(printenv PLANE_SESSION_ID)"`. Also set `RUN_FILES_DIR="$(printenv PLANE_SESSION_DIR)"` and `WORKTREE_RUN_DIR=".openscientist/sessions/$SESSION"`. If either plane variable is missing, block visibly. Do not create a random session id.
 
 ## 0. Stack on top of `planning-with-files`
 
-`UseSkill(name="planning-with-files")` immediately after activating this one. Your run will live in `.openscientist/sessions/$SESSION/{task_plan,findings,claims,progress,report}.md` from there on. **You — the orchestrator — are the only writer of those files** (orchestrator §5). Workers commit to candidate branches and write into their own scratch directories at `.openscientist/sessions/$SESSION/agents/<worker-id>/`; they mail you pointers; you transcribe.
+Immediately load `planning-with-files` with:
+
+```bash
+"$PLANE_TOOL_BIN" skill-view planning-with-files/SKILL.md
+```
+
+Your UI files live in `$RUN_FILES_DIR` from there on: `plan.json`, `findings.md`, `claims.md`, `progress.md`, `report.md`, and optional `preview.html`. Mirror them into `$WORKTREE_RUN_DIR/` and commit the mirror after each update. **You, the orchestrator, are the only writer of those files** (orchestrator §5). Workers commit to candidate branches and write into their own scratch directories at `.openscientist/sessions/$SESSION/agents/<worker-id>/`; they mail you pointers; you transcribe.
 
 ## 1. The five phases
 
 ```
-PHASE 0  Bootstrap        — write task_plan.md with the task, the metric, the budget
+PHASE 0  Bootstrap        — write plan.json plus task_plan.md with the task, the metric, the budget
 PHASE 1  Recon            — scouts gather background; hypothesizer drafts paths
 PHASE 2  Path commitment  — one biased worker per path; bias is the point
 PHASE 3  Hill-climbing    — workers iterate; you watch, prune, redirect
@@ -32,7 +38,7 @@ You are at PHASE 0 when this skill activates.
 
 ### PHASE 0 — Bootstrap
 
-Write into `task_plan.md`:
+Write the visible phase/task state into `$RUN_FILES_DIR/plan.json`, then mirror it to `$WORKTREE_RUN_DIR/plan.json`. Write the detailed state into `$WORKTREE_RUN_DIR/task_plan.md`:
 
 ```markdown
 ## Task
@@ -62,9 +68,11 @@ The orchestrator does not research. Spawn at most 2 `osci-scout` workers in para
 - "Read the codebase under `<dir>` and write findings to `.openscientist/sessions/$SESSION/agents/<your-id>/findings.md` about how X is currently done. Cite file:line refs. Mail the orchestrator a one-line pointer when done."
 - "Search the web + arxiv for prior art on <task>. ≤ 8 sources, each with a 1-sentence claim and a URL or DOI. Write to your own scratch findings file. Mail orchestrator when done."
 
-Each scout exits after its rehydration packet — the plane mails you `worker_complete` and wakes you. **You** then read each scout's scratch findings file and **transcribe** the relevant entries into the canonical `.openscientist/sessions/$SESSION/findings.md`. Compress, deduplicate, attribute. Commit.
+Pass scratch paths as literal paths. Do not tell scouts to write to `$PLANE_SESSION_DIR/notes` or `$PLANE_SESSION_DIR/agents`, because that variable points at the scout's own session directory, not the orchestrator's UI directory.
 
-Then spawn ONE `osci-hypothesizer` (with `autoresearch-hypothesizer` skill named in its prompt) and ask it to draft paths. Hand it: the task, the metric, the budget, the path of `findings.md`. Tell it: **3–5 paths, ranked by information value under the budget**, written into its own scratch file (`agents/<id>/paths.md`). The hypothesizer mails you `hypothesis-complete` and exits.
+Each scout exits after its rehydration packet — the plane mails you `worker_complete` and wakes you. **You** then read each scout's scratch findings file and **transcribe** the relevant entries into `$RUN_FILES_DIR/findings.md`, then mirror to `$WORKTREE_RUN_DIR/findings.md`. Compress, deduplicate, attribute. Commit.
+
+Then spawn ONE `osci-hypothesizer` (with `autoresearch-hypothesizer` skill named in its prompt) and ask it to draft paths. Hand it: the task, the metric, the budget, and the path `$WORKTREE_RUN_DIR/findings.md`. Tell it: **3–5 paths, ranked by information value under the budget**, written into its own scratch file (`agents/<id>/paths.md`). The hypothesizer mails you `hypothesis-complete` and exits.
 
 You read its scratch `paths.md`, transcribe the path list under `## Paths` in `task_plan.md`. Commit. Move to PHASE 2.
 
@@ -80,7 +88,7 @@ GOAL: <metric to maximize/minimize>
 BUDGET: <iterations | wall-clock | gpu-time> — when this is exhausted, exit normally with a final rehydration packet.
 SESSION: $SESSION
 HYPOTHESIS: <verbatim from paths.md>
-SKILL: UseSkill(name="autoresearch-worker") on your first turn — that skill defines your loop.
+SKILL: On your first turn, load `autoresearch-worker` with `"$PLANE_TOOL_BIN" skill-view autoresearch-worker/SKILL.md`; that skill defines your loop.
 WORKTREE: <inherited unless paths conflict on the same files; if so, give a fresh worktree>
 ESCALATION SESSION: <your orchestrator session id, from get-status>
 EXIT EARLY ON: subject "stop" mail.
@@ -102,7 +110,7 @@ on each wake-up:
   2. tree    = "$PLANE_TOOL_BIN" get-relatives   # snapshot child state
   3. for each mail in mailbox:
        read what it points at (commit trailers, scratch files)
-       transcribe relevant facts into findings.md / progress.md / claims.md / report.md
+       transcribe relevant facts into $RUN_FILES_DIR files, mirror to $WORKTREE_RUN_DIR, and commit
        handle_escalation(mail) if it is one
   4. for each child in tree:
        check liveness (cleanup §10 of orchestrator policy)
@@ -121,7 +129,7 @@ Handling escalations (the worker prompt's `escalation:*` subjects):
 | `escalation:anomaly`  | result contradicts expectations                                 | Read the commit. Update `findings.md`. Mail `steer:continue` if it's a real signal, `steer:adjust` to investigate it.    |
 | `escalation:resource` | OOM, timeout, disk full                                         | Most often a ceiling on the path. Mail `steer:adjust` with a concrete shrink (smaller model, smaller batch, shorter run). If the path is GPU-bound and there is one GPU, see §3 below. |
 | `escalation:decision` | multiple equally viable directions                              | Decide yourself if it's tactical (one-line); consult hypothesizer for strategic forks.                                  |
-| `progress:update`     | routine progress, every 5 experiments                           | Update `progress.md` and `report.md`'s "Best so far" table. No reply required.                                          |
+| `progress:update`     | routine progress, every 5 experiments                           | Update `$RUN_FILES_DIR/progress.md` and `report.md`'s "Best so far" table, mirror, and commit. No reply required.       |
 
 Diminishing-returns rule for path-pruning: if a path has emitted ≥2 `escalation:plateau` mails without recovering, AND the hypothesizer's adjacent suggestions have all been tried (track this in `task_plan.md`), the path is done. Mail the worker `stop`, mark the path closed in `task_plan.md`, free the slot.
 
@@ -134,7 +142,7 @@ When **at least one path has produced a usable result** AND the orchestrator's i
    subject: prepare-merge
    body: Synthesis phase. Read paths.md and the candidate branches openscientist/$SESSION/paths/*.
    For each closed path, decide what (if anything) is worth merging into the main session branch.
-   Produce a single coherent state on this worktree. Commit. Then UseSkill(name="autoresearch-worker") with sub-mode "writer" and produce report.md.
+   Produce a single coherent state on this worktree. Commit. Then load autoresearch-worker with sub-mode "writer" and produce a draft report in your scratch directory.
    ```
 2. **Wait** for them. They mail `merge-ready` when done.
 3. **Run the unbiased termination check** (orchestrator §8). Spawn a fresh `osci-general`, hand it the task, the worktree, and `report.md`. Ask `complete, ship` / `missing: ...`.
@@ -165,8 +173,8 @@ If the user task is CPU-bound or pure literature work, parallelism up to the §9
 
 When you spawn the workers, name the sub-skill explicitly in the prompt — the worker activates it on its first turn:
 
-- `osci-hypothesizer` → `UseSkill(name="autoresearch-hypothesizer")`
-- `osci-worker` → `UseSkill(name="autoresearch-worker")`
+- `osci-hypothesizer` → `"$PLANE_TOOL_BIN" skill-view autoresearch-hypothesizer/SKILL.md`
+- `osci-worker` → `"$PLANE_TOOL_BIN" skill-view autoresearch-worker/SKILL.md`
 - `osci-scout` → no flavour skill — the agent's own prompt is enough
 - `osci-general` → no flavour skill — keep the critic untrained
 
@@ -180,10 +188,10 @@ Both sub-skills exist in this world-model bundle (`autoresearch-worker/SKILL.md`
 
 When you terminate, the run's deliverable is:
 
-- `report.md` (written by the integrator) — the technical report or paper draft. Cited claims tie to specific commits or files.
+- `$RUN_FILES_DIR/report.md` (transcribed by the orchestrator from the integrator draft) — the technical report or paper draft. Cited claims tie to specific commits or files.
 - `findings.md` (accumulated by scouts and workers) — raw evidence, optional.
 - `claims.md` (written by the integrator during synthesis) — numbered claims with confidence and provenance.
-- `task_plan.md` — final state with all paths marked closed/merged.
+- `$RUN_FILES_DIR/plan.json` and `$WORKTREE_RUN_DIR/task_plan.md` — final state with all paths marked closed/merged.
 - The merged session branch with all integrated work.
 
 The unbiased agent (orchestrator §8) checks against the original task, not against this skill's internal phases. If the task is "write a paper", `report.md` had better look like a paper.
