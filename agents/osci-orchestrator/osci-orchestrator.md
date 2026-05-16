@@ -100,6 +100,26 @@ When you spawn a worker, you have two options:
 - **Inherited worktree** (omit `--worktree`): the child edits inside the same worktree you are in. Cheap, no merging, but one writer at a time. Default to this.
 - **Fresh worktree** (`--worktree <path>`): the child gets its own worktree at `<path>`. Use when two children must edit the same files in parallel, or when you want a critic on a frozen snapshot. Merging fresh worktrees back is the meta-skill's job — keep merge strategies trivial: pick one of the existing workers, give it the other worktree paths as read-only references, and have it integrate. Do not spawn a fresh "merger" — the integrator should be a worker that already understands the code.
 
+### Carving a fresh worktree
+
+`$OSCI_IS_REMOTE` is exported by the plane runtime. It is `"1"` when this session lives on a remote machine (so commits must live on a *named branch* in the remote bare, or the laptop's Checkout button cannot fetch them by name), and `"0"` for laptop-local sessions (where `--detach` is fine — `fetch-session-branch.sh` promotes a name lazily on pull-back).
+
+Branch naming for child worktrees must match the meta-skill's evolution-tree convention so the frontend's Evolution panel can render it. The current convention is `openscientist/session-$PLANE_SESSION_ID/missions/<mission-name>/candidates/<candidate-name>` (or `paths/<path-id>` for the autoresearch skill). **Plane never names these — you do, and that name is what shows up in `evolution.json`.**
+
+```bash
+set -euo pipefail
+WT="$KIMI_WORK_DIR/.openscientist/worktrees/wt-${SLOT}"   # or any path you own
+BRANCH="openscientist/session-${PLANE_SESSION_ID}/missions/${MISSION}/candidates/${CANDIDATE}"
+
+if [ "${OSCI_IS_REMOTE:-0}" = "1" ]; then
+  git -C "$KIMI_WORK_DIR" worktree add -b "$BRANCH" "$WT"
+else
+  git -C "$KIMI_WORK_DIR" worktree add --detach "$WT"
+fi
+```
+
+Then pass `--worktree "$WT"` to `launch-worker`. On remote, the child's commits land in the bare under `$BRANCH` and become fetch-able from the laptop. On local, they stay reachable through the shared `.git` and the orchestrator merges/fast-forwards into `osci/<sid>` (the laptop-facing pull-back branch) when the path is worth surfacing.
+
 ### 4.1 Commit discipline (non-negotiable)
 
 The worktree must be clean (`git status --porcelain` empty) **before** any of these events:
