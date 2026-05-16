@@ -1,6 +1,6 @@
 ---
 name: notes-use
-description: How to author, structure, and maintain workspace notes through the `OpenScientistNotes` tool so the Notion-like (TipTap) editor renders them well. Covers the tool's eight functions, the HTML the renderer actually parses (headings, lists, task lists, tables, code blocks with language, KaTeX math, highlights, source-citation links), the find-the-id flow that edit/append/delete require, the search-before-create discipline, and the line between a note (user-facing artifact) and a scratchpad (agent memory — does not belong in notes). Use whenever the user asks you to save, summarize, record, or organize anything as a note, or to update / reorganize / cite within existing notes.
+description: How to author, structure, and maintain workspace notes through the `OpenScientistNotes` tool so the Notion-like (TipTap) editor renders them well and the user can actually use them a month later. Covers what makes a good note (lead with the claim, section it, cite externals, preserve reasoning) with shape templates per intent (paper summary, decision note, meeting note, daily log, quick observation); the tool's eight functions and the find-the-id flow that edit/append/delete require; the HTML the renderer actually parses (headings, lists, task lists, tables, code blocks with language, KaTeX math, highlights, source-citation links); the search-before-create discipline; and the line between a note (user-facing artifact) and a scratchpad (agent memory — does not belong in notes). Required reading before any `OpenScientistNotes` write, edit, or append.
 metadata:
   skill-author: OpenScientist
 category: knowledge
@@ -28,7 +28,102 @@ Create or modify a note **only when the user explicitly asks** to save, record, 
 
 The test: would the user, opening this in their notes panel a week from now, recognize it as something *they* wanted? If no, it's the wrong file.
 
-## 1. The tool
+## 1. What a good note looks like
+
+A note's job is to be useful a month from now — to the user, to you, to another agent. A single unstructured paragraph is readable for two days then becomes a stub. Apply this shape regardless of what kind of note you're writing:
+
+- **Lead with the claim**, not the setup. The user opens the note; the first paragraph should tell them what they're looking at, not what you were doing when you found it.
+- **Section it.** Even short notes benefit from 2–3 `<h2>` or `<h3>` headings — the renderer surfaces them in an outline view; flat prose can't be skimmed.
+- **Cite what's external.** Every factual claim from a paper, doc, or website gets a `sources://` link (§5). If no indexed source exists, embed the URL or a verbatim quote so the user can verify the claim later.
+- **Preserve the reasoning, not just the conclusion.** "We chose X" is weaker than "We chose X because Y; alternative Z would have meant W". The user re-reads notes to remember the *why*, not just the *what*.
+- **Match element to data shape.** Parallel items → `<ul>` / `<ol>`. Comparison → `<table>`. Equations → KaTeX (§4.3), not prose. Action items → task list (§4.1). Code → `<pre><code class="language-…">`. Don't fall back to flat `<p>` tags for everything.
+- **Length follows content.** Three sentences is fine for a quick observation; thirty paragraphs is fine for a paper summary. Avoid both extremes — the one-sentence stub the user can't reconstruct meaning from, and the bloated note where every paragraph repeats the headline.
+
+### 1.1 Shapes by intent
+
+Skeletons, not rigid templates. The user's actual content fills them out; skip sections that don't apply.
+
+**Paper / artefact summary** — when asked to save or summarize a paper, blog post, or talk:
+
+```html
+<h2>What it is</h2>
+<p>One paragraph: problem, approach, headline result. Cite the source:
+<a href="sources://12">Vaswani et al. 2017</a>.</p>
+
+<h2>Method</h2>
+<p>The actual mechanism. Include the key equation when non-trivial:
+<span data-type="inline-math" data-latex="..."></span>.</p>
+
+<h2>Results</h2>
+<ul>
+  <li>Concrete metrics, with numbers.</li>
+  <li>What baseline they beat, by how much.</li>
+</ul>
+
+<h2>Why it matters here</h2>
+<p>Tie it to the user's current work. Skip when you don't know what
+they're working on; include when you do — this is the most
+user-specific section.</p>
+
+<h2>Limitations / open questions</h2>
+<ul><li>…</li></ul>
+```
+
+**Decision / methods note** — capturing why a choice was made:
+
+```html
+<h2>Decision</h2>
+<p>What we landed on, in one sentence.</p>
+
+<h2>Why</h2>
+<p>The reasoning, citing constraints and evidence.</p>
+
+<h2>Alternatives considered</h2>
+<ul>
+  <li><strong>Option B</strong> — rejected because …</li>
+</ul>
+
+<h2>Revisit when</h2>
+<ul><li>Conditions under which the decision should be re-examined.</li></ul>
+```
+
+**Meeting note**:
+
+```html
+<h2>Decisions</h2>
+<ul><li>…</li></ul>
+
+<h2>Action items</h2>
+<ul data-type="taskList">
+  <li data-type="taskItem" data-checked="false"><p>…</p></li>
+</ul>
+
+<h2>Open questions</h2>
+<ul><li>…</li></ul>
+```
+
+**Daily log entry** — appended via `append_note`:
+
+```html
+<h3>YYYY-MM-DD</h3>
+<p>One-line frame for the day.</p>
+<ul>
+  <li>Accomplished X (<a href="sources://17?…">citation</a>).</li>
+  <li>Blocked on Y; trying Z tomorrow.</li>
+</ul>
+```
+
+**Quick observation** — user said "save this thought":
+
+```html
+<p><strong>Claim:</strong> the headline thought, in one sentence.</p>
+<p>Context — where it came from, why it matters.</p>
+<p>Optional: what to try next, or who would care.</p>
+```
+
+If the user's request doesn't fit any of these, default to: an H1-less HTML fragment, 2–3 `<h2>` sections (start with the claim, then context/evidence, then implication or next-action), and a `sources://` link for anything external.
+
+## 2. The tool
 
 Everything goes through one tool, `OpenScientistNotes`, dispatched by the `function` parameter. Eight functions:
 
@@ -50,7 +145,7 @@ Two operational facts that are easy to miss:
 
 There is no PDF-to-note function on this tool. If the user wants the contents of a PDF as a note, summarize manually with `create_note`, or save the PDF as a source and cite it.
 
-## 2. Search before you create
+## 3. Search before you create
 
 Before `create_note`, search:
 
@@ -60,7 +155,7 @@ OpenScientistNotes(function="search_notes", query="<topic>")
 
 If a relevant note exists, **edit or append to it** instead of creating a sibling — the user does not want twelve notes called "Transformer notes (1)" through "(12)". Same-title creates are not deduplicated server-side. Also run `list_notes` to see the existing folder layout, so you place new notes alongside their siblings instead of at the root. `search_notes_semantic` catches "did I write anything about *X*?" questions where the user's wording and the note's wording differ.
 
-## 3. The HTML the renderer actually understands
+## 4. The HTML the renderer actually understands
 
 The editor is TipTap with a Notion-like extension set. Note content is stored as an **HTML fragment** and re-parsed on every load. That means:
 
@@ -70,7 +165,7 @@ The editor is TipTap with a Notion-like extension set. Note content is stored as
 - Don't wrap in `<html>` / `<body>` / `<!DOCTYPE>`. Send a fragment.
 - **Markdown does not render.** `# heading`, `**bold**`, triple-backtick fences pass through as literal text inside `<p>`. If a tool returns Markdown, convert it to HTML before writing.
 
-### 3.1 Block elements
+### 4.1 Block elements
 
 | What            | Tag                                                                                          |
 |-----------------|----------------------------------------------------------------------------------------------|
@@ -89,7 +184,7 @@ The editor is TipTap with a Notion-like extension set. Note content is stored as
 
 Code-block languages with syntax highlighting: `python` (default), `typescript`, `javascript`, `cpp`, `c`, `java`, `rust`, `go`, `bash`, `sql`, `css`, `html`, `json`, `yaml`, `markdown`. Anything else falls back to plain text. **The `language-` prefix is mandatory** — `class="python"` alone won't highlight.
 
-### 3.2 Inline elements
+### 4.2 Inline elements
 
 | What          | Tag                                                                                       |
 |---------------|-------------------------------------------------------------------------------------------|
@@ -100,12 +195,12 @@ Code-block languages with syntax highlighting: `python` (default), `typescript`,
 | Highlight     | `<mark>…</mark>` or `<mark style="background-color: #fef3c7">…</mark>` (multicolor)       |
 | Superscript   | `<sup>…</sup>`                                                                            |
 | Subscript     | `<sub>…</sub>`                                                                            |
-| Link          | `<a href="https://…">text</a>` or `<a href="sources://…">text</a>` (see §4)               |
+| Link          | `<a href="https://…">text</a>` or `<a href="sources://…">text</a>` (see §5)               |
 | Inline math   | `<span data-type="inline-math" data-latex="x^2 + y^2"></span>`                            |
 
 **No underline.** The renderer does not load `@tiptap/extension-underline`; `<u>` is stripped on reload. Use `<em>` or `<mark>` for emphasis instead.
 
-### 3.3 Math (KaTeX)
+### 4.3 Math (KaTeX)
 
 LaTeX lives in the `data-latex` attribute; the text node inside the tag is ignored. **Escape backslashes once** for the JSON tool call (`\\int`, `\\frac{a}{b}`).
 
@@ -119,7 +214,7 @@ LaTeX lives in the `data-latex` attribute; the text node inside the tag is ignor
 
 `$...$` and `$$...$$` only work as input rules while the user types — they are not the persisted format. Always emit the `data-type="…-math"` element.
 
-## 4. Citations: linking notes to sources
+## 5. Citations: linking notes to sources
 
 When a note references an indexed paper, document, or quote in the workspace, use the `sources://` link scheme. The frontend turns these into clickable references that scroll the source panel to the right place.
 
@@ -146,7 +241,7 @@ Rules:
 
 `tools/annotation.md` covers building annotation ids.
 
-## 5. Editing: choose the right verb
+## 6. Editing: choose the right verb
 
 Three functions modify an existing note. They are not interchangeable.
 
@@ -167,7 +262,7 @@ Three functions modify an existing note. They are not interchangeable.
 
 - Always wrap appended content in block-level tags (`<h2>`, `<p>`, `<ul>`, …). Bare text doesn't merge cleanly into the previous paragraph on reload. For dated entries, lead with a heading: `<h3>2026-05-04</h3>`.
 
-## 6. Folder organization
+## 7. Folder organization
 
 Folders are flat strings with `/` as the separator (`"papers/transformers"`), passed via the `path` parameter on `create_note`. They render in the tree as nested directories.
 
@@ -180,14 +275,15 @@ Conventions that have worked:
 
 When the user asks you to "organize my notes", don't move folders unprompted — ask which target structure they want. Bulk reorganization is destructive-feeling; confirm scope before acting.
 
-## 7. Search inside notes
+## 8. Search inside notes
 
 `search_notes` returns matched snippets with surrounding context, not full content. Use it as the *first* step whenever the user asks a question their notes can answer ("what did I write about RoPE?", "did I take notes on the meeting last week?"). `search_notes_semantic` is for concept-level queries where the user's wording and the note's wording diverge.
 
 Don't read every matched note in full — read the one or two whose snippets directly answer the user's question. The user's notes are theirs; reading more than needed wastes context and risks surfacing private content the user didn't ask about.
 
-## 8. Anti-patterns
+## 9. Anti-patterns
 
+- **Writing a note as a single unstructured paragraph.** Apply §1's shape — sectioned, cited, reasoning preserved. Plain wall-of-text notes are unreadable a week later and are the most common failure mode this skill exists to prevent.
 - **Duplicating notes** because you skipped the search step. *Always* `search_notes` (or `list_notes`) before `create_note`.
 - **Treating notes as agent memory.** If you're the only consumer, write under `.openscientist/sessions/$SESSION/` — not the user's tree.
 - **Markdown as content.** The renderer doesn't parse it; convert to HTML first.
@@ -199,7 +295,7 @@ Don't read every matched note in full — read the one or two whose snippets dir
 - **Bulk-overwriting via same-title `create_note`.** Creates a sibling, doesn't overwrite. Use `edit` / `append`.
 - **Reorganizing folders without asking.** Notes are the user's filing system; touching it without permission breaks trust fast.
 
-## 9. Quick reference
+## 10. Quick reference
 
 ```python
 # Search-then-create
@@ -210,12 +306,19 @@ if not hits:
         title="Transformer scaling — survey",
         path="papers/scaling-laws",
         content=(
-            "<h2>Setup</h2>"
+            "<h2>What it is</h2>"
             "<p>Survey of scaling-law work since "
-            "<a href='sources://12'>Kaplan 2020</a>.</p>"
+            "<a href='sources://12'>Kaplan 2020</a>; covers the "
+            "loss-vs-N power law and its breakdown at small data.</p>"
             "<h2>Key claims</h2>"
             "<ul><li>Loss ∝ N<sup>-α</sup> with "
-            "<span data-type='inline-math' data-latex='\\\\alpha \\\\approx 0.076'></span>.</li></ul>"
+            "<span data-type='inline-math' data-latex='\\\\alpha \\\\approx 0.076'></span> "
+            "(<a href='sources://12?kind=quote&exact=alpha%20approx%200.076'>Kaplan §3</a>).</li>"
+            "<li>Breaks down below ~10M params — see "
+            "<a href='sources://14'>Hoffmann 2022</a>.</li></ul>"
+            "<h2>Why it matters here</h2>"
+            "<p>Constrains the compute-vs-data tradeoff for the "
+            "next experiment.</p>"
         ),
     )
 
@@ -240,4 +343,4 @@ OpenScientistNotes(
 )
 ```
 
-Three facts to remember on every call: **search first**, **HTML out**, **edit/append/delete need `note_id`**.
+Four facts to remember on every call: **shape it** (§1), **search first**, **HTML out**, **edit/append/delete need `note_id`**.
