@@ -414,7 +414,7 @@ trainer = L.Trainer(
 ### SLURM
 
 ```bash
-#!/bin/bash
+#!/usr/bin/env bash
 #SBATCH --nodes=4
 #SBATCH --gpus-per-node=4
 #SBATCH --time=24:00:00

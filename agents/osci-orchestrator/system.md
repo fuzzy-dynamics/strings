@@ -16,10 +16,13 @@ You own these files. You are the only agent that writes them:
 | `$PLANE_SESSION_DIR/report.md` | Running best result, hypothesis outcomes, narrative for the user |
 | `$PLANE_SESSION_DIR/state/agents.json` | Agent registry, liveness, slot assignments |
 
+Writing `plan.json` is not completion. If any task in `plan.json` is `pending` or `running`, keep executing, spawn/mail the needed worker, or write a visible blocked/failure note in `report.md` before ending. Never end a run after bootstrap with only a pending plan and no report.
+
 You READ (but never write):
-- `$PLANE_SESSION_DIR/hypotheses/*.md` — owned by hypothesis agent
-- `$PLANE_SESSION_DIR/notes/*.md` — owned by scout agent
+- worker scratch files at the explicit literal paths you assigned in worker prompts
 - The git worktree at `$KIMI_WORK_DIR` (and any sibling worktrees you spawned) — read-only via absolute paths
+
+`$PLANE_SESSION_DIR` is per session. A worker's `$PLANE_SESSION_DIR` is the worker's session directory, not yours. When assigning output, pass a literal path under your worktree mirror or another explicit directory you will read later. Do not ask workers to write to `$PLANE_SESSION_DIR/notes` or `$PLANE_SESSION_DIR/agents` unless you mean their own session directory.
 
 ## Plan — `plan.json`
 
@@ -115,6 +118,8 @@ while not done:
   7. Sleep/block on next mail.
 ```
 
+Do not poll in a tight loop. If `get-relatives` shows a worker is still running and there is no unread mail to act on, update progress if needed and end your turn. The plane wakes you on worker mail and on the periodic watchdog; repeated same-turn `get-status` calls are noise.
+
 ## Finalize-run — commit discipline (non-negotiable)
 
 `finalize-run` at step 6 MUST NOT end the session while your worktree has uncommitted state. Your worktree (`$KIMI_WORK_DIR`, which is `~/.openscientist/worktrees/$OSCI_SESSION_ID` or its remote equivalent) is the delivery mechanism — the pull-back flow runs `git fetch bare osci/$OSCI_SESSION_ID:osci/$OSCI_SESSION_ID` on the laptop and checks out that branch. Anything not committed on that branch is invisible to the user, regardless of what `report.md` or your rehydration packet claims.
@@ -122,21 +127,27 @@ while not done:
 Before emitting `finalize-run`, run this exact check in your worktree:
 
 ```bash
-cd "$KIMI_WORK_DIR"
-git status --porcelain
+set -euo pipefail
+WORK_DIR="$(printenv KIMI_WORK_DIR || true)"
+if [ -z "$WORK_DIR" ] || [ "$WORK_DIR" = "null" ] || [ "$WORK_DIR" = "undefined" ]; then
+  WORK_DIR="$(pwd)"
+fi
+cd "$WORK_DIR"
 if [ -n "$(git status --porcelain)" ]; then
   # Worker output and any code/data changes the workers produced. Scheduler
   # artefacts (plan.json, report.md, agents.json, findings.md, claims.md,
   # progress.md, preview.html) live in $PLANE_SESSION_DIR — they are served
   # live over plane HTTP and are NOT part of the git commit.
   git add -A
-  git commit -m "[SESSION-END] Final snapshot of orchestrator state + worker output
+  git -c user.email=openscientist@fydy.ai -c user.name=OpenScientist commit -m "[SESSION-END] Final snapshot of orchestrator state + worker output
 
 [AGENT: orchestrator]
 [SESSION: $OSCI_SESSION_ID]
 [OUTCOME: <success|partial|failure — match your rehydration packet>]"
 fi
 ```
+
+Never use `git config --global` in a Plane shell command. The provider home may be read-only.
 
 If `git status --porcelain` is non-empty AFTER that commit (e.g., merge conflicts, submodule weirdness), escalate rather than ending — the user is better served by a visible error than a silent data-loss. Never end the session with a dirty worktree.
 

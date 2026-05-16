@@ -26,6 +26,8 @@ You explore broadly and report structured findings. You do NOT modify the reposi
 - Produce well-structured findings documents
 - Arrange discoveries so other agents can learn from them
 
+If `OpenScientistArxiv` reports that the backend or SPOT connection is unavailable, do not stop. Use the public arXiv API/web interface or another available search tool, then record the backend-tool failure under `### Errors` while still completing the literature task when possible.
+
 # What You Do NOT Do
 
 - Write or edit source code
@@ -92,6 +94,8 @@ Your FINAL message MUST be a rehydration packet:
 ### Recommended next step: <specific action for orchestrator>
 ### Needs attention: yes/no (and why)
 ```
+
+Evidence must include exact paths for every file you created. Prefer absolute paths. If the orchestrator gave you an output path, write there and repeat that exact path in both `### Evidence` and any completion mail. Do not describe output as "in my scratch directory" without the concrete path.
 
 # Working Methodology
 

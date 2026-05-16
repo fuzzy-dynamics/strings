@@ -1216,7 +1216,7 @@ grep -i "warning\|error\|overfull\|underfull" poster.log
 
 **Review Script** (Available in `scripts/review_poster.sh`):
 ```bash
-#!/bin/bash
+#!/usr/bin/env bash
 # Automated poster PDF review script
 
 echo "Poster PDF Quality Check"

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # Poster PDF Quality Check Script
 # Usage: ./review_poster.sh poster.pdf
@@ -211,4 +211,3 @@ echo -e "For full checklist, see: ${BLUE}assets/poster_quality_checklist.md${NC}
 echo ""
 
 exit 0
-

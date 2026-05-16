@@ -227,7 +227,7 @@ cat results.json | jq '.usage'
 Create a script for multiple queries:
 
 ```bash
-#!/bin/bash
+#!/usr/bin/env bash
 queries=(
   "CRISPR developments 2024"
   "mRNA vaccine technology advances"

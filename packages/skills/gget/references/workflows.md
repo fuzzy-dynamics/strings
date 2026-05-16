@@ -359,7 +359,7 @@ print("\nSingle-cell expression analysis completed!")
 Prepare reference data for RNA-seq analysis pipelines.
 
 ```bash
-#!/bin/bash
+#!/usr/bin/env bash
 # Reference transcriptome building workflow
 
 echo "Reference Transcriptome Building Workflow"

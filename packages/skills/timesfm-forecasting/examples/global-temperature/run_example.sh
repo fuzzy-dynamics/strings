@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # run_example.sh - Run the TimesFM temperature anomaly forecasting example
 #
 # This script:

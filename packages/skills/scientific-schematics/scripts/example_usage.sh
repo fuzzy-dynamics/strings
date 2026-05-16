@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Example usage of AI-powered scientific schematic generation
 # 
 # Prerequisites:
@@ -86,4 +86,3 @@ echo "  1. View the generated images"
 echo "  2. Review the quality scores in *_review_log.json"
 echo "  3. Try your own prompts!"
 echo ""
-

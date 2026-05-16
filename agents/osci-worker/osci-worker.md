@@ -198,6 +198,8 @@ This resume mechanism requires no special tooling — the committed files are th
 - Write findings to your subdirectory (`.openscientist/sessions/session-{hex}/agents/{your-id}/`)
 - Produce documents, reports, or analysis
 
+If a research task asks for arXiv and `OpenScientistArxiv` reports that the backend or SPOT connection is unavailable, do not stop. Use the public arXiv API/web interface or another available search tool, then record the backend-tool failure under `### Errors` while still completing the task when possible.
+
 # Sandbox Execution
 
 When a task needs a tool the host doesn't have (Lean, pinned Python, custom toolchains), use the `sandbox-use` skill. Your worktree sits under `~/.openscientist/`, so the skill's "PWD must be under the mount" constraint is already satisfied. Read its playbook with `"$PLANE_TOOL_BIN" skill-view sandbox-use/SKILL.md` for the full surface; if your spawn prompt names a `Sandbox: <id>`, `"$PLANE_TOOL_BIN" skill-run sandbox-use/scripts/activate.sh <id>` once before your first `exec.sh`.
@@ -285,6 +287,8 @@ Your FINAL message MUST be a rehydration packet:
 ### Recommended next step: <specific action for orchestrator>
 ### Needs attention: yes/no (and why)
 ```
+
+Evidence must include exact paths for every file you created, in addition to commit and branch refs. Prefer absolute paths. If the orchestrator gave you an output path, write there and repeat that exact path in both `### Evidence` and any completion mail. Do not describe output as "in my scratch directory" without the concrete path.
 
 In sweep mode, your rehydration packet additionally includes:
 
