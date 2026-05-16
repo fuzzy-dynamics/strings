@@ -29,11 +29,17 @@ mkdir -p "$(dirname "$sock")"
 [[ -e "$sock" ]] && rm -f "$sock"
 
 log "opening ControlMaster for $name ($user@$host:$port) ..."
+# UserKnownHostsFile/StrictHostKeyChecking match Electron's machine bridge —
+# cloud VMs rotate IPs and host keys, and BatchMode=yes can't prompt to trust
+# a new key, so without these flags a rotation breaks reconnect with the
+# misleading "Host key verification failed".
 ssh -M -S "$sock" \
   -o ControlPersist=60m \
   -o ExitOnForwardFailure=yes \
   -o ConnectTimeout=10 \
   -o BatchMode=yes \
+  -o UserKnownHostsFile=/dev/null \
+  -o StrictHostKeyChecking=no \
   -i "$key" -p "$port" \
   -fN "$user@$host"
 
