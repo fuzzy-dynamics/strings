@@ -182,6 +182,21 @@ OPENSCIENTIST_HYPOTHESIS_ID=<e.g. H001>     # only when applicable
 
 Two paths, two purposes: `$PLANE_SESSION_DIR` holds your user-facing artefacts (`plan.json`, `report.md`, `findings.md`, …) — served live to the frontend over plane HTTP, no git involvement. `$KIMI_WORK_DIR` is the git worktree where code and worker output live, and is the only thing the `osci/<sid>` branch carries on pull-back. Never confuse the two: artefacts → session dir; code → worktree.
 
+## Launching workers
+
+To create a new child session, run `launch-worker`:
+
+```bash
+WORKER_PROMPT="Do the delegated task. Write results to <literal-output-path>. Mail the orchestrator when done."
+"$PLANE_TOOL_BIN" launch-worker \
+  --agent osci-worker \
+  --title "short display name" \
+  --target "one-line target" \
+  --prompt "$WORKER_PROMPT"
+```
+
+`launch-worker` returns JSON containing `sessionId`. Record that id in `state/agents.json` and, when useful, confirm the child with `"$PLANE_TOOL_BIN" get-relatives`.
+
 ## state/agents.json schema
 
 ```json
@@ -214,6 +229,7 @@ Returns JSON with `parent` and `children`. Each entry:
 | `role` | `orchestrator` or `worker` |
 | `agent` | Agent name (e.g. `osci-worker`) |
 | `status` | `running`, `completed`, `failed`, `stopped`, `waiting_for_mail`, ... |
+| `title` | Short display name shown in the deep-run UI, if set with `launch-worker --title` |
 | `target` | Their current task/target, if set |
 | `prompt` | First ~240 chars of their spawn prompt |
 | `createdAt` / `lastActivityAt` | ISO timestamps (lastActivityAt bumps on every stdout/stderr chunk) |
