@@ -1,6 +1,6 @@
 ---
 name: planning-with-files
-description: Manus-style file-based persistent memory for long-running deep agents. Maintains the deep-run UI files in `$PLANE_SESSION_DIR` (`plan.json`, findings.md, progress.md, report.md, claims.md, optional preview.html) and mirrors markdown state into `.openscientist/sessions/<run-session-id>/` for git history. Use whenever a task spans many tool calls and you need to survive context compaction or worker handoffs. **Stacks cleanly on top of any other meta-skill** (autoresearch, lit-review, …) — it never owns the work, only the bookkeeping. The frontend deep-run window reads `$PLANE_SESSION_DIR` through the plane files API; updating those files is how the user sees progress. Activated by both orchestrator and workers.
+description: Manus-style file-based persistent memory for long-running deep agents. Maintains the deep-run UI files in `$PLANE_SESSION_DIR` (`plan.json`, findings.md, progress.md, report.md, claims.md, preview.html) and mirrors markdown state into `.openscientist/sessions/<run-session-id>/` for git history. Use whenever a task spans many tool calls and you need to survive context compaction or worker handoffs. **Stacks cleanly on top of any other meta-skill** (autoresearch, lit-review, …) — it never owns the work, only the bookkeeping. The frontend deep-run window reads `$PLANE_SESSION_DIR` through the plane files API; updating those files is how the user sees progress. Activated by both orchestrator and workers.
 metadata:
   skill-author: OpenScientist
 category: memory
@@ -21,7 +21,7 @@ $PLANE_SESSION_DIR/
   progress.md     # session log: one line per significant event, time-ordered
   report.md       # the final deliverable for the user
   claims.md       # numbered claims with confidence + provenance
-  preview.html    # optional: live HTML the deep-run window renders
+  preview.html    # live HTML summary the deep-run window renders
 ```
 
 The orchestrator also keeps a git-backed mirror in the worktree:
@@ -34,7 +34,7 @@ The orchestrator also keeps a git-backed mirror in the worktree:
   progress.md      # mirror of the UI progress log
   report.md        # mirror of the UI report
   claims.md        # mirror of the UI claims
-  preview.html     # mirror of the UI preview, if present
+  preview.html     # mirror of the UI preview
   agents/
     <session-id>/  # one directory per worker / hypothesizer / scout — their private scratch
 ```
@@ -241,9 +241,19 @@ Minimum every report has:
 
 Cite specific commits and `findings.md` entries — never claim a result without a citation reachable from this worktree.
 
-### `preview.html` (optional)
+### `preview.html`
 
-If the deliverable benefits from a rendered view (a chart, a styled report, an interactive demo), the integrator worker drops a draft at `agents/<id>/preview.draft.html`; the **orchestrator** promotes it to `$PLANE_SESSION_DIR/preview.html`, mirrors, and commits. The deep-run window's Preview panel renders it live. Skip if not relevant.
+The Preview panel's live HTML surface. It lives in `$PLANE_SESSION_DIR/preview.html` and is mirrored to the worktree. Create it during bootstrap for orchestrator deep runs unless the task is strictly non-visual and has no user-facing state beyond a one-line answer; even then, prefer a compact status board over a blank Preview tab.
+
+Minimum content:
+
+- title and one-sentence goal;
+- current phase/status, active workers, and last meaningful update;
+- best current answer/path and the evidence that supports it;
+- blockers, weak claims, or missing evidence;
+- next action.
+
+The integrator worker may draft richer HTML at `agents/<id>/preview.draft.html`, but the **orchestrator** still owns promotion into `$PLANE_SESSION_DIR/preview.html`, mirroring, and commit. Keep the file standalone: complete HTML, inline CSS, no remote assets, responsive layout. Update it when `report.md`, `claims.md`, `findings.md`, or the selected candidate changes.
 
 ## 3. Stacks on top of other meta-skills
 

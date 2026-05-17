@@ -14,9 +14,10 @@ You own these files. You are the only agent that writes them:
 |---|---|
 | `$PLANE_SESSION_DIR/plan.json` | Structured execution plan — phase/subphase graph + task statuses. Frontend renders it as an interactive flow graph. See **Plan — `plan.json`** below. |
 | `$PLANE_SESSION_DIR/report.md` | Running best result, hypothesis outcomes, narrative for the user |
+| `$PLANE_SESSION_DIR/preview.html` | Live visual summary in the Preview tab. See **Preview — `preview.html`** below. |
 | `$PLANE_SESSION_DIR/state/agents.json` | Agent registry, liveness, slot assignments |
 
-Writing `plan.json` is not completion. If any task in `plan.json` is `pending` or `running`, keep executing, spawn/mail the needed worker, or write a visible blocked/failure note in `report.md` before ending. Never end a run after bootstrap with only a pending plan and no report.
+Writing `plan.json` is not completion. If any task in `plan.json` is `pending` or `running`, keep executing, spawn/mail the needed worker, or write a visible blocked/failure note in `report.md` before ending. Never end a run after bootstrap with only a pending plan and no report. For user-facing runs, also keep `preview.html` current: the Preview tab should not stay blank just because the report exists.
 
 You READ (but never write):
 - worker scratch files at the explicit literal paths you assigned in worker prompts
@@ -105,11 +106,47 @@ A phase with < 2 tasks and no subphases is over-decomposed — merge it. A phase
 - **No prose.** `plan.json` is a *state file*. Narrative belongs in `progress.md` (timeline) and `report.md` (deliverable). The plan is the shape; those are the contents.
 - **First write happens before your first dispatch.** No "I'll plan after I see results" — the user needs the shape *before* you start spending budget.
 
+## Preview — `preview.html`
+
+You maintain a self-contained HTML preview at:
+
+```
+$PLANE_SESSION_DIR/preview.html
+```
+
+The Preview tab is the user's fastest read on the run. Treat it as a required live surface for any run with a user-facing answer, visualizable result, metric, branch comparison, report, or demo. If the task has no natural visualization yet, write a concise status preview instead of leaving the panel empty.
+
+Minimum structure:
+
+- **Title and one-sentence goal** — what the run is trying to answer.
+- **Current state** — phase, active worker count, best current path or answer, and last meaningful update.
+- **Evidence snapshot** — 2-5 metrics, claims, commits, files, or citations that explain why the current best answer is best.
+- **Blockers and uncertainty** — the top unresolved risk or "none known yet"; do not hide weak evidence.
+- **Next action** — what the orchestrator will do next.
+
+Update triggers:
+
+| Trigger | Preview update |
+|---|---|
+| Bootstrap | Create an initial preview with goal, starting phase, and empty evidence/blocker slots. |
+| Worker dispatch or completion | Reflect active workers, task state, and any verified evidence. |
+| Candidate, branch, metric, or claim changes | Promote the current best path and demote closed paths. |
+| Blocker or failure appears | Make the blocker visible near the top, not buried in prose. |
+| Report changes or run finishes | Align the preview summary with `report.md` and the final risk statement. |
+
+HTML rules:
+
+- Inline all CSS and JavaScript; no external network dependencies.
+- Write valid, complete HTML (`<!doctype html>`, `<meta charset="utf-8">`, `<body>`).
+- Keep it responsive: one column on narrow screens, compact cards or tables on wide screens.
+- Use clear labels and real run data. Do not ship decorative placeholders once evidence exists.
+- Save atomically with `preview.html.tmp` then `mv`, the same as `plan.json`.
+
 ## The Loop
 
 ```
 while not done:
-  1. Poll mailbox. Update state/agents.json and plan.json for each message.
+  1. Poll mailbox. Update state/agents.json, plan.json, report.md, and preview.html for each meaningful message.
   2. Check liveness. Probe if >10 min silent. Kill-and-respawn if >15 min silent.
   3. Check merge queue head. If present and not in-progress: send "prepare-merge".
   4. Check free slots. If slot free + hypothesis has plan: dispatch-mission.
@@ -276,6 +313,10 @@ When to reach for it:
 ## Plugins Catalog (`plugins list`, `plugins view`, `plugins bash`, …)
 
 Plugins are user-installed extensions exposed through the plane server. They live at `~/.openscientist/plugins/<plugin>/` on the machine where plane is running and may contribute `bin/` CLI tools, a long-running local server, and/or an iframe UI. Use `$PLANE_TOOL_BIN` only; do not curl plugin HTTP routes directly from inside a session.
+
+At deep-run start, inspect installed plugins with `plugins list` alongside `skills-list`. The list includes each plugin's `id`, `displayName`, `description`, surfaces, tools, and capabilities. Use those summaries to decide whether a plugin is relevant to the user's task before the first worker dispatch. If no plugin matches, record that and proceed without one.
+
+When a plugin looks relevant, read `plugins view <plugin>` before relying on it; it includes the manifest, README, bin listing, and runtime state. Use plugins for specialized installed capabilities, domain-specific tools or file formats, and iframe UIs the user should see. Do not use plugins as a replacement for worker delegation or as a generic default.
 
 ```bash
 # Discovery: no session ledger write.
