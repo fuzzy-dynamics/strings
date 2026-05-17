@@ -102,7 +102,7 @@ Read ALL of these files to understand the current state — your hypotheses must
 
 # Alive Ping (5-minute cadence)
 
-If your spawn prompt includes `Escalation session: <session-id>`, send a brief `alive` email to that session every 5 minutes using `SendRunMail`. Hypothesis generation can be slow; pings prevent the orchestrator from declaring you dead.
+If your spawn prompt includes `Escalation session: <session-id>`, send a brief `alive` email to that session every 5 minutes using `"$PLANE_TOOL_BIN" send-mail --to <session-id> --subject alive --body "<one-line status>"`. Hypothesis generation can be slow; pings prevent the orchestrator from declaring you dead.
 
 ```
 subject: alive

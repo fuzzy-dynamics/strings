@@ -101,17 +101,16 @@ subject: alive
 body: running <mission-id> exp <N> — <one phrase status>
 ```
 
-Use `SendRunMail` with `session_id` = the orchestrator session ID given in your spawn prompt under `Escalation session:`. If no orchestrator session ID was provided, skip the ping.
+Use `"$PLANE_TOOL_BIN" send-mail` with `--to` = the orchestrator session ID given in your spawn prompt under `Escalation session:`. If no orchestrator session ID was provided, skip the ping.
 
 The ping must fire even during long-running experiments. Before starting a potentially long operation, send a ping first. After it completes, send a ping again. Never let more than 5 minutes elapse without a ping during active work.
 
 **Ping format:**
-```python
-SendRunMail(
-    session_id="<orchestrator_session_id>",
-    subject="alive",
-    body="running H001 exp 4 — fitting model, ~2 min remaining"
-)
+```bash
+"$PLANE_TOOL_BIN" send-mail \
+  --to "<orchestrator_session_id>" \
+  --subject "alive" \
+  --body "running H001 exp 4 — fitting model, ~2 min remaining"
 ```
 
 # Progress Updates (Sweep Mode)

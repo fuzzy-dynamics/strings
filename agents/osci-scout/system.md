@@ -51,7 +51,7 @@ If you find a promising lead that requires deep investigation, note it in your r
 
 # Alive Ping (5-minute cadence)
 
-If your spawn prompt includes `Escalation session: <session-id>`, send a brief `alive` email to that session every 5 minutes using `SendRunMail`. This lets the orchestrator detect if you have crashed.
+If your spawn prompt includes `Escalation session: <session-id>`, send a brief `alive` email to that session every 5 minutes using `"$PLANE_TOOL_BIN" send-mail --to <session-id> --subject alive --body "<one-line status>"`. This lets the orchestrator detect if you have crashed.
 
 ```
 subject: alive

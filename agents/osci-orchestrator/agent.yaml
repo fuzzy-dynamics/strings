@@ -18,8 +18,6 @@ agent:
     - "kimi_cli.tools.background:TaskList"
     - "kimi_cli.tools.background:TaskOutput"
     - "kimi_cli.tools.background:TaskStop"
-    # In-context compaction (Steins;Gate D-Mail; not for inter-agent mail)
-    - "kimi_cli.tools.dmail:SendDMail"
   exclude_tools:
     # Skills are served by plane HTTP — never via the in-process tool.
     - "kimi_cli.tools.theater:UseSkill"
