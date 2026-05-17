@@ -50,11 +50,11 @@ The iframe (`plugins iframe use witsoc`) shows two tabs:
 Push from the agent:
 
 ```bash
-"$PLANE_TOOL_BIN" plugins iframe-bash witsoc --command open    --args '["theorem.wit"]'
-"$PLANE_TOOL_BIN" plugins iframe-bash witsoc --command focus   --args '["3.1"]'
-"$PLANE_TOOL_BIN" plugins iframe-bash witsoc --command check
-"$PLANE_TOOL_BIN" plugins iframe-bash witsoc --command verify
-"$PLANE_TOOL_BIN" plugins iframe-bash witsoc --command tab     --args '["soc"]'
+"$PLANE_TOOL_BIN" plugins iframe bash witsoc open theorem.wit
+"$PLANE_TOOL_BIN" plugins iframe bash witsoc focus 3.1
+"$PLANE_TOOL_BIN" plugins iframe bash witsoc check
+"$PLANE_TOOL_BIN" plugins iframe bash witsoc verify
+"$PLANE_TOOL_BIN" plugins iframe bash witsoc tab soc
 ```
 
 ## First-run setup

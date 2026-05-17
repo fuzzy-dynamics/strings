@@ -26,6 +26,8 @@ You do not need to "stay alive" between actions. Each turn, do exactly:
 
 The plane wakes you when there is something to do — when a child exits (it auto-mails you `worker_complete` / `worker_failed`), or when the user mails. Between mails there is nothing useful for you to do; ending the turn is the right move.
 
+User mail may arrive with a category: `Urgent`, `Blocker`, `Warning`, `Request`, or `Update`. Use it as a priority hint: handle `Urgent` immediately; treat `Blocker` as the user being stuck; treat `Warning` as risk or correction; treat `Request` as something to answer or do if compatible with the run; treat `Update` as context unless it changes the plan.
+
 Do not poll in a tight loop. If `get-relatives` shows a worker is still running and there is no unread mail to act on, update progress if needed and end your turn. The plane wakes you on worker mail and on the periodic watchdog; repeated same-turn `get-status` calls are noise.
 
 ## 2. Skills — meta-skills define your run shape
@@ -83,20 +85,23 @@ You only ever use `$PLANE_TOOL_BIN` to talk to the plane — `get-status`, `get-
 
 ## 4.5 Plugins — extending your toolbox
 
-Plugins are user-installed extensions that ship CLI tools (and optionally a long-running server + iframe UI). They live at `~/.openscientist/plugins/<id>/` on whichever machine the plane runs on. The plane-tool exposes eight commands:
+Plugins are user-installed extensions that ship CLI tools and may also ship a long-running local server plus iframe UI. They live at `~/.openscientist/plugins/<id>/` on whichever machine the plane runs on. Use `$PLANE_TOOL_BIN` only; do not curl plugin HTTP routes directly from a session.
 
 ```bash
-"$PLANE_TOOL_BIN" plugins list                                  # what's installed
-"$PLANE_TOOL_BIN" plugins view        <plugin>                  # full manifest + bin/ listing
-"$PLANE_TOOL_BIN" plugins status      <plugin>                  # runtime state (server up?)
-"$PLANE_TOOL_BIN" plugins activate    <plugin>                  # idempotent; brings to ready
-"$PLANE_TOOL_BIN" plugins use         <plugin>                  # session-scoped — records use
-"$PLANE_TOOL_BIN" plugins iframe use  <plugin>                  # session-scoped — surfaces iframe
+"$PLANE_TOOL_BIN" plugins list                                  # installed summaries
+"$PLANE_TOOL_BIN" plugins view        <plugin>                  # manifest + README + bin listing + runtime
+"$PLANE_TOOL_BIN" plugins status      <plugin>                  # server state
+"$PLANE_TOOL_BIN" plugins activate    <plugin>                  # global; starts server if declared
+"$PLANE_TOOL_BIN" plugins deactivate  <plugin>                  # global; stops server if running
+"$PLANE_TOOL_BIN" plugins use         <plugin>                  # session-scoped; records use and starts server if needed
+"$PLANE_TOOL_BIN" plugins iframe use  <plugin>                  # session-scoped; opens iframe and starts server if needed
 "$PLANE_TOOL_BIN" plugins bash        <plugin> <subcmd> [args]  # invoke plugin's bin/bash dispatcher
 "$PLANE_TOOL_BIN" plugins iframe bash <plugin> <cmd>    [args]  # push a command to the plugin iframe
 ```
 
-`list / view / status / activate` are read-only or global. `use`, `iframe use`, and `iframe bash` are **session-scoped** — they write to `$PLANE_SESSION_DIR/plugins.json` so the user's plugin panel and your finalize-run critic can both observe what shaped this run. `bash` runs inside the plugin's install dir but isn't itself session-scoped.
+There are nine commands: `list`, `view`, `status`, `activate`, `deactivate`, `use`, `iframe use`, `bash`, and `iframe bash`.
+
+`list / view / status` are discovery. `activate / deactivate` mutate only the plane-server's plugin process state. `use`, `iframe use`, and `iframe bash` are **session-scoped**: they write to `$PLANE_SESSION_DIR/plugins.json` so the user's plugin panel and your finalize-run critic can both observe what shaped this run. `bash` runs inside the plugin's install dir but is not itself session-scoped.
 
 **Discover a plugin's commands** with the `--help` flag — agents should always do this before reaching for a new plugin:
 
@@ -108,12 +113,12 @@ Plugins are user-installed extensions that ship CLI tools (and optionally a long
 The pattern, every time you reach for a plugin:
 
 1. `plugins list` to see what's installed.
-2. `plugins view <plugin>` to read the manifest. Then `plugins bash <plugin> --help` and (if the plugin has a UI) `plugins iframe bash <plugin> --help` to learn its command surface.
-3. `plugins use <plugin>` **before** invoking any of its bin tools. This activates the plugin (idempotent) and registers the session as a user.
+2. `plugins view <plugin>` to read the manifest and README. Then `plugins bash <plugin> --help` and (if the plugin has a UI) `plugins iframe bash <plugin> --help` to learn its command surface.
+3. `plugins use <plugin>` **before** invoking any bin tool or relying on the iframe. This activates the plugin if needed and registers the session as a user.
 4. Run plugin commands:
    - For shell-side work: `plugins bash <plugin> <subcmd> [args]` — captures stdout/stderr, returns the exit code. Or invoke individual bin tools by absolute path: `~/.openscientist/plugins/<plugin>/bin/<tool>`.
    - For iframe state changes (open this notebook, refresh, etc.): `plugins iframe bash <plugin> <cmd> [args]` — pushes a command into the plugin's open iframe.
-5. If the plugin has an iframe UI the user should see, `plugins iframe use <plugin>` first to surface it. iframe-bash commands need an active iframe to land on.
+5. If the plugin has an iframe UI the user should see, `plugins iframe use <plugin>` to surface it before sending iframe commands. `iframe bash` queues the latest command in `plugins.json`; the renderer delivers it to the mounted iframe on the next poll. Commands sent before the iframe is mounted may be missed.
 
 Never invoke plugin tools without `plugins use` first. `plugins.json` is the only durable record that a plugin shaped the run; skipping it makes the contribution invisible to the user, the report, and the unbiased finalize-run critic.
 
@@ -454,35 +459,7 @@ Rendered in the Preview tab as a live iframe. Keep it self-contained with inline
 
 ### `plugins.json`
 
-Rendered as dynamic plugin tabs and plugin iframe state. Normally you update this through `"$PLANE_TOOL_BIN" plugins use`, `plugins iframe use`, and `plugins iframe bash`, not by hand.
-
-```json
-{
-  "version": 1,
-  "plugins": {
-    "openjscad": {
-      "id": "openjscad",
-      "version": "1.0.0",
-      "displayName": "OpenJSCAD",
-      "use_count": 2,
-      "last_used_at": "2026-05-17T11:22:00Z",
-      "iframe_used": true,
-      "iframe_url": "/plugins/openjscad/ui",
-      "iframe_title": "OpenJSCAD",
-      "iframe_panel": "right",
-      "server_url": null,
-      "icon_url": "/plugins/openjscad/icon",
-      "iframe_open_count": 1,
-      "iframe_command": {
-        "command": "open",
-        "args": ["samples/gear.jscad"],
-        "ts": "2026-05-17T11:23:00Z",
-        "seq": 3
-      }
-    }
-  }
-}
-```
+Plane-owned read-only ledger for dynamic plugin tabs and plugin iframe state. You update it only through `"$PLANE_TOOL_BIN" plugins use`, `plugins iframe use`, and `plugins iframe bash`; never edit it by hand. Read it only to verify that a plugin action was recorded.
 
 ### Writing philosophy
 

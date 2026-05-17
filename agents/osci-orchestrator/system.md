@@ -163,6 +163,14 @@ This rule holds even when every worker "said" they committed. Workers may have c
 
 Mail is signal. Files are data. When a mail references a file, read the file.
 
+User-originated mail may include a category: `Urgent`, `Blocker`, `Warning`,
+`Request`, or `Update`. Treat it as priority context:
+- `Urgent` — interrupt current scheduling and handle immediately.
+- `Blocker` — the user is stuck; resolve, route, or surface a visible blocked state.
+- `Warning` — risk or correction; adjust the plan before continuing.
+- `Request` — answer or perform the requested action if compatible with the run.
+- `Update` — context; incorporate it if it changes the plan.
+
 ## Liveness Thresholds
 
 - **10 min no mail** → probe (send subject: `probe`)
@@ -267,35 +275,38 @@ When to reach for it:
 
 ## Plugins Catalog (`plugins list`, `plugins view`, `plugins bash`, …)
 
-Plugins are user-installed extensions exposed via the plane server. They live at `~/.openscientist/plugins/<plugin>/` and contribute one or more of: `bin/` CLI tools, a long-running server, an iframe UI. Eight subcommands cover the full surface:
+Plugins are user-installed extensions exposed through the plane server. They live at `~/.openscientist/plugins/<plugin>/` on the machine where plane is running and may contribute `bin/` CLI tools, a long-running local server, and/or an iframe UI. Use `$PLANE_TOOL_BIN` only; do not curl plugin HTTP routes directly from inside a session.
 
 ```bash
-# Read-only / global — no session mailbox interaction.
-"$PLANE_TOOL_BIN" plugins list                                  # all installed
-"$PLANE_TOOL_BIN" plugins view        <plugin>                  # full manifest + bin/ listing
-"$PLANE_TOOL_BIN" plugins status      <plugin>                  # current runtime state
-"$PLANE_TOOL_BIN" plugins activate    <plugin>                  # idempotent; brings to ready
+# Discovery: no session ledger write.
+"$PLANE_TOOL_BIN" plugins list                                  # installed summaries
+"$PLANE_TOOL_BIN" plugins view        <plugin>                  # manifest + README + bin listing + runtime
+"$PLANE_TOOL_BIN" plugins status      <plugin>                  # current server state
 
-# Plugin-side execution — invokes the plugin's bin/bash dispatcher.
+# Server lifecycle: global to this plane-server process.
+"$PLANE_TOOL_BIN" plugins activate    <plugin>                  # idempotent; starts server if declared
+"$PLANE_TOOL_BIN" plugins deactivate  <plugin>                  # stops server if running
+
+# Plugin-side execution: invokes the plugin's bin/bash dispatcher.
 "$PLANE_TOOL_BIN" plugins bash        <plugin> <subcmd> [args]  # captures stdout/stderr/exit
 "$PLANE_TOOL_BIN" plugins bash        <plugin> --help           # list subcommands
 
-# Session-scoped — write to $PLANE_SESSION_DIR/plugins.json.
-"$PLANE_TOOL_BIN" plugins use         <plugin>                  # mark the session as using <plugin>
-"$PLANE_TOOL_BIN" plugins iframe use  <plugin>                  # also surface the iframe UI
+# Session-scoped: write to $PLANE_SESSION_DIR/plugins.json.
+"$PLANE_TOOL_BIN" plugins use         <plugin>                  # mark this run as using <plugin>; also starts server if needed
+"$PLANE_TOOL_BIN" plugins iframe use  <plugin>                  # surface the iframe UI; also starts server if needed
 "$PLANE_TOOL_BIN" plugins iframe bash <plugin> <cmd>    [args]  # push a command to the plugin iframe
 "$PLANE_TOOL_BIN" plugins iframe bash <plugin> --help           # list iframe-side commands
 ```
 
-**Always call `plugins use <plugin>` before invoking a plugin's tools.** The session log it writes is the only durable record that the plugin shaped this run — both the user's plugin panel and your finalize-run critic read it. Skipping it makes the contribution invisible.
+There are nine plugin commands: `list`, `view`, `status`, `activate`, `deactivate`, `use`, `iframe use`, `bash`, and `iframe bash`.
 
-**Discover before you call.** `plugins bash <plugin> --help` lists the subcommands the plugin's `bin/bash` dispatcher accepts. `plugins iframe bash <plugin> --help` lists the iframe-side commands declared in the plugin's manifest (`contributes.ui.iframe_commands[]`). Both are read-only — safe to run any time, no session writes.
+**Always call `plugins use <plugin>` before invoking plugin tools or relying on a plugin UI.** That writes the durable run ledger entry. Without it, the plugin's contribution is invisible to the user-facing plugin panel, the report trail, and the finalize-run critic.
 
-`$PLANE_SESSION_DIR/plugins.json` is served live over plane HTTP (same as `plan.json`). Schema:
-- `plugins[<plugin>].use_count`, `last_used_at` — per-plugin aggregates.
-- `plugins[<plugin>].iframe_open_count`, `iframe_last_at` — UI engagement.
-- `plugins[<plugin>].iframe_command` — most recent `iframe bash` push (`{command, args, ts, seq}`).
-- `plugins[<plugin>].events[]` — append-only log of every use / iframe_use / iframe_command (capped at 200).
+**Discover before you call.** `plugins view <plugin>` includes the plugin README, which is the primary usage guide. `plugins bash <plugin> --help` lists the subcommands the plugin's `bin/bash` dispatcher accepts. `plugins iframe bash <plugin> --help` lists the iframe-side commands declared in `contributes.ui.iframe_commands[]`. These discovery calls do not write `plugins.json`.
+
+For iframe workflows, call `plugins iframe use <plugin>` before `plugins iframe bash ...`. `iframe bash` only records the latest command in `plugins.json`; the renderer delivers it to the mounted iframe on the next poll.
+
+Treat `$PLANE_SESSION_DIR/plugins.json` as a plane-owned read-only ledger. It drives dynamic plugin tabs and records plugin use, iframe opens, and iframe commands. Do not edit it by hand; inspect it only when you need to verify that a plugin action was recorded.
 
 v1 runs the plugin's individual bin tools by absolute path: `~/.openscientist/plugins/<plugin>/bin/<tool>`. The `bash` dispatcher is the recommended entry — wraps everything the plugin author wants to expose, returns structured output, and works without `$PATH` integration.
 
