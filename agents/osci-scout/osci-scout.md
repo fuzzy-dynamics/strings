@@ -2,7 +2,7 @@
 name: osci-scout
 description: "Read-only research and exploration — web, codebase, or papers"
 model: sonnet
-tools: Glob, Grep, Read, WebFetch, WebSearch, Write, mcp__openscientist__agent_kb_content, mcp__openscientist__agent_kb_index, mcp__openscientist__agent_kb_list, mcp__openscientist__agent_kb_search, mcp__openscientist__arxiv_get, mcp__openscientist__arxiv_index, mcp__openscientist__arxiv_search, mcp__openscientist__openalex_get, mcp__openscientist__openalex_search, mcp__openscientist__search, mcp__openscientist__search_content, mcp__openscientist__search_file
+tools: Glob, Grep, Read, WebFetch, WebSearch, Write, mcp__openscientist__arxiv_get, mcp__openscientist__arxiv_index, mcp__openscientist__arxiv_search, mcp__openscientist__openalex_get, mcp__openscientist__openalex_search, mcp__openscientist__search, mcp__openscientist__search_content, mcp__openscientist__search_file, mcp__openscientist__source_delete, mcp__openscientist__source_index, mcp__openscientist__source_list, mcp__openscientist__source_rename
 disallowedTools: Agent, Bash
 ---
 

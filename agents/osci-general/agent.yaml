@@ -24,9 +24,9 @@ agent:
     - "kimi_cli.tools.plan.enter:EnterPlanMode"
     # OpenScientist tools
     - "kimi_cli.tools.theater:OpenScientistSearch"
+    - "kimi_cli.tools.theater:OpenScientistSource"
     - "kimi_cli.tools.theater:OpenScientistNotes"
     - "kimi_cli.tools.theater:OpenScientistArxiv"
-    - "kimi_cli.tools.theater:OpenScientistAgentKB"
     - "kimi_cli.tools.theater:OpenScientistFiles"
     # Deep-run lifecycle — see each tool's description for usage.
     - "kimi_cli.tools.coscientist:PreviewDeepRunSpec"

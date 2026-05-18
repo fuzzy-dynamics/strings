@@ -31,5 +31,4 @@ agent:
     # The orchestrator never reads literature itself.
     - "kimi_cli.tools.theater:OpenScientistArxiv"
     - "kimi_cli.tools.theater:OpenScientistSearch"
-    - "kimi_cli.tools.theater:OpenScientistAgentKB"
   subagents:

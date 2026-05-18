@@ -1,6 +1,6 @@
 ---
 name: notes-use
-description: How to author, structure, and maintain workspace notes through the `OpenScientistNotes` tool so the Notion-like (TipTap) editor renders them well and the user can actually use them a month later. Covers what makes a good note (lead with the claim, section it, cite externals, preserve reasoning) with shape templates per intent (paper summary, decision note, meeting note, daily log, quick observation); the tool's eight functions and the find-the-id flow that edit/append/delete require; the HTML the renderer actually parses (headings, lists, task lists, tables, code blocks with language, KaTeX math, highlights, source-citation links); the search-before-create discipline; and the line between a note (user-facing artifact) and a scratchpad (agent memory — does not belong in notes). Required reading before any `OpenScientistNotes` write, edit, or append.
+description: How to author, structure, and maintain workspace notes through the `OpenScientistNotes` tool so the Notion-like (TipTap) editor renders them well and the user can actually use them a month later. Covers what makes a good note (lead with the claim, section it, cite externals, preserve reasoning) with shape templates per intent (paper summary, decision note, meeting note, daily log, quick observation); the tool's ten backend-backed functions and the find-the-id flow that edit/append/delete require; the HTML the renderer actually parses (headings, lists, task lists, tables, code blocks with language, KaTeX math, highlights, source-citation links); the search-before-create discipline; and the line between a note (user-facing artifact) and a scratchpad (agent memory — does not belong in notes). Required reading before any `OpenScientistNotes` write, edit, or append.
 metadata:
   skill-author: OpenScientist
 category: knowledge
@@ -125,22 +125,24 @@ If the user's request doesn't fit any of these, default to: an H1-less HTML frag
 
 ## 2. The tool
 
-Everything goes through one tool, `OpenScientistNotes`, dispatched by the `function` parameter. Eight functions:
+Everything goes through one tool, `OpenScientistNotes`, dispatched by the `function` parameter. Ten functions, matching the backend `NotesTool.get_metadata()` names:
 
-| `function`              | Parameters (required **bold**)                                                       | Returns                          |
-|-------------------------|---------------------------------------------------------------------------------------|----------------------------------|
-| `list_notes`            | —                                                                                     | Tree of `{id, title, folder, …}` |
-| `search_notes`          | **`query`**                                                                           | Snippets with note id + title    |
-| `search_notes_semantic` | **`query`**                                                                           | Same shape, embedding-based      |
-| `read_note`             | **`note_id`**                                                                         | Full HTML content + metadata     |
-| `create_note`           | **`title`**, **`content`**, `path`                                                    | New `{id, …}`                    |
-| `edit_note`             | **`note_id`**, **`old_text`**, **`new_text`**, `occurrence=1`, `suggest_mode=true`    | Updated note                     |
-| `append_note`           | **`note_id`**, **`content`**                                                          | Updated note                     |
-| `delete_note`           | **`note_id`**                                                                         | —                                |
+| `function`                 | Parameters (required **bold**)                                                    | Returns                          |
+|----------------------------|------------------------------------------------------------------------------------|----------------------------------|
+| `get_notes_list`           | —                                                                                  | Tree of `{id, title, folder, …}` |
+| `get_notes_summary`        | **`titles`**, `top_k=3`                                                            | Candidate note IDs by title      |
+| `search_notes_text`        | **`query`**, `limit=10`                                                            | Snippets with note id + title    |
+| `search_notes_semantic`    | **`query`**, `limit=10`                                                            | Matching chunks with scores      |
+| `get_note_chunks_by_ids`   | **`chunk_ids`**                                                                    | Exact chunk text by chunk id     |
+| `read_note`                | **`note_id`**                                                                      | Full HTML content + metadata     |
+| `create_note`              | **`name`**, `content`, `path`                                                      | New `{id, …}`                    |
+| `edit_note`                | **`note_id`**, **`old_text`**, **`new_text`**, `occurrence=1`, `suggest_mode=true` | Updated note                     |
+| `append_note`              | **`note_id`**, **`content`**                                                       | Updated note                     |
+| `delete_note`              | **`note_id`**                                                                      | —                                |
 
 Two operational facts that are easy to miss:
 
-- **`edit_note` / `append_note` / `delete_note` all need an integer `note_id`** — not a title, not a path. Call `list_notes` or `search_notes` first to discover the id, then act.
+- **`edit_note` / `append_note` / `delete_note` all need an integer `note_id`** — not a title, not a path. Call `get_notes_list`, `get_notes_summary`, or `search_notes_text` first to discover the id, then act.
 - **`edit_note` defaults to `suggest_mode=true`** — the change appears as an in-editor suggestion the user can accept or reject, not a silent mutation. Pass `suggest_mode=false` only when the user has explicitly delegated decisions to you ("just fix it", "apply the change directly").
 
 There is no PDF-to-note function on this tool. If the user wants the contents of a PDF as a note, summarize manually with `create_note`, or save the PDF as a source and cite it.
@@ -150,10 +152,10 @@ There is no PDF-to-note function on this tool. If the user wants the contents of
 Before `create_note`, search:
 
 ```
-OpenScientistNotes(function="search_notes", query="<topic>")
+OpenScientistNotes(function="search_notes_text", query="<topic>")
 ```
 
-If a relevant note exists, **edit or append to it** instead of creating a sibling — the user does not want twelve notes called "Transformer notes (1)" through "(12)". Same-title creates are not deduplicated server-side. Also run `list_notes` to see the existing folder layout, so you place new notes alongside their siblings instead of at the root. `search_notes_semantic` catches "did I write anything about *X*?" questions where the user's wording and the note's wording differ.
+If a relevant note exists, **edit or append to it** instead of creating a sibling — the user does not want twelve notes called "Transformer notes (1)" through "(12)". Same-title creates are not deduplicated server-side. Also run `get_notes_list` to see the existing folder layout, so you place new notes alongside their siblings instead of at the root. `search_notes_semantic` catches "did I write anything about *X*?" questions where the user's wording and the note's wording differ.
 
 ## 4. The HTML the renderer actually understands
 
@@ -218,14 +220,11 @@ LaTeX lives in the `data-latex` attribute; the text node inside the tag is ignor
 
 When a note references an indexed paper, document, or quote in the workspace, use the `sources://` link scheme. The frontend turns these into clickable references that scroll the source panel to the right place.
 
-Three forms, in order of how often you'll write each:
+Two forms, in order of how often you'll write each:
 
 ```html
 <!-- Quote citation: agent has the exact text it's citing -->
 <a href="sources://12?kind=quote&exact=attention%20is%20all%20you%20need">attention head</a>
-
-<!-- Annotation citation: agent has an annotation id from a prior tool result -->
-<a href="sources://12?annotationId=ann_abc123">Section 3.2</a>
 
 <!-- Plain source link: just opens the source -->
 <a href="sources://12">Vaswani et al. 2017</a>
@@ -235,11 +234,9 @@ Rules:
 
 - The path segment is the source's integer id (from `OpenScientistSearch` results, the document panel, etc.).
 - `exact` must be **plain text**, percent-encoded, verbatim from the source so the highlighter can find it. Keep it short (a few words). Optional `prefix=` / `suffix=` params disambiguate when the same phrase appears multiple times.
-- The parser treats any link with `annotationId` as an annotation reference and any link with `exact` as a quote reference. `kind=quote` is decorative — `exact` is what triggers quote handling.
+- The parser treats any link with `exact` as a quote reference. `kind=quote` is decorative — `exact` is what triggers quote handling.
 - Anchor text inside `<a>` should be **≤ 4 words** (e.g. "attention mechanism", "Vaswani §3.2"). Long anchor text wraps awkwardly inline.
 - Cite the *thing you're claiming*, not the source as a whole. "Vaswani et al. observed [scaling effects](sources://12?...)" reads better than "[Vaswani et al.](sources://12) observed scaling effects."
-
-`tools/annotation.md` covers building annotation ids.
 
 ## 6. Editing: choose the right verb
 
@@ -271,27 +268,27 @@ Conventions that have worked:
 - Top-level folders by *kind*: `papers/`, `meetings/`, `experiments/`, `daily/`, `inbox/`.
 - Within `papers/`, sub-folder by topic or author surname: `papers/diffusion/`, `papers/scaling-laws/`.
 - Use `inbox/` for "I don't know where this goes yet" — better than the root.
-- **The user's existing structure beats every convention.** Always `list_notes` first and place new notes next to siblings.
+- **The user's existing structure beats every convention.** Always `get_notes_list` first and place new notes next to siblings.
 
 When the user asks you to "organize my notes", don't move folders unprompted — ask which target structure they want. Bulk reorganization is destructive-feeling; confirm scope before acting.
 
 ## 8. Search inside notes
 
-`search_notes` returns matched snippets with surrounding context, not full content. Use it as the *first* step whenever the user asks a question their notes can answer ("what did I write about RoPE?", "did I take notes on the meeting last week?"). `search_notes_semantic` is for concept-level queries where the user's wording and the note's wording diverge.
+`search_notes_text` returns matched snippets with surrounding context, not full content. Use it as the *first* step whenever the user asks a question their notes can answer ("what did I write about RoPE?", "did I take notes on the meeting last week?"). `search_notes_semantic` is for concept-level queries where the user's wording and the note's wording diverge.
 
 Don't read every matched note in full — read the one or two whose snippets directly answer the user's question. The user's notes are theirs; reading more than needed wastes context and risks surfacing private content the user didn't ask about.
 
 ## 9. Anti-patterns
 
 - **Writing a note as a single unstructured paragraph.** Apply §1's shape — sectioned, cited, reasoning preserved. Plain wall-of-text notes are unreadable a week later and are the most common failure mode this skill exists to prevent.
-- **Duplicating notes** because you skipped the search step. *Always* `search_notes` (or `list_notes`) before `create_note`.
+- **Duplicating notes** because you skipped the search step. *Always* `search_notes_text` (or `get_notes_list`) before `create_note`.
 - **Treating notes as agent memory.** If you're the only consumer, write under `.openscientist/sessions/$SESSION/` — not the user's tree.
 - **Markdown as content.** The renderer doesn't parse it; convert to HTML first.
 - **Citing "the paper" without a `sources://` link.** A claim without a citation reachable from this workspace is a claim the user can't verify in one click.
 - **Long `<a>` anchor text** — keep it ≤ 4 words.
 - **Using `<u>` for emphasis** — underline isn't loaded. Use `<em>` or `<mark>`.
 - **Block math via `$$...$$` literal in HTML** — input rule only. Use `<div data-type="block-math" data-latex="…">`.
-- **Editing or appending by title.** Those calls require an integer `note_id` — discover it via `list_notes` / `search_notes` first.
+- **Editing or appending by title.** Those calls require an integer `note_id` — discover it via `get_notes_list`, `get_notes_summary`, or `search_notes_text` first.
 - **Bulk-overwriting via same-title `create_note`.** Creates a sibling, doesn't overwrite. Use `edit` / `append`.
 - **Reorganizing folders without asking.** Notes are the user's filing system; touching it without permission breaks trust fast.
 
@@ -299,11 +296,11 @@ Don't read every matched note in full — read the one or two whose snippets dir
 
 ```python
 # Search-then-create
-hits = OpenScientistNotes(function="search_notes", query="transformer scaling")
+hits = OpenScientistNotes(function="search_notes_text", query="transformer scaling")
 if not hits:
     OpenScientistNotes(
         function="create_note",
-        title="Transformer scaling — survey",
+        name="Transformer scaling — survey",
         path="papers/scaling-laws",
         content=(
             "<h2>What it is</h2>"
@@ -323,7 +320,7 @@ if not hits:
     )
 
 # Append a dated entry (need the note's id)
-notes = OpenScientistNotes(function="list_notes")
+notes = OpenScientistNotes(function="get_notes_list")
 daily_id = next(n["id"] for n in notes if n["title"] == "Daily log")
 OpenScientistNotes(
     function="append_note",
