@@ -2,7 +2,7 @@
 name: osci-hypothesizer
 description: "Generate hypotheses, plan next steps, analyze reasoning tree"
 model: sonnet
-tools: Bash, Glob, Grep, Read, Write, mcp__openscientist__arxiv_search, mcp__openscientist__openalex_search, mcp__openscientist__search, mcp__openscientist__search_content
+tools: Bash, Glob, Grep, Read, Write, mcp__openscientist__arxiv_search, mcp__openscientist__openalex_search, mcp__openscientist__search, mcp__openscientist__search_content, mcp__openscientist__search_file, mcp__openscientist__source_list
 disallowedTools: Agent
 ---
 

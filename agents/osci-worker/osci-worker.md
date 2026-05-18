@@ -2,7 +2,7 @@
 name: osci-worker
 description: "Execute implementation tasks — code, experiments, documents, merges"
 model: sonnet
-tools: Bash, Edit, Glob, Grep, Read, WebFetch, WebSearch, Write, mcp__openscientist__files_cat, mcp__openscientist__files_grep, mcp__openscientist__files_ls, mcp__openscientist__files_write, mcp__openscientist__notes_append, mcp__openscientist__notes_create, mcp__openscientist__notes_delete, mcp__openscientist__notes_edit, mcp__openscientist__notes_list, mcp__openscientist__notes_read, mcp__openscientist__notes_search, mcp__openscientist__notes_search_semantic, mcp__openscientist__search, mcp__openscientist__search_content
+tools: Bash, Edit, Glob, Grep, Read, WebFetch, WebSearch, Write, mcp__openscientist__files_cat, mcp__openscientist__files_grep, mcp__openscientist__files_ls, mcp__openscientist__files_write, mcp__openscientist__notes_append, mcp__openscientist__notes_chunks, mcp__openscientist__notes_create, mcp__openscientist__notes_delete, mcp__openscientist__notes_edit, mcp__openscientist__notes_list, mcp__openscientist__notes_read, mcp__openscientist__notes_search, mcp__openscientist__notes_search_semantic, mcp__openscientist__notes_summary, mcp__openscientist__search, mcp__openscientist__search_content, mcp__openscientist__search_file, mcp__openscientist__source_delete, mcp__openscientist__source_index, mcp__openscientist__source_list, mcp__openscientist__source_rename
 disallowedTools: Agent
 ---
 

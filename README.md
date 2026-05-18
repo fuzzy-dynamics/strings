@@ -8,6 +8,6 @@ The **global world-model** for [OpenScientist](https://github.com/fuzzy-dynamics
 |---|---|
 | `agents/` | 5 canonical agent specs — `osci-orchestrator`, `osci-worker`, `osci-scout`, `osci-hypothesizer`, `osci-general`. |
 | `skills/` | 7 first-party skills — `machine-setup`, `machine-use`, `sandbox-use`, `autoresearch`, `autoresearch-worker`, `autoresearch-hypothesizer`, `planning-with-files`. |
-| `tools/` | Reference docs for the OpenScientist cloud tools (arxiv, openalex, openreview, huggingface, search, notes, annotation, filesystem). |
+| `tools/` | Reference docs for the OpenScientist cloud tools (arxiv, openalex, openreview, huggingface, source, search, notes, filesystem). |
 | `sandboxes/` | Sandbox image specs — `alpine` and `math`. |
 | `packages/skills/` | 109 packaged domain skills — scientific Python libraries, workflow skills, integrations. |
