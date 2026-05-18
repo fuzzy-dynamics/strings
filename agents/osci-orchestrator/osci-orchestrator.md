@@ -115,6 +115,15 @@ The pattern, every time you reach for a plugin:
    - For iframe state changes (open this notebook, refresh, etc.): `plugins iframe bash <plugin> <cmd> [args]` — pushes a command into the plugin's open iframe.
 5. If the plugin has an iframe UI the user should see, `plugins iframe use <plugin>` to surface it before sending iframe commands. `iframe bash` queues the latest command in `plugins.json`; the renderer delivers it to the mounted iframe on the next poll. Commands sent before the iframe is mounted may be missed.
 
+If the user asks to activate, open, show, use, or make visible a plugin that has `contributes.ui`, treat that as a request to open the iframe. Run both commands:
+
+```bash
+"$PLANE_TOOL_BIN" plugins use <plugin>
+"$PLANE_TOOL_BIN" plugins iframe use <plugin>
+```
+
+Do not stop at `plugins activate` or `plugins status`; those only describe the server process and do not make the iframe visible. Afterward, verify `$PLANE_SESSION_DIR/plugins.json` has `plugins[<plugin>].iframe_used === true` and a non-empty `iframe_url`.
+
 Record the plugin decision in `progress.md`: either the plugin selected and why, or that no installed plugin matched the task. Never invoke plugin tools without `plugins use` first. `plugins.json` is the only durable record that a plugin shaped the run; skipping it makes the contribution invisible to the user, the report, and the unbiased finalize-run critic.
 
 ## 5. Your worktree

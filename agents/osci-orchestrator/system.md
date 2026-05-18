@@ -343,6 +343,15 @@ There are nine plugin commands: `list`, `view`, `status`, `activate`, `deactivat
 
 **Always call `plugins use <plugin>` before invoking plugin tools or relying on a plugin UI.** That writes the durable run ledger entry. Without it, the plugin's contribution is invisible to the user-facing plugin panel, the report trail, and the finalize-run critic.
 
+If the user asks to activate, open, show, use, or make visible a plugin that has `contributes.ui`, treat that as a request to open the iframe. Run both commands:
+
+```bash
+"$PLANE_TOOL_BIN" plugins use <plugin>
+"$PLANE_TOOL_BIN" plugins iframe use <plugin>
+```
+
+Do not stop at `plugins activate` or `plugins status`; those only describe the server process and do not make the iframe visible. Afterward, verify `$PLANE_SESSION_DIR/plugins.json` has `plugins[<plugin>].iframe_used === true` and a non-empty `iframe_url`.
+
 **Discover before you call.** `plugins view <plugin>` includes the plugin README, which is the primary usage guide. `plugins bash <plugin> --help` lists the subcommands the plugin's `bin/bash` dispatcher accepts. `plugins iframe bash <plugin> --help` lists the iframe-side commands declared in `contributes.ui.iframe_commands[]`. These discovery calls do not write `plugins.json`.
 
 For iframe workflows, call `plugins iframe use <plugin>` before `plugins iframe bash ...`. `iframe bash` only records the latest command in `plugins.json`; the renderer delivers it to the mounted iframe on the next poll.
