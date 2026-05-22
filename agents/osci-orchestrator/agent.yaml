@@ -18,6 +18,8 @@ agent:
     - "kimi_cli.tools.background:TaskList"
     - "kimi_cli.tools.background:TaskOutput"
     - "kimi_cli.tools.background:TaskStop"
+    # Backend-hosted web search; API keys stay on the backend.
+    - "kimi_cli.tools.theater:OpenScientistWebSearch"
   exclude_tools:
     # Skills are served by plane HTTP — never via the in-process tool.
     - "kimi_cli.tools.theater:UseSkill"
@@ -25,7 +27,7 @@ agent:
     - "kimi_cli.tools.agent:Agent"
     # No user prompts — this is a deep run, the user is gone.
     - "kimi_cli.tools.ask_user:AskUserQuestion"
-    # No research — that work belongs to subagents (scout, worker).
+    # No direct public web tools; use the backend-hosted internal search tool above.
     - "kimi_cli.tools.web:SearchWeb"
     - "kimi_cli.tools.web:FetchURL"
     # The orchestrator never reads literature itself.

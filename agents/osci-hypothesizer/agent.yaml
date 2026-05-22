@@ -17,6 +17,7 @@ agent:
     # OpenScientist cloud tools — search for literature context
     - "kimi_cli.tools.theater:OpenScientistSearch"
     - "kimi_cli.tools.theater:OpenScientistSource"
+    - "kimi_cli.tools.theater:OpenScientistWebSearch"
   mcp_tools:
     - server: "openscientist"
       tools: ["arxiv_search", "openalex_search", "search", "search_content", "search_file", "source_list"]

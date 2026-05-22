@@ -25,6 +25,7 @@ agent:
     # OpenScientist tools
     - "kimi_cli.tools.theater:OpenScientistSearch"
     - "kimi_cli.tools.theater:OpenScientistSource"
+    - "kimi_cli.tools.theater:OpenScientistWebSearch"
     - "kimi_cli.tools.theater:OpenScientistNotes"
     - "kimi_cli.tools.theater:OpenScientistArxiv"
     - "kimi_cli.tools.theater:OpenScientistFiles"

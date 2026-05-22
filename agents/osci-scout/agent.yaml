@@ -22,6 +22,7 @@ agent:
     # OpenScientist cloud tools — search + papers for research
     - "kimi_cli.tools.theater:OpenScientistSearch"
     - "kimi_cli.tools.theater:OpenScientistSource"
+    - "kimi_cli.tools.theater:OpenScientistWebSearch"
     - "kimi_cli.tools.theater:OpenScientistArxiv"
   mcp_tools:
     - server: "openscientist"
