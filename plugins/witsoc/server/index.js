@@ -6,8 +6,10 @@
 //   GET  /health                                 → liveness
 //   GET  /api/info                               → venv path + wit version
 //   GET  /api/list?dir=<abs>                     → recursive .wit + .soc list
+//   GET  /api/lean-files?...                     → .lean files in a deep-run worktree
 //   GET  /api/file?path=<abs>                    → raw text
 //   PUT  /api/file?path=<abs>                    → body = new content
+//   POST /api/lake-build?path=<abs .lean>        → lake build in nearest Lake project
 //   POST /api/check?path=<abs>                   → wit check stdout/stderr/exit
 //   POST /api/verify?path=<abs>[&step=N.M]       → wit verify stdout
 //   POST /api/context?path=<abs>                 → wit context stdout
@@ -27,6 +29,8 @@ const PLUGIN_ID = process.env.PLUGIN_ID || "witsoc";
 const PLUGIN_DIR = path.resolve(__dirname, "..");
 const VENV_DIR = process.env.WITSOC_VENV || path.join(PLUGIN_DIR, "data", "venv");
 const WIT = path.join(VENV_DIR, "bin", "wit");
+const PLANE_SERVER_URL = process.env.PLANE_SERVER_URL || "http://127.0.0.1:5495";
+const PLANE_TOOL_BIN = process.env.PLANE_TOOL_BIN || "";
 
 const startedAt = new Date().toISOString();
 
@@ -62,6 +66,41 @@ function runWit(args, stdin = null, timeoutMs = 60000) {
       child.stdin.write(stdin);
       child.stdin.end();
     }
+  });
+}
+function runCommand(command, args, opts = {}) {
+  return new Promise((resolve) => {
+    execFile(command, args, {
+      cwd: opts.cwd || process.cwd(),
+      timeout: opts.timeoutMs || 60000,
+      maxBuffer: opts.maxBuffer || 8 * 1024 * 1024,
+      env: process.env,
+    }, (err, stdout, stderr) => {
+      resolve({
+        ok: !err,
+        exit_code: err ? (err.code || 1) : 0,
+        signal: err ? err.signal || null : null,
+        stdout: stdout ? stdout.toString() : "",
+        stderr: stderr ? stderr.toString() : "",
+        timed_out: err ? !!err.killed : false,
+      });
+    });
+  });
+}
+function getJson(url, timeoutMs = 5000) {
+  return new Promise((resolve, reject) => {
+    const lib = url.startsWith("https:") ? require("https") : require("http");
+    const req = lib.get(url, { timeout: timeoutMs }, (r) => {
+      const chunks = [];
+      r.on("data", (c) => chunks.push(c));
+      r.on("end", () => {
+        const text = Buffer.concat(chunks).toString("utf8");
+        if (r.statusCode < 200 || r.statusCode >= 300) return reject(new Error(`HTTP ${r.statusCode}: ${text.slice(0, 200)}`));
+        try { resolve(JSON.parse(text)); } catch (e) { reject(e); }
+      });
+    });
+    req.on("timeout", () => req.destroy(new Error("timeout")));
+    req.on("error", reject);
   });
 }
 
@@ -204,6 +243,28 @@ function listFiles(rootDir, exts, maxDepth = 8, max = 500) {
   walk(rootDir, 0);
   return out;
 }
+async function resolveDeepRunWorktrees({ orchestratorId, sessionId, worktree }) {
+  const roots = [];
+  const seen = new Set();
+  function add(p, label = null) {
+    if (!p || seen.has(p) || !fs.existsSync(p)) return;
+    seen.add(p);
+    roots.push({ path: p, label: label || p });
+  }
+  add(worktree, "specified worktree");
+  if (sessionId) {
+    const snap = await getJson(`${PLANE_SERVER_URL}/sessions/${encodeURIComponent(sessionId)}`);
+    const s = snap && snap.session;
+    if (s) add(s.worktree || s.folder, `session ${sessionId}`);
+  }
+  if (orchestratorId) {
+    const snap = await getJson(`${PLANE_SERVER_URL}/orchestrator/${encodeURIComponent(orchestratorId)}/sessions`);
+    for (const s of ((snap && snap.sessions) || [])) {
+      add(s.worktree || s.folder, `${s.role || "session"} ${s.id || ""}`.trim());
+    }
+  }
+  return roots;
+}
 
 // ─── Receipt I/O ─────────────────────────────────────────────────────────
 
@@ -250,10 +311,32 @@ const server = http.createServer(async (req, res) => {
     const dir = u.searchParams.get("dir");
     if (!dir) return sendJson(res, 400, { error: "dir_required" });
     if (!fs.existsSync(dir)) return sendJson(res, 404, { error: "dir_not_found", dir });
-    const files = listFiles(dir, [".wit", ".soc"]);
+    const files = listFiles(dir, [".wit", ".soc", ".lean"]);
     const wits = files.filter((f) => f.name.toLowerCase().endsWith(".wit"));
     const socs = files.filter((f) => f.name.toLowerCase().endsWith(".soc"));
-    return sendJson(res, 200, { dir, wit_files: wits, soc_files: socs });
+    const leans = files.filter((f) => f.name.toLowerCase().endsWith(".lean"));
+    return sendJson(res, 200, { dir, wit_files: wits, soc_files: socs, lean_files: leans });
+  }
+
+  if (u.pathname === "/api/lean-files") {
+    const dir = u.searchParams.get("dir");
+    const orchestratorId = u.searchParams.get("orchestrator") || u.searchParams.get("orchestratorId");
+    const sessionId = u.searchParams.get("session") || u.searchParams.get("sessionId");
+    const worktree = u.searchParams.get("worktree");
+    try {
+      const roots = (orchestratorId || sessionId || worktree)
+        ? await resolveDeepRunWorktrees({ orchestratorId, sessionId, worktree })
+        : (dir && fs.existsSync(dir) ? [{ path: dir, label: "current worktree" }] : []);
+      const leanFiles = [];
+      for (const root of roots) {
+        for (const f of listFiles(root.path, [".lean"], 10, 1000)) {
+          leanFiles.push({ ...f, root: root.path, root_label: root.label });
+        }
+      }
+      return sendJson(res, 200, { roots, lean_files: leanFiles });
+    } catch (err) {
+      return sendJson(res, 500, { error: "lean_files_failed", message: err.message });
+    }
   }
 
   if (u.pathname === "/api/file") {
@@ -282,6 +365,46 @@ const server = http.createServer(async (req, res) => {
     if (!fs.existsSync(WIT)) return sendJson(res, 503, { error: "wit_unavailable", message: "venv not provisioned; activate the plugin" });
     const r = await runWit(["check", p]);
     return sendJson(res, 200, r);
+  }
+
+  if (u.pathname === "/api/lake-build") {
+    const p = u.searchParams.get("path");
+    if (!p) return sendJson(res, 400, { error: "path_required" });
+    let cwd = fs.existsSync(p) ? path.dirname(p) : p;
+    while (cwd && cwd !== path.dirname(cwd)) {
+      if (fs.existsSync(path.join(cwd, "lakefile.lean")) || fs.existsSync(path.join(cwd, "lakefile.toml"))) break;
+      cwd = path.dirname(cwd);
+    }
+    if (!cwd || cwd === path.dirname(cwd)) cwd = fs.existsSync(p) ? path.dirname(p) : p;
+    if (!PLUGIN_DIR) return sendJson(res, 500, { error: "plugin_dir_unavailable" });
+    if (!PLANE_TOOL_BIN) {
+      return sendJson(res, 503, {
+        error: "plane_tool_unavailable",
+        message: "PLANE_TOOL_BIN is not set; cannot run lake build in the math sandbox.",
+        cwd,
+      });
+    }
+    const activate = await runCommand(PLANE_TOOL_BIN, ["skill-run", "sandbox-use/scripts/activate.sh", "math", "--mount", cwd], {
+      cwd,
+      timeoutMs: 120000,
+    });
+    if (activate.exit_code !== 0) return sendJson(res, 200, { ...activate, cwd, phase: "sandbox_activate" });
+    let r = await runCommand(PLANE_TOOL_BIN, ["skill-run", "sandbox-use/scripts/exec.sh", "--sandbox", "math", "--", "lake", "build"], {
+      cwd,
+      timeoutMs: 180000,
+    });
+    if (r.exit_code === 126) {
+      const retryActivate = await runCommand(PLANE_TOOL_BIN, ["skill-run", "sandbox-use/scripts/activate.sh", "math", "--mount", cwd], {
+        cwd,
+        timeoutMs: 120000,
+      });
+      if (retryActivate.exit_code !== 0) return sendJson(res, 200, { ...retryActivate, cwd, phase: "sandbox_reactivate" });
+      r = await runCommand(PLANE_TOOL_BIN, ["skill-run", "sandbox-use/scripts/exec.sh", "--sandbox", "math", "--", "lake", "build"], {
+        cwd,
+        timeoutMs: 180000,
+      });
+    }
+    return sendJson(res, 200, { ...r, cwd, sandbox: "math", phase: "lake_build" });
   }
 
   if (u.pathname === "/api/verify") {

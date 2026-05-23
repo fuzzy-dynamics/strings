@@ -1,15 +1,25 @@
 <!doctype html>
 <html lang="en">
+
 <head>
   <meta charset="utf-8">
   <title>Witsoc — semiformal math</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="stylesheet" href="/_plugin-runtime/theme.css">
   <style>
-    * { box-sizing: border-box; }
-    html, body { height: 100%; margin: 0; }
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
     body {
-      display: flex; flex-direction: column;
+      height: 100%;
+      margin: 0;
+    }
+
+    body {
+      display: flex;
+      flex-direction: column;
       background: hsl(var(--background));
       color: hsl(var(--foreground));
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -27,6 +37,26 @@
       border-bottom: 1px solid hsl(var(--border));
       background: hsl(var(--card));
     }
+
+    .top-actions {
+      display: none;
+      align-items: center;
+      gap: 4px;
+      margin-left: 8px;
+      padding-left: 8px;
+      border-left: 1px solid hsl(var(--border));
+    }
+
+    body.files-collapsed .top-actions {
+      display: flex;
+    }
+
+    .top-actions .actions {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
     .tab {
       padding: 6px 14px;
       font-size: 12px;
@@ -36,48 +66,144 @@
       color: hsl(var(--muted-foreground));
       cursor: pointer;
     }
+
     .tab.active {
       background: hsl(var(--background));
       color: hsl(var(--foreground));
       border-color: hsl(var(--border));
     }
-    .tab:hover:not(.active) { color: hsl(var(--foreground)); }
 
-    .tabs .spacer { flex: 1; }
+    .tab:hover:not(.active) {
+      color: hsl(var(--foreground));
+    }
+
+    .tabs .spacer {
+      flex: 1;
+    }
+
     .chip {
       display: inline-flex;
       align-items: center;
       gap: 6px;
-      padding: 4px 10px;
-      border-radius: 999px;
+      min-height: 24px;
+      padding: 3px 9px;
+      border: 1px solid hsl(var(--border));
+      border-radius: 6px;
       font-size: 11px;
-      background: hsl(var(--muted));
+      font-weight: 500;
+      line-height: 1;
+      background: hsl(var(--background));
       color: hsl(var(--muted-foreground));
     }
-    .chip b { color: hsl(var(--foreground)); font-weight: 500; }
-    .chip.verified  { background: hsl(142 71% 45% / 0.15); color: hsl(142 60% 30%); }
-    .chip.rejected  { background: hsl(var(--destructive) / 0.15); color: hsl(var(--destructive)); }
-    .chip.unverified{ background: hsl(var(--muted)); }
+
+    .chip b {
+      color: hsl(var(--foreground));
+      font-weight: 500;
+    }
+
+    .chip.verified {
+      background: hsl(var(--background));
+      color: hsl(142 64% 36%);
+      border-color: hsl(142 60% 42% / 0.35);
+    }
+
+    .chip.rejected {
+      background: hsl(var(--background));
+      color: hsl(var(--destructive));
+      border-color: hsl(var(--destructive) / 0.35);
+    }
+
+    .chip.failed {
+      background: hsl(var(--background));
+      color: hsl(var(--destructive));
+      border-color: hsl(var(--destructive) / 0.35);
+    }
+
+    .chip.unverified {
+      background: hsl(var(--background));
+      color: hsl(var(--muted-foreground));
+      border-color: hsl(var(--border));
+    }
+
+    #chip-status {
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      font-size: 10px;
+    }
+
+    #chip-status .dot {
+      width: 7px;
+      height: 7px;
+      box-shadow: 0 0 0 2px hsl(var(--muted) / 0.65);
+    }
+
+    #chip-status.verified .dot {
+      background: hsl(142 64% 42%);
+      box-shadow: 0 0 0 2px hsl(142 64% 42% / 0.16);
+    }
+
+    #chip-status.failed .dot,
+    #chip-status.rejected .dot {
+      background: hsl(var(--destructive));
+      box-shadow: 0 0 0 2px hsl(var(--destructive) / 0.14);
+    }
+
+    #chip-status.unverified .dot {
+      background: hsl(var(--muted-foreground) / 0.55);
+    }
 
     /* ─── Main panes (one tab at a time) ────────────────────────────── */
-    .panes { flex: 1 1 auto; min-height: 0; position: relative; }
+    .panes {
+      flex: 1 1 auto;
+      min-height: 0;
+      position: relative;
+    }
+
     .pane {
-      position: absolute; inset: 0;
+      position: absolute;
+      inset: 0;
       display: none;
       min-height: 0;
     }
-    .pane.active { display: flex; }
+
+    .pane.active {
+      display: flex;
+    }
 
     /* ─── Proofs tab: 3-column layout ────────────────────────────────── */
-    #pane-proofs { flex-direction: row; }
+    #pane-proofs {
+      --files-w: 220px;
+      --files-track: var(--files-w);
+      --files-split-w: 5px;
+      --tree-w: 440px;
+      grid-template-columns: var(--files-track) var(--files-split-w) minmax(420px, 1fr) 5px minmax(340px, var(--tree-w));
+      flex-direction: initial;
+      transition: grid-template-columns 180ms ease;
+    }
+
+    #pane-proofs.active {
+      display: grid;
+    }
+
+    body.files-collapsed #pane-proofs {
+      --files-track: 0px;
+      --files-split-w: 0px;
+    }
+
     .files-col {
-      flex: 0 0 220px;
+      min-width: 170px;
+      max-width: 320px;
       border-right: 1px solid hsl(var(--border));
       background: hsl(var(--card));
-      display: flex; flex-direction: column;
+      display: flex;
+      flex-direction: column;
       overflow-y: auto;
       min-height: 0;
+      opacity: 1;
+      transform: translateX(0);
+      transition: opacity 160ms ease, transform 180ms ease;
     }
+
     .files-col h4 {
       margin: 10px 12px 4px;
       font-size: 9px;
@@ -86,32 +212,84 @@
       letter-spacing: 0.08em;
       color: hsl(var(--muted-foreground) / 0.7);
     }
+
     .file-item {
       padding: 6px 12px;
       cursor: pointer;
       font-family: ui-monospace, SFMono-Regular, monospace;
       font-size: 11px;
-      color: hsl(var(--foreground)); opacity: 0.85;
+      color: hsl(var(--foreground));
+      opacity: 0.85;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
       border-left: 2px solid transparent;
     }
-    .file-item:hover { background: hsl(var(--muted) / 0.5); }
+
+    .file-item:hover {
+      background: hsl(var(--muted) / 0.5);
+    }
+
     .file-item.active {
       background: hsl(var(--muted));
       border-left-color: hsl(217 91% 60%);
       color: hsl(217 91% 60%);
       opacity: 1;
     }
-    .files-col .empty { padding: 10px 12px; font-size: 11px; color: hsl(var(--muted-foreground)); }
-    .files-col .actions {
-      padding: 10px 12px; border-top: 1px solid hsl(var(--border));
-      display: flex; flex-direction: column; gap: 6px;
+
+    .files-col .empty {
+      padding: 10px 12px;
+      font-size: 11px;
+      color: hsl(var(--muted-foreground));
     }
+
+    .files-col .actions {
+      padding: 10px 12px;
+      border-top: 1px solid hsl(var(--border));
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    body.files-collapsed .files-col {
+      min-width: 0;
+      max-width: none;
+      overflow: hidden;
+      opacity: 0;
+      transform: translateX(-8px);
+      pointer-events: none;
+    }
+
+    body.files-collapsed #split-files {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .pane-resizer {
+      width: 5px;
+      cursor: col-resize;
+      background: hsl(var(--border) / 0.25);
+      position: relative;
+      opacity: 1;
+      transition: background 120ms ease, opacity 160ms ease;
+    }
+
+    .pane-resizer::after {
+      content: "";
+      position: absolute;
+      inset: 0 2px;
+      background: transparent;
+    }
+
+    .pane-resizer:hover,
+    body.resizing .pane-resizer {
+      background: hsl(217 91% 60% / 0.24);
+    }
+
     .btn {
       padding: 5px 9px;
-      font: inherit; font-size: 11px;
+      font: inherit;
+      font-size: 11px;
       border: 1px solid hsl(var(--border));
       border-radius: 5px;
       background: transparent;
@@ -119,23 +297,119 @@
       cursor: pointer;
       text-align: left;
     }
-    .btn:hover { background: hsl(var(--muted) / 0.6); }
+
+    .icon-btn {
+      width: 28px;
+      height: 28px;
+      padding: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      border-radius: 6px;
+    }
+
+    .icon-btn svg {
+      width: 15px;
+      height: 15px;
+      stroke: currentColor;
+      stroke-width: 2;
+      fill: none;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .action-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+    }
+
+    .action-btn svg {
+      width: 14px;
+      height: 14px;
+      flex: 0 0 auto;
+      stroke: currentColor;
+      stroke-width: 2;
+      fill: none;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    body.files-collapsed .action-btn {
+      width: 28px;
+      height: 28px;
+      padding: 0;
+      justify-content: center;
+      gap: 0;
+      border-radius: 6px;
+    }
+
+    body.files-collapsed .action-btn span {
+      display: none;
+    }
+
+    .files-toggle {
+      margin-left: 4px;
+      transition: background 140ms ease, color 140ms ease, border-color 140ms ease;
+    }
+
+    .files-toggle .icon-open {
+      display: none;
+    }
+
+    body.files-collapsed .files-toggle .icon-open {
+      display: block;
+    }
+
+    body.files-collapsed .files-toggle .icon-close {
+      display: none;
+    }
+
+    .files-col .icon-btn {
+      align-self: flex-end;
+      margin: 6px 8px -2px 0;
+    }
+
+    .btn:hover {
+      background: hsl(var(--muted) / 0.6);
+    }
+
     .btn.primary {
       border-color: hsl(217 91% 60%);
       background: hsl(217 91% 60%);
       color: hsl(var(--primary-foreground));
     }
-    .btn.primary:hover { opacity: 0.92; }
+
+    .btn.primary:hover {
+      opacity: 0.92;
+    }
+
+    body.visualizing #pane-proofs {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    body.visualizing #pane-proofs> :not(.viz-col) {
+      display: none;
+    }
+
+    body.lean-previewing #pane-proofs {
+      grid-template-columns: var(--files-track) var(--files-split-w) minmax(0, 1fr);
+    }
+
+    body.lean-previewing #pane-proofs> :not(.files-col):not(#split-files):not(.lean-col) {
+      display: none;
+    }
 
     /* Source pane */
     .src-col {
-      flex: 1 1 0;
       min-width: 0;
       min-height: 0;
       border-right: 1px solid hsl(var(--border));
       display: flex;
       flex-direction: column;
     }
+
     .src-col header {
       padding: 8px 12px;
       border-bottom: 1px solid hsl(var(--border));
@@ -145,9 +419,14 @@
       align-items: center;
       gap: 8px;
     }
-    .src-col header b { color: hsl(var(--foreground)); }
+
+    .src-col header b {
+      color: hsl(var(--foreground));
+    }
+
     pre.src {
-      flex: 1 1 auto; min-height: 0;
+      flex: 1 1 auto;
+      min-height: 0;
       overflow: auto;
       margin: 0;
       padding: 10px 12px 24px 4px;
@@ -157,6 +436,7 @@
       tab-size: 2;
       counter-reset: l;
     }
+
     pre.src .ln {
       display: inline-block;
       width: 32px;
@@ -165,77 +445,177 @@
       color: hsl(var(--muted-foreground) / 0.45);
       user-select: none;
     }
-    pre.src .lbl       { color: hsl(217 91% 60%); font-weight: 600; }
-    pre.src .kw        { color: hsl(280 70% 55%); font-weight: 500; }
-    pre.src .kind      { color: hsl(30 80% 50%); font-weight: 600; }
-    pre.src .by        { color: hsl(142 50% 40%); }
-    pre.src .com       { color: hsl(var(--muted-foreground) / 0.65); }
-    pre.src .ln.hi { background: hsl(217 91% 60% / 0.1); border-left: 2px solid hsl(217 91% 60%); }
+
+    pre.src .lbl {
+      color: hsl(217 91% 60%);
+      font-weight: 600;
+    }
+
+    pre.src .kw {
+      color: hsl(280 70% 55%);
+      font-weight: 500;
+    }
+
+    pre.src .kind {
+      color: hsl(30 80% 50%);
+      font-weight: 600;
+    }
+
+    pre.src .by {
+      color: hsl(142 50% 40%);
+    }
+
+    pre.src .com {
+      color: hsl(var(--muted-foreground) / 0.65);
+    }
+
+    pre.src .ln.hi {
+      background: hsl(217 91% 60% / 0.1);
+      border-left: 2px solid hsl(217 91% 60%);
+    }
 
     /* Tree pane */
     .tree-col {
-      flex: 0 0 360px;
-      min-width: 280px;
-      display: flex; flex-direction: column;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
       min-height: 0;
     }
+
     .tree-col header {
       padding: 8px 12px;
       border-bottom: 1px solid hsl(var(--border));
-      font-size: 11px; font-weight: 600;
-      display: flex; gap: 8px; align-items: center;
+      font-size: 11px;
+      font-weight: 600;
+      display: flex;
+      gap: 8px;
+      align-items: center;
     }
+
     .tree-col .filter-pill {
-      display: inline-flex; gap: 2px;
+      display: inline-flex;
+      gap: 2px;
       background: hsl(var(--card));
       border: 1px solid hsl(var(--border));
       border-radius: 999px;
       padding: 2px;
     }
+
     .tree-col .filter-pill button {
-      border: none; background: transparent;
+      border: none;
+      background: transparent;
       padding: 2px 8px;
       border-radius: 999px;
-      font: inherit; font-size: 10px;
+      font: inherit;
+      font-size: 10px;
       cursor: pointer;
       color: hsl(var(--muted-foreground));
     }
+
     .tree-col .filter-pill button.active {
       background: hsl(217 91% 60% / 0.12);
       color: hsl(217 91% 60%);
     }
+
     .tree {
       flex: 1 1 auto;
       overflow-y: auto;
       padding: 6px 0;
     }
+
     .step {
       padding: 4px 12px;
       font-size: 11.5px;
       cursor: pointer;
-      display: flex; align-items: baseline; gap: 6px;
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
       border-left: 2px solid transparent;
     }
-    .step:hover { background: hsl(var(--muted) / 0.5); }
-    .step.active { background: hsl(var(--muted)); border-left-color: hsl(217 91% 60%); }
+
+    .step:hover {
+      background: hsl(var(--muted) / 0.5);
+    }
+
+    .step.active {
+      background: hsl(var(--muted));
+      border-left-color: hsl(217 91% 60%);
+    }
+
     .step .dot {
       display: inline-block;
-      width: 7px; height: 7px;
+      width: 7px;
+      height: 7px;
       border-radius: 50%;
       background: hsl(var(--muted-foreground) / 0.45);
       flex: 0 0 auto;
     }
-    .step.accept .dot { background: hsl(142 71% 45%); }
-    .step.reject .dot { background: hsl(var(--destructive)); }
-    .step.gap    .dot { background: hsl(38 90% 55%); }
-    .step .lbl  { font-family: ui-monospace, SFMono-Regular, monospace; color: hsl(217 91% 60%); font-weight: 600; }
-    .step .kw   { color: hsl(280 70% 55%); font-size: 10px; font-weight: 500; }
-    .step .claim {
-      flex: 1 1 0; min-width: 0;
-      color: hsl(var(--foreground)); opacity: 0.85;
-      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+
+    .step.accept .dot {
+      background: hsl(142 71% 45%);
     }
-    .tree-empty { padding: 14px 12px; font-size: 11px; color: hsl(var(--muted-foreground)); }
+
+    .step.reject .dot {
+      background: hsl(var(--destructive));
+    }
+
+    .step.gap .dot {
+      background: hsl(38 90% 55%);
+    }
+
+    .step .verdict-badge {
+      flex: 0 0 auto;
+      margin-left: auto;
+      padding: 1px 6px;
+      border-radius: 999px;
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .step.accept .verdict-badge {
+      background: hsl(142 71% 45% / 0.14);
+      color: hsl(142 60% 34%);
+    }
+
+    .step.reject .verdict-badge {
+      background: hsl(var(--destructive) / 0.14);
+      color: hsl(var(--destructive));
+    }
+
+    .step.gap .verdict-badge {
+      background: hsl(38 90% 55% / 0.14);
+      color: hsl(38 80% 35%);
+    }
+
+    .step .lbl {
+      font-family: ui-monospace, SFMono-Regular, monospace;
+      color: hsl(217 91% 60%);
+      font-weight: 600;
+    }
+
+    .step .kw {
+      color: hsl(280 70% 55%);
+      font-size: 10px;
+      font-weight: 500;
+    }
+
+    .step .claim {
+      flex: 1 1 0;
+      min-width: 0;
+      color: hsl(var(--foreground));
+      opacity: 0.85;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .tree-empty {
+      padding: 14px 12px;
+      font-size: 11px;
+      color: hsl(var(--muted-foreground));
+    }
 
     /* Step detail */
     .detail {
@@ -248,14 +628,20 @@
       font-size: 11px;
       display: none;
     }
-    .detail.open { display: block; }
+
+    .detail.open {
+      display: block;
+    }
+
     .detail h5 {
       margin: 6px 0 3px;
-      font-size: 9px; font-weight: 600;
+      font-size: 9px;
+      font-weight: 600;
       text-transform: uppercase;
       letter-spacing: 0.08em;
       color: hsl(var(--muted-foreground) / 0.7);
     }
+
     .detail .premise {
       font-family: ui-monospace, SFMono-Regular, monospace;
       font-size: 11px;
@@ -263,7 +649,10 @@
       padding: 2px 0;
       cursor: pointer;
     }
-    .detail .premise:hover { color: hsl(217 91% 60%); }
+
+    .detail .premise:hover {
+      color: hsl(217 91% 60%);
+    }
 
     /* Verdict editor */
     .verdict-area {
@@ -271,8 +660,11 @@
       border-top: 1px solid hsl(var(--border));
       padding: 10px 12px;
       background: hsl(var(--card));
-      display: flex; flex-direction: column; gap: 6px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
     }
+
     .verdict-area textarea {
       width: 100%;
       min-height: 60px;
@@ -287,24 +679,333 @@
       border-radius: 4px;
       outline: none;
     }
+
     .verdict-area .row {
-      display: flex; gap: 6px; align-items: center;
-      font-size: 10px; color: hsl(var(--muted-foreground));
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      font-size: 10px;
+      color: hsl(var(--muted-foreground));
+    }
+
+    /* Proof visualization */
+    .viz-col {
+      display: none;
+      min-width: 0;
+      min-height: 0;
+      flex-direction: column;
+      background: hsl(var(--background));
+    }
+
+    body.visualizing .viz-col {
+      display: flex;
+    }
+
+    .viz-col header {
+      flex: 0 0 auto;
+      padding: 7px 10px;
+      border-bottom: 1px solid hsl(var(--border));
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 11px;
+      color: hsl(var(--muted-foreground));
+      background: hsl(var(--card));
+    }
+
+    .viz-col header b {
+      color: hsl(var(--foreground));
+      font-weight: 600;
+    }
+
+    .viz-search {
+      width: 190px;
+      height: 26px;
+      padding: 4px 8px;
+      border: 1px solid hsl(var(--border));
+      border-radius: 5px;
+      background: hsl(var(--background));
+      color: hsl(var(--foreground));
+      font: inherit;
+      outline: none;
+    }
+
+    .viz-layout {
+      flex: 1 1 auto;
+      min-height: 0;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 300px;
+    }
+
+    .viz-side {
+      min-width: 0;
+      min-height: 0;
+      border-right: 1px solid hsl(var(--border));
+      background: hsl(var(--card));
+      display: flex;
+      flex-direction: column;
+    }
+
+    .viz-side.right {
+      border-right: 0;
+      border-left: 1px solid hsl(var(--border));
+    }
+
+    .viz-panel-title {
+      flex: 0 0 auto;
+      padding: 8px 10px;
+      border-bottom: 1px solid hsl(var(--border));
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: hsl(var(--muted-foreground));
+    }
+
+    .viz-stage {
+      min-width: 0;
+      min-height: 0;
+      position: relative;
+      overflow: hidden;
+      background:
+        linear-gradient(hsl(var(--border) / 0.18) 1px, transparent 1px),
+        linear-gradient(90deg, hsl(var(--border) / 0.18) 1px, transparent 1px);
+      background-size: 28px 28px;
+    }
+
+    .viz-stage svg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      cursor: grab;
+      user-select: none;
+      font-family: inherit;
+    }
+
+    .viz-stage svg.dragging {
+      cursor: grabbing;
+    }
+
+    .viz-help {
+      position: absolute;
+      right: 12px;
+      top: 12px;
+      padding: 10px 12px;
+      border-radius: 6px;
+      background: hsl(var(--foreground) / 0.82);
+      color: hsl(var(--background));
+      font-size: 11px;
+      line-height: 1.45;
+      pointer-events: none;
+      box-shadow: 0 10px 28px hsl(var(--foreground) / 0.14);
+    }
+
+    .viz-minimap {
+      position: absolute;
+      right: 12px;
+      bottom: 12px;
+      width: 180px;
+      height: 112px;
+      border: 1px solid hsl(var(--border));
+      border-radius: 6px;
+      background: hsl(var(--card) / 0.92);
+      box-shadow: 0 10px 28px hsl(var(--foreground) / 0.1);
+      overflow: hidden;
+    }
+
+    .viz-minimap svg {
+      position: static;
+      width: 100%;
+      height: 100%;
+      cursor: default;
+    }
+
+    .viz-tooltip {
+      position: absolute;
+      z-index: 3;
+      display: none;
+      max-width: 280px;
+      padding: 8px 10px;
+      border: 1px solid hsl(var(--border));
+      border-radius: 6px;
+      background: hsl(var(--card));
+      color: hsl(var(--foreground));
+      box-shadow: 0 12px 30px hsl(var(--foreground) / 0.14);
+      font-size: 11px;
+      pointer-events: none;
+    }
+
+    .viz-inspector {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow: auto;
+      padding: 10px;
+      font-size: 11px;
+    }
+
+    .viz-inspector h3 {
+      margin: 0 0 8px;
+      font-size: 13px;
+    }
+
+    .viz-inspector h4 {
+      margin: 14px 0 5px;
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: hsl(var(--muted-foreground));
+    }
+
+    .viz-stat-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+      margin-top: 8px;
+    }
+
+    .viz-stat {
+      border: 1px solid hsl(var(--border));
+      border-radius: 6px;
+      padding: 8px;
+      background: hsl(var(--background));
+    }
+
+    .viz-stat b {
+      display: block;
+      font-size: 15px;
+      margin-bottom: 2px;
+    }
+
+    .viz-error-list {
+      color: hsl(var(--destructive));
+      font-family: ui-monospace, SFMono-Regular, monospace;
+      font-size: 10px;
+      line-height: 1.45;
+    }
+
+    .viz-empty {
+      padding: 12px;
+      color: hsl(var(--muted-foreground));
+      font-size: 12px;
+    }
+
+    /* Lean preview */
+    .lean-col {
+      display: none;
+      min-width: 0;
+      min-height: 0;
+      flex-direction: column;
+      background: hsl(var(--background));
+    }
+
+    body.lean-previewing .lean-col {
+      display: flex;
+    }
+
+    .lean-col header {
+      flex: 0 0 auto;
+      padding: 7px 10px;
+      border-bottom: 1px solid hsl(var(--border));
+      background: hsl(var(--card));
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 11px;
+      color: hsl(var(--muted-foreground));
+    }
+
+    .lean-col header b {
+      color: hsl(var(--foreground));
+      font-weight: 600;
+    }
+
+    .lean-select {
+      max-width: 260px;
+      height: 26px;
+      padding: 3px 8px;
+      border: 1px solid hsl(var(--border));
+      border-radius: 5px;
+      background: hsl(var(--background));
+      color: hsl(var(--foreground));
+      font: inherit;
+      outline: none;
+    }
+
+    .lean-run-input {
+      width: 230px;
+      height: 26px;
+      padding: 3px 8px;
+      border: 1px solid hsl(var(--border));
+      border-radius: 5px;
+      background: hsl(var(--background));
+      color: hsl(var(--foreground));
+      font: inherit;
+      outline: none;
+    }
+
+    .lean-body {
+      flex: 1 1 auto;
+      min-height: 0;
+      display: grid;
+      grid-template-rows: minmax(0, 1fr) minmax(120px, 26%);
+    }
+
+    .lean-editor {
+      min-height: 0;
+      width: 100%;
+      resize: none;
+      border: 0;
+      padding: 12px 14px;
+      background: hsl(var(--background));
+      color: hsl(var(--foreground));
+      font-family: ui-monospace, SFMono-Regular, monospace;
+      font-size: 12px;
+      line-height: 1.55;
+      outline: none;
+      tab-size: 2;
+    }
+
+    .lean-output {
+      min-height: 0;
+      margin: 0;
+      overflow: auto;
+      border-top: 1px solid hsl(var(--border));
+      padding: 10px 12px;
+      background: hsl(var(--card));
+      color: hsl(var(--muted-foreground));
+      font-family: ui-monospace, SFMono-Regular, monospace;
+      font-size: 11px;
+      line-height: 1.45;
+      white-space: pre-wrap;
+    }
+
+    .lean-output.ok {
+      color: hsl(142 55% 38%);
+    }
+
+    .lean-output.err {
+      color: hsl(var(--destructive));
     }
 
     /* ─── Soc tab: 2-column ──────────────────────────────────────────── */
-    #pane-soc { flex-direction: row; }
+    #pane-soc {
+      flex-direction: row;
+    }
+
     .soc-files {
       flex: 0 0 200px;
       border-right: 1px solid hsl(var(--border));
       background: hsl(var(--card));
       overflow-y: auto;
     }
+
     .soc-main {
       flex: 1 1 0;
       overflow-y: auto;
       padding: 14px 18px;
     }
+
     .soc-card {
       margin-bottom: 14px;
       border: 1px solid hsl(var(--border));
@@ -312,10 +1013,24 @@
       padding: 12px 14px;
       background: hsl(var(--background));
     }
-    .soc-card h3 { margin: 0 0 8px; font-size: 13px; font-weight: 600; }
-    .soc-card .goal { font-size: 12px; color: hsl(var(--foreground)); }
 
-    .soc-progress { display: flex; align-items: center; gap: 10px; }
+    .soc-card h3 {
+      margin: 0 0 8px;
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .soc-card .goal {
+      font-size: 12px;
+      color: hsl(var(--foreground));
+    }
+
+    .soc-progress {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
     .soc-progress .bar {
       flex: 1 1 0;
       height: 6px;
@@ -323,30 +1038,59 @@
       border-radius: 3px;
       overflow: hidden;
     }
+
     .soc-progress .fill {
       height: 100%;
       background: hsl(217 91% 60%);
       transition: width 200ms ease;
     }
 
-    .queue-item, .insight-item {
+    .queue-item,
+    .insight-item {
       padding: 6px 0;
       border-bottom: 1px solid hsl(var(--border) / 0.5);
-      display: flex; align-items: baseline; gap: 8px;
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
     }
-    .queue-item:last-child, .insight-item:last-child { border-bottom: none; }
+
+    .queue-item:last-child,
+    .insight-item:last-child {
+      border-bottom: none;
+    }
+
     .queue-item .check {
-      flex: 0 0 14px; height: 14px;
+      flex: 0 0 14px;
+      height: 14px;
       border: 1px solid hsl(var(--border));
       border-radius: 3px;
-      display: inline-flex; align-items: center; justify-content: center;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
       font-size: 10px;
     }
-    .queue-item.done .check { background: hsl(142 71% 45%); color: white; border-color: hsl(142 71% 45%); }
-    .queue-item .text { flex: 1 1 0; font-size: 12px; }
-    .queue-item.done .text { color: hsl(var(--muted-foreground)); text-decoration: line-through; }
 
-    .empty-msg { font-size: 11px; color: hsl(var(--muted-foreground)); font-style: italic; }
+    .queue-item.done .check {
+      background: hsl(142 71% 45%);
+      color: white;
+      border-color: hsl(142 71% 45%);
+    }
+
+    .queue-item .text {
+      flex: 1 1 0;
+      font-size: 12px;
+    }
+
+    .queue-item.done .text {
+      color: hsl(var(--muted-foreground));
+      text-decoration: line-through;
+    }
+
+    .empty-msg {
+      font-size: 11px;
+      color: hsl(var(--muted-foreground));
+      font-style: italic;
+    }
 
     /* ─── Status overlay ─────────────────────────────────────────────── */
     .status-bar {
@@ -361,27 +1105,59 @@
       align-items: center;
       gap: 10px;
     }
-    .status-bar.err { color: hsl(var(--destructive)); }
+
+    .status-bar.err {
+      color: hsl(var(--destructive));
+    }
+
     .dot {
       display: inline-block;
-      width: 7px; height: 7px;
+      width: 7px;
+      height: 7px;
       border-radius: 50%;
       background: hsl(var(--muted-foreground) / 0.5);
     }
-    .dot.ok { background: hsl(142 71% 45%); }
-    .dot.err { background: hsl(var(--destructive)); }
-    .dot.pending { background: hsl(217 91% 60%); animation: blink 1s infinite; }
-    @keyframes blink { 0%,100% { opacity: 1 } 50% { opacity: 0.3 } }
+
+    .dot.ok {
+      background: hsl(142 71% 45%);
+    }
+
+    .dot.err {
+      background: hsl(var(--destructive));
+    }
+
+    .dot.pending {
+      background: hsl(217 91% 60%);
+      animation: blink 1s infinite;
+    }
+
+    @keyframes blink {
+
+      0%,
+      100% {
+        opacity: 1
+      }
+
+      50% {
+        opacity: 0.3
+      }
+    }
   </style>
 </head>
+
 <body>
   <div class="tabs">
     <button class="tab active" data-tab="proofs">Proofs</button>
-    <button class="tab"        data-tab="soc">Soc Memory</button>
+    <button class="tab" data-tab="soc">Soc Memory</button>
+    <button class="btn icon-btn files-toggle" id="btn-files-toggle" title="Hide workspace files" aria-label="Hide workspace files">
+      <svg class="icon-close" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/><path d="m15 9-3 3 3 3"/></svg>
+      <svg class="icon-open" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/><path d="m13 9 3 3-3 3"/></svg>
+    </button>
+    <div class="top-actions" id="top-actions"></div>
     <span class="spacer"></span>
     <span id="chip-status" class="chip unverified"><span class="dot"></span>UNVERIFIED</span>
-    <span id="chip-file"   class="chip"><span>File:</span><b>—</b></span>
-    <span id="chip-steps"  class="chip"><span>Steps</span><b>0</b></span>
+    <span id="chip-file" class="chip"><span>File:</span><b>—</b></span>
+    <span id="chip-steps" class="chip"><span>Steps</span><b>0</b></span>
   </div>
 
   <div class="panes">
@@ -389,15 +1165,32 @@
     <div id="pane-proofs" class="pane active">
       <aside class="files-col">
         <h4>Workspace .wit</h4>
-        <div id="wit-files"><div class="empty">Looking…</div></div>
-        <div class="actions">
-          <button class="btn"         id="btn-refresh">Refresh list</button>
-          <button class="btn"         id="btn-check">Run check</button>
-          <button class="btn primary" id="btn-verify">Run verify (all)</button>
-          <button class="btn"         id="btn-context">Show contexts</button>
+        <div id="wit-files">
+          <div class="empty">Looking…</div>
+        </div>
+        <div class="actions" id="side-actions">
+          <button class="btn action-btn" id="btn-refresh" title="Refresh file list" aria-label="Refresh file list" data-label="Refresh list">
+            <svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 1-15.4 6.4L3 16"/><path d="M3 21v-5h5"/><path d="M3 12A9 9 0 0 1 18.4 5.6L21 8"/><path d="M21 3v5h-5"/></svg><span>Refresh list</span>
+          </button>
+          <button class="btn action-btn" id="btn-check" title="Run structural check" aria-label="Run structural check" data-label="Run check">
+            <svg viewBox="0 0 24 24"><path d="m9 12 2 2 4-4"/><path d="M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/></svg><span>Run check</span>
+          </button>
+          <button class="btn primary action-btn" id="btn-verify" title="Run verify for all steps" aria-label="Run verify for all steps" data-label="Run verify (all)">
+            <svg viewBox="0 0 24 24"><path d="m5 3 14 9-14 9V3Z"/></svg><span>Run verify (all)</span>
+          </button>
+          <button class="btn action-btn" id="btn-context" title="Show verification contexts" aria-label="Show verification contexts" data-label="Show contexts">
+            <svg viewBox="0 0 24 24"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/></svg><span>Show contexts</span>
+          </button>
+          <button class="btn action-btn" id="btn-visualize" title="Visualize proof flow" aria-label="Visualize proof flow" data-label="Visualization">
+            <svg viewBox="0 0 24 24"><circle cx="6" cy="12" r="3"/><circle cx="18" cy="6" r="3"/><circle cx="18" cy="18" r="3"/><path d="M8.6 10.6 15.4 7.4"/><path d="M8.6 13.4 15.4 16.6"/></svg><span>Visualization</span>
+          </button>
+          <button class="btn action-btn" id="btn-preview-lean" title="Preview Lean code" aria-label="Preview Lean code" data-label="Preview Lean">
+            <svg viewBox="0 0 24 24"><path d="M4 4h16v16H4z"/><path d="M8 8h8"/><path d="M8 12h5"/><path d="m8 16 2-2-2-2"/></svg><span>Preview Lean</span>
+          </button>
         </div>
       </aside>
 
+      <div class="pane-resizer" id="split-files" title="Resize workspace files"></div>
       <div class="src-col">
         <header>
           <span>Source</span>
@@ -408,18 +1201,21 @@
         <pre id="src" class="src"><code class="empty-msg">Pick a .wit file to view</code></pre>
       </div>
 
+      <div class="pane-resizer" id="split-tree" title="Resize proof tree"></div>
       <div class="tree-col">
         <header>
           <span>Proof tree</span>
           <span class="spacer" style="flex:1"></span>
           <span class="filter-pill" id="filter-pill">
-            <button data-filter="all"     class="active">all</button>
+            <button data-filter="all" class="active">all</button>
             <button data-filter="reject">rejected</button>
             <button data-filter="gap">gap</button>
             <button data-filter="accept">accept</button>
           </span>
         </header>
-        <div id="tree" class="tree"><div class="tree-empty">No file selected.</div></div>
+        <div id="tree" class="tree">
+          <div class="tree-empty">No file selected.</div>
+        </div>
         <div id="detail" class="detail"></div>
         <div class="verdict-area">
           <div class="row">
@@ -429,11 +1225,60 @@
 [2] ACCEPT: algebra checks
 [3.1] REJECT: sign error in expansion"></textarea>
           <div class="row" style="display:flex; gap:6px; align-items:center;">
-            <button class="btn"         id="btn-clear-verdicts">Clear</button>
+            <button class="btn" id="btn-clear-verdicts">Clear</button>
             <button class="btn primary" id="btn-save-receipt">Save receipt</button>
             <span style="flex:1"></span>
             <span id="receipt-info"></span>
           </div>
+        </div>
+      </div>
+
+      <div class="viz-col" id="viz-col">
+        <header>
+          <span>Visualization</span>
+          <b id="viz-name">—</b>
+          <span class="spacer" style="flex:1"></span>
+          <input class="viz-search" id="viz-search" type="search" placeholder="Search proof graph" aria-label="Search proof graph">
+          <button class="btn" id="btn-viz-fit">Fit</button>
+          <button class="btn" id="btn-viz-layout">Auto-layout</button>
+          <button class="btn primary" id="btn-viz-export">Export SVG</button>
+          <button class="btn icon-btn" id="btn-close-viz" title="Close visualization" aria-label="Close visualization">
+            <svg viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+          </button>
+        </header>
+        <div class="viz-layout">
+          <main class="viz-stage" id="viz-stage">
+            <svg id="viz-svg" aria-label="Proof dependency graph"></svg>
+            <div class="viz-help">Mouse wheel to zoom<br>Click and drag to pan<br>Click nodes to inspect</div>
+            <div class="viz-minimap" id="viz-minimap"></div>
+            <div class="viz-tooltip" id="viz-tooltip"></div>
+          </main>
+          <aside class="viz-side right">
+            <div class="viz-panel-title">Inspector</div>
+            <div id="viz-inspector" class="viz-inspector">
+              <div class="viz-empty">Select a graph node.</div>
+            </div>
+            <div class="viz-panel-title">Statistics</div>
+            <div id="viz-stats" class="viz-inspector"></div>
+          </aside>
+        </div>
+      </div>
+
+      <div class="lean-col" id="lean-col">
+        <header>
+          <span>Preview Lean</span>
+          <b id="lean-name">—</b>
+          <input id="lean-run-input" class="lean-run-input" type="text" placeholder="deep run id / session id / worktree" aria-label="Deep run id, session id, or worktree">
+          <select id="lean-file-select" class="lean-select" aria-label="Lean file"></select>
+          <span class="spacer" style="flex:1"></span>
+          <span id="lean-live-info"></span>
+          <button class="btn" id="btn-lean-refresh">Refresh</button>
+          <button class="btn" id="btn-lean-save">Save</button>
+          <button class="btn primary" id="btn-lean-build">lake build</button>
+        </header>
+        <div class="lean-body">
+          <textarea id="lean-editor" class="lean-editor" spellcheck="false" placeholder="No Lean file found yet. When the orchestrator writes a .lean file in this worktree, it will appear here."></textarea>
+          <pre id="lean-output" class="lean-output">Lean preview idle.</pre>
         </div>
       </div>
     </div>
@@ -441,10 +1286,14 @@
     <!-- ─── SOC TAB ───────────────────────────────────────────────── -->
     <div id="pane-soc" class="pane">
       <aside class="soc-files">
-        <h4 style="margin:10px 12px 4px;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:hsl(var(--muted-foreground)/0.7);">Workspace .soc</h4>
-        <div id="soc-files"><div class="empty">Looking…</div></div>
+        <h4
+          style="margin:10px 12px 4px;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:hsl(var(--muted-foreground)/0.7);">
+          Workspace .soc</h4>
+        <div id="soc-files">
+          <div class="empty">Looking…</div>
+        </div>
         <div class="actions" style="padding:10px 12px; border-top:1px solid hsl(var(--border));">
-          <button class="btn"         id="btn-soc-refresh">Refresh</button>
+          <button class="btn" id="btn-soc-refresh">Refresh</button>
           <button class="btn primary" id="btn-soc-init">New .soc</button>
         </div>
       </aside>
@@ -456,498 +1305,1307 @@
         <div class="soc-card">
           <h3>Progress</h3>
           <div class="soc-progress">
-            <span id="soc-progress-text" style="font-family:ui-monospace,SFMono-Regular,monospace;font-size:11px;">— / —</span>
-            <div class="bar"><div id="soc-progress-fill" class="fill" style="width:0%"></div></div>
+            <span id="soc-progress-text" style="font-family:ui-monospace,SFMono-Regular,monospace;font-size:11px;">— /
+              —</span>
+            <div class="bar">
+              <div id="soc-progress-fill" class="fill" style="width:0%"></div>
+            </div>
             <span id="soc-since" style="font-size:10px;color:hsl(var(--muted-foreground));">— since insight</span>
           </div>
         </div>
         <div class="soc-card">
           <h3>Queue</h3>
-          <div id="soc-queue"><div class="empty-msg">No queue items.</div></div>
+          <div id="soc-queue">
+            <div class="empty-msg">No queue items.</div>
+          </div>
         </div>
         <div class="soc-card">
           <h3>Insights</h3>
-          <div id="soc-insights"><div class="empty-msg">No insights logged yet.</div></div>
+          <div id="soc-insights">
+            <div class="empty-msg">No insights logged yet.</div>
+          </div>
         </div>
         <div class="soc-card">
           <h3>Log</h3>
-          <div id="soc-log"><div class="empty-msg">No log entries yet.</div></div>
+          <div id="soc-log">
+            <div class="empty-msg">No log entries yet.</div>
+          </div>
         </div>
       </div>
     </div>
   </div>
 
-  <div id="status-bar" class="status-bar"><span id="status-dot" class="dot"></span><span id="status-text">Ready.</span></div>
+  <div id="status-bar" class="status-bar"><span id="status-dot" class="dot"></span><span id="status-text">Ready.</span>
+  </div>
 
-<script>
-  const os = window.acquireOSApi();
+  <script>
+    const os = window.acquireOSApi();
 
-  // ─── State ────────────────────────────────────────────────────────────
-  let WORKTREE = null;
-  let WIT_FILES = [];
-  let SOC_FILES = [];
-  let CURRENT_WIT = null;       // absolute path of selected .wit
-  let CURRENT_SOC = null;
-  let LAST_PARSED = null;       // {status, module, claims, proofs}
-  let LAST_RECEIPT = null;      // verifier audit json (or null)
-  let SELECTED_STEP = null;
-  let TAB = "proofs";
-  let FILTER = "all";
+    // ─── State ────────────────────────────────────────────────────────────
+    let WORKTREE = null;
+    let WIT_FILES = [];
+    let SOC_FILES = [];
+    let CURRENT_WIT = null;       // absolute path of selected .wit
+    let CURRENT_SOURCE = "";
+    let CURRENT_SOC = null;
+    let LAST_PARSED = null;       // {status, module, claims, proofs}
+    let LAST_RECEIPT = null;      // verifier audit json (or null)
+    let LAST_VERIFY = null;       // transient result from Run verify
+    let SELECTED_STEP = null;
+    let TAB = "proofs";
+    let FILTER = "all";
+    let VISUALIZING = false;
+    let LEAN_PREVIEWING = false;
+    let LEAN_FILES = [];
+    let CURRENT_LEAN = null;
+    let LEAN_RUN_TARGET = "";
+    let LEAN_SOURCE = "";
+    let LEAN_DIRTY = false;
+    let VIZ_GRAPH = null;
+    let VIZ_SELECTED = null;
+    let VIZ_VIEW = { x: 40, y: 40, k: 1 };
+    let VIZ_DRAG = null;
+    let FILES_COLLAPSED = false;
+    let FILES_WIDTH = 220;
+    let TREE_WIDTH = 440;
 
-  // ─── Theme — bg follows host (white/black via --background) ──────────
-  function applyTheme(payload) {
-    const mode = payload && payload.mode;
-    document.documentElement.classList.toggle("dark", mode === "dark");
-    const font = payload && payload.font;
-    if (font && font.body) document.body.style.fontFamily = font.body;
-  }
-  os.theme.get().then(applyTheme).catch(() => applyTheme({ mode: "light" }));
-  os.theme.subscribe(applyTheme);
+    // ─── Theme — bg follows host (white/black via --background) ──────────
+    function applyTheme(payload) {
+      const mode = payload && payload.mode;
+      document.documentElement.classList.toggle("dark", mode === "dark");
+      const font = payload && payload.font;
+      if (font && font.body) document.body.style.fontFamily = font.body;
+    }
+    os.theme.get().then(applyTheme).catch(() => applyTheme({ mode: "light" }));
+    os.theme.subscribe(applyTheme);
 
-  // ─── Status bar ───────────────────────────────────────────────────────
-  function setStatus(text, kind = "ok") {
-    document.getElementById("status-text").textContent = text;
-    const bar = document.getElementById("status-bar");
-    bar.classList.toggle("err", kind === "err");
-    const dot = document.getElementById("status-dot");
-    dot.className = "dot";
-    if (kind === "err")   dot.classList.add("err");
-    if (kind === "pending") dot.classList.add("pending");
-    if (kind === "ok")    dot.classList.add("ok");
-  }
+    // ─── Status bar ───────────────────────────────────────────────────────
+    function setStatus(text, kind = "ok") {
+      document.getElementById("status-text").textContent = text;
+      const bar = document.getElementById("status-bar");
+      bar.classList.toggle("err", kind === "err");
+      const dot = document.getElementById("status-dot");
+      dot.className = "dot";
+      if (kind === "err") dot.classList.add("err");
+      if (kind === "pending") dot.classList.add("pending");
+      if (kind === "ok") dot.classList.add("ok");
+    }
 
-  // ─── Bootstrap ────────────────────────────────────────────────────────
-  async function bootstrap() {
-    setStatus("Connecting…", "pending");
-    try {
-      const info = await os.plugin.info();
-      if (info.status !== "running" || !info.port) {
-        setStatus("Plugin server not running.", "err");
+    function clamp(n, min, max) {
+      return Math.max(min, Math.min(max, n));
+    }
+
+    function updateProofLayout() {
+      const pane = document.getElementById("pane-proofs");
+      const available = pane && pane.clientWidth ? pane.clientWidth : window.innerWidth;
+      const reserved = (FILES_COLLAPSED ? 0 : FILES_WIDTH + 5) + 5;
+      const maxTree = Math.max(340, Math.min(760, available - reserved - 420));
+      FILES_WIDTH = clamp(FILES_WIDTH, 170, 320);
+      TREE_WIDTH = clamp(TREE_WIDTH, 340, maxTree);
+      pane.style.setProperty("--files-w", FILES_WIDTH + "px");
+      pane.style.setProperty("--tree-w", TREE_WIDTH + "px");
+    }
+
+    function setFilesCollapsed(collapsed) {
+      FILES_COLLAPSED = collapsed;
+      document.body.classList.toggle("files-collapsed", collapsed);
+      const topActions = document.getElementById("top-actions");
+      const sideActions = document.getElementById("side-actions");
+      if (collapsed && sideActions.parentElement !== topActions) {
+        topActions.appendChild(sideActions);
+      } else if (!collapsed && sideActions.parentElement !== document.querySelector(".files-col")) {
+        document.querySelector(".files-col").appendChild(sideActions);
+      }
+      const toggle = document.getElementById("btn-files-toggle");
+      toggle.setAttribute("aria-expanded", String(!collapsed));
+      toggle.setAttribute("aria-label", collapsed ? "Show workspace files" : "Hide workspace files");
+      toggle.title = collapsed ? "Show workspace files" : "Hide workspace files";
+      updateProofLayout();
+    }
+
+    function startResize(kind, event) {
+      event.preventDefault();
+      const startX = event.clientX;
+      const startFiles = FILES_WIDTH;
+      const startTree = TREE_WIDTH;
+      document.body.classList.add("resizing");
+
+      function move(e) {
+        if (kind === "files") {
+          FILES_WIDTH = clamp(startFiles + e.clientX - startX, 170, 320);
+        } else {
+          const pane = document.getElementById("pane-proofs");
+          const available = pane && pane.clientWidth ? pane.clientWidth : window.innerWidth;
+          const reserved = (FILES_COLLAPSED ? 0 : FILES_WIDTH + 5) + 5;
+          TREE_WIDTH = clamp(startTree - (e.clientX - startX), 340, Math.max(340, Math.min(760, available - reserved - 420)));
+        }
+        updateProofLayout();
+      }
+
+      function stop() {
+        document.body.classList.remove("resizing");
+        window.removeEventListener("mousemove", move);
+        window.removeEventListener("mouseup", stop);
+      }
+
+      window.addEventListener("mousemove", move);
+      window.addEventListener("mouseup", stop);
+    }
+
+    // ─── Bootstrap ────────────────────────────────────────────────────────
+    async function bootstrap() {
+      setStatus("Connecting…", "pending");
+      try {
+        const info = await os.plugin.info();
+        if (info.status !== "running" || !info.port) {
+          setStatus("Plugin server not running.", "err");
+          return;
+        }
+      } catch (e) {
+        setStatus("Bridge error: " + (e.message || e), "err");
         return;
       }
-    } catch (e) {
-      setStatus("Bridge error: " + (e.message || e), "err");
-      return;
+
+      try {
+        const session = await os.session.info();
+        WORKTREE = session.worktree || session.folder || null;
+      } catch { /* keep null */ }
+
+      if (!WORKTREE) {
+        setStatus("No worktree available.", "err");
+        return;
+      }
+
+      await refreshFiles();
+      setStatus("Ready.");
     }
 
-    try {
-      const session = await os.session.info();
-      WORKTREE = session.worktree || session.folder || null;
-    } catch { /* keep null */ }
-
-    if (!WORKTREE) {
-      setStatus("No worktree available.", "err");
-      return;
+    // ─── File listing ─────────────────────────────────────────────────────
+    async function refreshFiles() {
+      if (!WORKTREE) return;
+      try {
+        const r = await fetch("/plugins/witsoc/proxy/api/list?dir=" + encodeURIComponent(WORKTREE), { cache: "no-store" });
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        const data = await r.json();
+        WIT_FILES = data.wit_files || [];
+        SOC_FILES = data.soc_files || [];
+        if (!LEAN_RUN_TARGET) LEAN_FILES = data.lean_files || [];
+      } catch (e) {
+        setStatus("List failed: " + (e.message || e), "err");
+        WIT_FILES = []; SOC_FILES = []; LEAN_FILES = [];
+      }
+      renderWitList();
+      renderSocList();
+      renderLeanList();
+      if (LEAN_PREVIEWING && !CURRENT_LEAN && LEAN_FILES.length) await openLean(chooseLeanFile());
+    }
+    function renderWitList() {
+      const el = document.getElementById("wit-files");
+      el.innerHTML = "";
+      if (!WIT_FILES.length) { el.innerHTML = '<div class="empty">No .wit files.</div>'; return; }
+      for (const f of WIT_FILES) {
+        const div = document.createElement("div");
+        div.className = "file-item" + (f.path === CURRENT_WIT ? " active" : "");
+        div.title = f.path;
+        div.textContent = f.rel;
+        div.addEventListener("click", () => openWit(f.path));
+        el.appendChild(div);
+      }
+    }
+    function renderSocList() {
+      const el = document.getElementById("soc-files");
+      el.innerHTML = "";
+      if (!SOC_FILES.length) { el.innerHTML = '<div class="empty">No .soc files.</div>'; return; }
+      for (const f of SOC_FILES) {
+        const div = document.createElement("div");
+        div.className = "file-item" + (f.path === CURRENT_SOC ? " active" : "");
+        div.title = f.path;
+        div.textContent = f.rel;
+        div.addEventListener("click", () => openSoc(f.path));
+        el.appendChild(div);
+      }
+    }
+    function chooseLeanFile() {
+      if (!LEAN_FILES.length) return null;
+      const scored = LEAN_FILES.map((f) => {
+        const rel = f.rel.toLowerCase();
+        let score = 0;
+        if (/main\.lean$/.test(rel)) score += 5;
+        if (/output|formal|lean|proof/.test(rel)) score += 3;
+        if (/lakefile\.lean$/.test(rel)) score -= 10;
+        return { f, score };
+      }).sort((a, b) => b.score - a.score || a.f.rel.localeCompare(b.f.rel));
+      return scored[0].f.path;
+    }
+    function renderLeanList() {
+      const select = document.getElementById("lean-file-select");
+      if (!select) return;
+      select.innerHTML = "";
+      if (!LEAN_FILES.length) {
+        const opt = document.createElement("option");
+        opt.value = "";
+        opt.textContent = "No .lean files";
+        select.appendChild(opt);
+        return;
+      }
+      for (const f of LEAN_FILES) {
+        const opt = document.createElement("option");
+        opt.value = f.path;
+        opt.textContent = (f.root_label ? f.root_label + " · " : "") + f.rel;
+        opt.selected = f.path === CURRENT_LEAN;
+        select.appendChild(opt);
+      }
+    }
+    async function refreshLeanFiles() {
+      if (!WORKTREE) return;
+      const target = (LEAN_RUN_TARGET || "").trim();
+      const params = new URLSearchParams();
+      if (!target) {
+        params.set("dir", WORKTREE);
+      } else if (target.startsWith("/")) {
+        params.set("worktree", target);
+      } else if (target.startsWith("orch_")) {
+        params.set("orchestrator", target);
+      } else {
+        params.set("session", target);
+      }
+      try {
+        const r = await fetch("/plugins/witsoc/proxy/api/lean-files?" + params.toString(), { cache: "no-store" });
+        const data = await r.json();
+        if (!r.ok || data.error) throw new Error(data.message || data.error || ("HTTP " + r.status));
+        LEAN_FILES = data.lean_files || [];
+        if (CURRENT_LEAN && !LEAN_FILES.some((f) => f.path === CURRENT_LEAN)) {
+          CURRENT_LEAN = null;
+          LEAN_SOURCE = "";
+          LEAN_DIRTY = false;
+        }
+        renderLeanList();
+        document.getElementById("lean-live-info").textContent = target ? "deep run" : "current worktree";
+      } catch (e) {
+        LEAN_FILES = [];
+        renderLeanList();
+        setLeanOutput("Could not read Lean files for target: " + (e.message || e), "err");
+      }
     }
 
-    await refreshFiles();
-    setStatus("Ready.");
-  }
+    // ─── Open / parse / display .wit ──────────────────────────────────────
+    async function openWit(absPath) {
+      CURRENT_WIT = absPath;
+      SELECTED_STEP = null;
+      LAST_VERIFY = null;
+      document.getElementById("src-name").textContent = absPath.split("/").slice(-1)[0];
+      setStatus("Loading…", "pending");
+      try {
+        await refreshCurrentWit();
+        setStatus("Loaded " + absPath.split("/").slice(-1)[0]);
+      } catch (e) {
+        setStatus("Open failed: " + (e.message || e), "err");
+      }
+    }
 
-  // ─── File listing ─────────────────────────────────────────────────────
-  async function refreshFiles() {
-    if (!WORKTREE) return;
-    try {
-      const r = await fetch("/plugins/witsoc/proxy/api/list?dir=" + encodeURIComponent(WORKTREE), { cache: "no-store" });
-      if (!r.ok) throw new Error("HTTP " + r.status);
-      const data = await r.json();
-      WIT_FILES = data.wit_files || [];
-      SOC_FILES = data.soc_files || [];
-    } catch (e) {
-      setStatus("List failed: " + (e.message || e), "err");
-      WIT_FILES = []; SOC_FILES = [];
-    }
-    renderWitList();
-    renderSocList();
-  }
-  function renderWitList() {
-    const el = document.getElementById("wit-files");
-    el.innerHTML = "";
-    if (!WIT_FILES.length) { el.innerHTML = '<div class="empty">No .wit files.</div>'; return; }
-    for (const f of WIT_FILES) {
-      const div = document.createElement("div");
-      div.className = "file-item" + (f.path === CURRENT_WIT ? " active" : "");
-      div.title = f.path;
-      div.textContent = f.rel;
-      div.addEventListener("click", () => openWit(f.path));
-      el.appendChild(div);
-    }
-  }
-  function renderSocList() {
-    const el = document.getElementById("soc-files");
-    el.innerHTML = "";
-    if (!SOC_FILES.length) { el.innerHTML = '<div class="empty">No .soc files.</div>'; return; }
-    for (const f of SOC_FILES) {
-      const div = document.createElement("div");
-      div.className = "file-item" + (f.path === CURRENT_SOC ? " active" : "");
-      div.title = f.path;
-      div.textContent = f.rel;
-      div.addEventListener("click", () => openSoc(f.path));
-      el.appendChild(div);
-    }
-  }
-
-  // ─── Open / parse / display .wit ──────────────────────────────────────
-  async function openWit(absPath) {
-    CURRENT_WIT = absPath;
-    SELECTED_STEP = null;
-    document.getElementById("src-name").textContent = absPath.split("/").slice(-1)[0];
-    setStatus("Loading…", "pending");
-    try {
+    async function refreshCurrentWit() {
+      if (!CURRENT_WIT) return;
       const [parsedR, sourceR] = await Promise.all([
-        fetch("/plugins/witsoc/proxy/api/parse?path=" + encodeURIComponent(absPath), { method: "POST" }),
-        fetch("/plugins/witsoc/proxy/api/file?path="  + encodeURIComponent(absPath)),
+        fetch("/plugins/witsoc/proxy/api/parse?path=" + encodeURIComponent(CURRENT_WIT), { method: "POST", cache: "no-store" }),
+        fetch("/plugins/witsoc/proxy/api/file?path=" + encodeURIComponent(CURRENT_WIT), { cache: "no-store" }),
       ]);
+      if (!parsedR.ok) throw new Error("parse HTTP " + parsedR.status);
+      if (!sourceR.ok) throw new Error("file HTTP " + sourceR.status);
       const parsed = await parsedR.json();
       const source = await sourceR.text();
-      LAST_PARSED  = parsed.parsed;
+      CURRENT_SOURCE = source;
+      LAST_PARSED = parsed.parsed;
       LAST_RECEIPT = parsed.receipt;
       renderSource(source);
       renderTree();
       renderHeader();
       renderWitList();
-      setStatus("Loaded " + absPath.split("/").slice(-1)[0]);
-    } catch (e) {
-      setStatus("Open failed: " + (e.message || e), "err");
+      if (VISUALIZING) renderVisualization();
     }
-  }
 
-  function renderHeader() {
-    const status = (LAST_PARSED && LAST_PARSED.status) || "UNVERIFIED";
-    const chip = document.getElementById("chip-status");
-    chip.className = "chip " + status.toLowerCase();
-    chip.innerHTML = '<span class="dot"></span>' + status;
-    document.getElementById("chip-file").innerHTML = "<span>File:</span><b>" + (CURRENT_WIT ? CURRENT_WIT.split("/").slice(-1)[0] : "—") + "</b>";
-    const stepCount = (LAST_PARSED && LAST_PARSED.proofs)
-      ? LAST_PARSED.proofs.reduce((n, p) => n + p.steps.length, 0) : 0;
-    document.getElementById("chip-steps").innerHTML = "<span>Steps</span><b>" + stepCount + "</b>";
-  }
+    function renderHeader() {
+      const status = (LAST_VERIFY && LAST_VERIFY.status) || (LAST_PARSED && LAST_PARSED.status) || "UNVERIFIED";
+      const chip = document.getElementById("chip-status");
+      chip.className = "chip " + status.toLowerCase();
+      chip.innerHTML = '<span class="dot"></span>' + status;
+      document.getElementById("chip-file").innerHTML = "<span>File:</span><b>" + (CURRENT_WIT ? CURRENT_WIT.split("/").slice(-1)[0] : "—") + "</b>";
+      const stepCount = (LAST_PARSED && LAST_PARSED.proofs)
+        ? LAST_PARSED.proofs.reduce((n, p) => n + p.steps.length, 0) : 0;
+      document.getElementById("chip-steps").innerHTML = "<span>Steps</span><b>" + stepCount + "</b>";
+    }
 
-  // ─── Source view (line-numbered, regex-highlighted) ─────────────────
-  function escapeHtml(s) {
-    return String(s).replace(/[&<>"']/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
-  }
-  function highlightLine(line) {
-    // Comment lines (-- prefix) → muted
-    if (/^\s*--/.test(line)) return '<span class="com">' + escapeHtml(line) + "</span>";
-    let out = escapeHtml(line);
-    // Step labels [N] / [N.M]
-    out = out.replace(/\[(\d+(?:\.\d+)*)\]/g, '<span class="lbl">[$1]</span>');
-    // Top-level claim kinds
-    out = out.replace(/\b(MODULE|THEOREM|LEMMA|PROPOSITION|COROLLARY|CONJECTURE|ALGORITHM|REDUCTION|DEFINE|PROOF\s+OF|GIVEN|CLAIM|IMPORT|EXPORT)\b/g,
-                       '<span class="kind">$1</span>');
-    // Step keywords
-    out = out.replace(/\b(HAVE|SHOW|ASSUME|LET|CONSIDER|SUFFICES|CASE|CITE|GAP|QED)\b/g,
-                       '<span class="kw">$1</span>');
-    // BY ...
-    out = out.replace(/\b(BY)\b/g, '<span class="by">BY</span>');
-    return out;
-  }
-  function renderSource(src) {
-    const lines = src.split(/\r?\n/);
-    const out = [];
-    for (let i = 0; i < lines.length; i++) {
-      out.push('<span data-ln="' + (i + 1) + '"><span class="ln">' + (i + 1) + "</span>" + highlightLine(lines[i]) + "</span>\n");
+    // ─── Source view (line-numbered, regex-highlighted) ─────────────────
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
     }
-    document.getElementById("src").innerHTML = "<code>" + out.join("") + "</code>";
-  }
-  function highlightLineNum(n) {
-    document.querySelectorAll("pre.src .ln.hi").forEach((el) => el.classList.remove("hi"));
-    if (!n) return;
-    const wrap = document.querySelector('pre.src [data-ln="' + n + '"]');
-    if (wrap) {
-      const lnEl = wrap.querySelector(".ln");
-      if (lnEl) lnEl.classList.add("hi");
-      wrap.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    function highlightLine(line) {
+      // Comment lines (-- prefix) → muted
+      if (/^\s*--/.test(line)) return '<span class="com">' + escapeHtml(line) + "</span>";
+      let out = escapeHtml(line);
+      // Step labels [N] / [N.M]
+      out = out.replace(/\[(\d+(?:\.\d+)*)\]/g, '<span class="lbl">[$1]</span>');
+      // Top-level claim kinds
+      out = out.replace(/\b(MODULE|THEOREM|LEMMA|PROPOSITION|COROLLARY|CONJECTURE|ALGORITHM|REDUCTION|DEFINE|PROOF\s+OF|GIVEN|CLAIM|IMPORT|EXPORT)\b/g,
+        '<span class="kind">$1</span>');
+      // Step keywords
+      out = out.replace(/\b(HAVE|SHOW|ASSUME|LET|CONSIDER|SUFFICES|CASE|CITE|GAP|QED)\b/g,
+        '<span class="kw">$1</span>');
+      // BY ...
+      out = out.replace(/\b(BY)\b/g, '<span class="by">BY</span>');
+      return out;
     }
-  }
-
-  // ─── Proof tree ───────────────────────────────────────────────────────
-  function verdictFor(label) {
-    if (!LAST_RECEIPT) return null;
-    const verdicts = LAST_RECEIPT.verdicts || LAST_RECEIPT.steps || [];
-    for (const v of verdicts) {
-      const lbl = v.label || v.step || v.id;
-      if (lbl === label) return v.verdict || v.status || null;
-    }
-    return null;
-  }
-  function renderTree() {
-    const treeEl = document.getElementById("tree");
-    treeEl.innerHTML = "";
-    if (!LAST_PARSED || !LAST_PARSED.proofs.length) {
-      treeEl.innerHTML = '<div class="tree-empty">No proof blocks parsed.</div>';
-      return;
-    }
-    for (const proof of LAST_PARSED.proofs) {
-      const h = document.createElement("div");
-      h.style.cssText = "padding:6px 12px 2px;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:hsl(var(--muted-foreground)/0.7);";
-      h.textContent = "PROOF · " + proof.name;
-      treeEl.appendChild(h);
-
-      for (const step of proof.steps) {
-        const verdict = (verdictFor(step.label) || "").toLowerCase();
-        if (FILTER !== "all" && !verdict.startsWith(FILTER)) continue;
-        const div = document.createElement("div");
-        div.className = "step" +
-          (verdict.startsWith("accept") ? " accept" :
-           verdict.startsWith("reject") ? " reject" :
-           verdict.startsWith("gap")    ? " gap"    : "") +
-          (SELECTED_STEP === step.label ? " active" : "");
-        div.dataset.label = step.label;
-        div.dataset.line = step.line;
-        div.innerHTML =
-          '<span class="dot"></span>' +
-          '<span class="lbl">[' + step.label + "]</span>" +
-          '<span class="kw">' + step.keyword + "</span>" +
-          '<span class="claim">' + escapeHtml(step.claim || "") + "</span>";
-        div.addEventListener("click", () => selectStep(step));
-        treeEl.appendChild(div);
+    function renderSource(src) {
+      const lines = src.split(/\r?\n/);
+      const out = [];
+      for (let i = 0; i < lines.length; i++) {
+        out.push('<span data-ln="' + (i + 1) + '"><span class="ln">' + (i + 1) + "</span>" + highlightLine(lines[i]) + "</span>\n");
       }
-      if (proof.qed) {
-        const div = document.createElement("div");
-        div.className = "step";
-        div.style.opacity = "0.7";
-        div.innerHTML =
-          '<span class="dot"></span>' +
-          '<span class="lbl">QED</span>' +
-          '<span class="claim">BY ' + escapeHtml(proof.qed.by || "") + "</span>";
-        treeEl.appendChild(div);
+      document.getElementById("src").innerHTML = "<code>" + out.join("") + "</code>";
+    }
+    function highlightLineNum(n) {
+      document.querySelectorAll("pre.src .ln.hi").forEach((el) => el.classList.remove("hi"));
+      if (!n) return;
+      const wrap = document.querySelector('pre.src [data-ln="' + n + '"]');
+      if (wrap) {
+        const lnEl = wrap.querySelector(".ln");
+        if (lnEl) lnEl.classList.add("hi");
+        wrap.scrollIntoView({ behavior: "smooth", block: "nearest" });
       }
     }
-  }
 
-  function selectStep(step) {
-    SELECTED_STEP = step.label;
-    renderTree();
-    highlightLineNum(step.line);
-    showDetail(step);
-  }
-
-  function showDetail(step) {
-    const d = document.getElementById("detail");
-    d.classList.add("open");
-    const verdict = verdictFor(step.label);
-    let html = "";
-    html += '<h5>Step [' + step.label + "]</h5>";
-    html += '<div><span class="lbl">[' + step.label + "]</span> <span class=\"kw\">" + step.keyword + "</span> " + escapeHtml(step.claim) + "</div>";
-    if (step.by) {
-      html += "<h5>By</h5><div>" + escapeHtml(step.by) + "</div>";
+    // ─── Proof visualization ─────────────────────────────────────────────
+    function truncateText(value, max) {
+      const text = String(value || "").replace(/\s+/g, " ").trim();
+      return text.length > max ? text.slice(0, max - 1).trimEnd() + "…" : text;
     }
-    // Find referenced step labels in the BY clause and link to them.
-    if (step.by) {
-      const refs = (step.by.match(/\[(\d+(?:\.\d+)*)\]/g) || []).map((s) => s.slice(1, -1));
-      if (refs.length) {
-        html += '<h5>Premises (cited)</h5>';
-        for (const r of refs) {
-          html += '<div class="premise" data-jump="' + r + '">[' + r + "]</div>";
+
+    function svgTextLines(value, x, y, width, lineHeight, maxLines, attrs = "", anchor = "middle") {
+      const text = String(value || "").replace(/\s+/g, " ").trim();
+      const chars = Math.max(14, Math.floor(width / 7));
+      const words = text.split(" ").filter(Boolean);
+      const lines = [];
+      let line = "";
+      for (const word of words) {
+        const next = line ? line + " " + word : word;
+        if (next.length > chars && line) {
+          lines.push(line);
+          line = word;
+        } else {
+          line = next;
+        }
+      }
+      if (line) lines.push(line);
+      if (!lines.length) lines.push("—");
+      const clipped = lines.slice(0, maxLines);
+      if (lines.length > maxLines) clipped[clipped.length - 1] = truncateText(clipped[clipped.length - 1], Math.max(8, chars - 1));
+      return '<text x="' + x + '" y="' + y + '" text-anchor="' + anchor + '" ' + attrs + ">" +
+        clipped.map((l, i) => '<tspan x="' + x + '" dy="' + (i ? lineHeight : 0) + '">' + escapeHtml(l) + "</tspan>").join("") +
+        "</text>";
+    }
+
+    function parseProofSource(src) {
+      const ast = { module: "", reductions: [], proofName: "", proofSteps: [], qed: null, errors: [] };
+      const lines = String(src || "").split(/\r?\n/);
+      let currentStep = null;
+      let currentReduction = null;
+      function finishStep() {
+        if (!currentStep) return;
+        const byMatch = currentStep.raw.match(/\bBY\s+([\s\S]+)$/i);
+        currentStep.by = byMatch ? byMatch[1].replace(/\.$/, "").trim() : "";
+        currentStep.text = currentStep.raw.replace(/\bBY\s+[\s\S]+$/i, "").trim();
+        currentStep.dependencies = [];
+        currentStep.citations = [];
+        const by = currentStep.by || "";
+        let m;
+        const stepRe = /\[(\d+(?:\.\d+)*)\]/g;
+        while ((m = stepRe.exec(by))) currentStep.dependencies.push(m[1]);
+        const citationText = by
+          .replace(stepRe, "")
+          .replace(/\b(and|because|matching each index|with)\b/gi, " ")
+          .replace(/^[\s,;.]+|[\s,;.]+$/g, "")
+          .replace(/\s+/g, " ")
+          .trim();
+        if (citationText) currentStep.citations.push(citationText);
+        ast.proofSteps.push(currentStep);
+        currentStep = null;
+      }
+      for (let i = 0; i < lines.length; i++) {
+        const raw = lines[i];
+        const line = raw.trim();
+        if (!line || line.startsWith("--")) continue;
+        let m;
+        if ((m = line.match(/^MODULE\s+(.+)$/i))) { finishStep(); ast.module = m[1].trim(); continue; }
+        if ((m = line.match(/^(REDUCTION|THEOREM|LEMMA|DEFINITION|DEFINE|ALGORITHM)\s+([^:]+):?/i))) {
+          finishStep();
+          currentReduction = { type: m[1].toUpperCase(), name: m[2].trim(), from: "", to: "", preserving: "" };
+          ast.reductions.push(currentReduction);
+          continue;
+        }
+        if (currentReduction && (m = line.match(/^FROM:\s*(.+)$/i))) { currentReduction.from = m[1].trim(); continue; }
+        if (currentReduction && (m = line.match(/^TO:\s*(.+)$/i))) { currentReduction.to = m[1].trim(); continue; }
+        if (currentReduction && (m = line.match(/^PRESERVING:\s*(.+)$/i))) { currentReduction.preserving = m[1].trim(); continue; }
+        if ((m = line.match(/^PROOF\s+OF\s+(.+):?$/i))) { finishStep(); ast.proofName = m[1].replace(/:$/, "").trim(); continue; }
+        if ((m = line.match(/^\[(\d+(?:\.\d+)*)\]\s+(ASSUME|HAVE|SHOW|LET|CONSIDER|SUFFICES|CASE|CITE|GAP)\s+(.+)$/i))) {
+          finishStep();
+          currentStep = { id: m[1], type: m[2].toUpperCase(), raw: m[3].trim(), line: i + 1 };
+          continue;
+        }
+        if ((m = line.match(/^QED\s+BY\s+(.+)$/i))) {
+          finishStep();
+          ast.qed = { by: m[1].replace(/\.$/, "").trim(), dependencies: [] };
+          let q;
+          const qre = /\[(\d+(?:\.\d+)*)\]/g;
+          while ((q = qre.exec(ast.qed.by))) ast.qed.dependencies.push(q[1]);
+          continue;
+        }
+        if (currentStep) currentStep.raw += " " + line;
+      }
+      finishStep();
+      const ids = new Set(ast.proofSteps.map((s) => s.id));
+      for (const step of ast.proofSteps) {
+        for (const dep of step.dependencies) {
+          if (!ids.has(dep)) ast.errors.push("Missing dependency [" + dep + "] cited by [" + step.id + "]");
+        }
+        if (step.dependencies.includes(step.id)) ast.errors.push("Circular self-reference at [" + step.id + "]");
+      }
+      return ast;
+    }
+
+    function citationKind(text) {
+      const t = String(text || "").toUpperCase();
+      if (t.includes("LEMMA")) return "LEMMA";
+      if (t.includes("THEOREM")) return "THEOREM";
+      if (t.includes("ALGORITHM")) return "ALGORITHM";
+      if (t.includes("REDUCTION")) return "REDUCTION";
+      if (t.includes("DEFINITION") || t.includes("DEFINE")) return "DEFINITION";
+      return "CITATION";
+    }
+
+    function nodeColor(type) {
+      const map = {
+        ASSUME: { fill: "#eeeeee", stroke: "#8b8b8b" },
+        HAVE: { fill: "#d9f4f5", stroke: "#84bfc4" },
+        SHOW: { fill: "#dcd9f7", stroke: "#928bd1" },
+        QED: { fill: "#ddf3df", stroke: "#76b783" },
+        REDUCTION: { fill: "#fde5cf", stroke: "#df8b35" },
+        THEOREM: { fill: "#dcd9f7", stroke: "#928bd1" },
+        LEMMA: { fill: "#d9f4f5", stroke: "#84bfc4" },
+        DEFINITION: { fill: "#fbf8d0", stroke: "#b8ae60" },
+        ALGORITHM: { fill: "#f4d3f2", stroke: "#bf72bb" },
+        CITATION: { fill: "#e9eef4", stroke: "#9ba9b7" },
+      };
+      return map[type] || map.CITATION;
+    }
+
+    function buildVizGraph(src) {
+      const ast = parseProofSource(src);
+      const nodes = [];
+      const edges = [];
+      const stepById = new Map();
+      const rootId = "proof:" + (ast.proofName || ast.module || "proof");
+      nodes.push({ id: rootId, type: "THEOREM", title: ast.proofName || ast.module || "Proof", text: ast.module || "Semi-formal proof", layer: 0, w: 180, h: 74 });
+      ast.reductions.forEach((r, i) => {
+        const id = "reduction:" + r.name;
+        nodes.push({ id, type: r.type === "DEFINE" ? "DEFINITION" : r.type, title: r.type + " " + r.name, text: [r.from && "FROM " + r.from, r.to && "TO " + r.to, r.preserving && "PRESERVING " + r.preserving].filter(Boolean).join(" · "), layer: 0, w: 190, h: 86 });
+        edges.push({ from: id, to: rootId, kind: "dashed", label: "frames proof" });
+      });
+      for (const step of ast.proofSteps) {
+        const node = { id: "step:" + step.id, stepId: step.id, type: step.type, title: "[" + step.id + "] " + step.type, text: step.text, by: step.by, dependencies: step.dependencies, citations: step.citations, line: step.line, layer: 1, w: 190, h: 92 };
+        nodes.push(node);
+        stepById.set(step.id, node);
+      }
+      for (const step of ast.proofSteps) {
+        const target = "step:" + step.id;
+        if (!step.dependencies.length && !step.citations.length) edges.push({ from: rootId, to: target, kind: "solid", label: "starts" });
+        for (const dep of step.dependencies) edges.push({ from: "step:" + dep, to: target, kind: "solid", label: "uses [" + dep + "]" });
+        if (step.citations.length) {
+          const citation = step.citations.join("; ");
+          const kind = citationKind(citation);
+          const id = "cite:" + step.id;
+          nodes.push({
+            id,
+            type: kind,
+            title: "Citation for [" + step.id + "]",
+            text: citation,
+            citationFor: step.id,
+            layer: 1,
+            w: 200,
+            h: 78,
+          });
+          edges.push({ from: id, to: target, kind: "dashed", label: "citation" });
+        }
+      }
+      if (ast.qed) {
+        const qid = "qed";
+        nodes.push({ id: qid, type: "QED", title: "QED", text: "Concludes by " + ast.qed.by, dependencies: ast.qed.dependencies, layer: 1, w: 150, h: 64 });
+        for (const dep of ast.qed.dependencies) edges.push({ from: "step:" + dep, to: qid, kind: "solid", label: "concludes" });
+      }
+      for (const node of nodes) {
+        const titleLen = String(node.title || "").length;
+        const textLen = String(node.text || "").length;
+        node.w = clamp(Math.max(node.w || 0, 145 + titleLen * 4.2, 120 + Math.min(textLen, 90) * 2.1), 190, 340);
+        const titleLines = Math.max(1, Math.ceil(titleLen / Math.max(14, Math.floor((node.w - 28) / 7))));
+        const bodyLines = Math.max(1, Math.ceil(textLen / Math.max(16, Math.floor((node.w - 28) / 7))));
+        node.h = clamp(30 + Math.min(titleLines, 2) * 15 + Math.min(bodyLines, 3) * 16, node.h || 72, 132);
+      }
+      const byId = new Map(nodes.map((n) => [n.id, n]));
+      for (let iter = 0; iter < nodes.length; iter++) {
+        let changed = false;
+        for (const edge of edges) {
+          const a = byId.get(edge.from), b = byId.get(edge.to);
+          if (a && b && b.layer <= a.layer) { b.layer = a.layer + 1; changed = true; }
+        }
+        if (!changed) break;
+      }
+      const layers = new Map();
+      for (const node of nodes) {
+        if (!layers.has(node.layer)) layers.set(node.layer, []);
+        layers.get(node.layer).push(node);
+      }
+      const layerKeys = Array.from(layers.keys()).sort((a, b) => a - b);
+      const layerWidths = new Map();
+      for (const layer of layerKeys) {
+        layerWidths.set(layer, Math.max(...layers.get(layer).map((n) => n.w)));
+      }
+      let nextX = 80;
+      for (const layer of layerKeys) {
+        const arr = layers.get(layer);
+        arr.sort((a, b) => {
+          const as = a.stepId ? Number(a.stepId.split(".")[0]) : (a.citationFor ? Number(a.citationFor.split(".")[0]) - 0.25 : 0);
+          const bs = b.stepId ? Number(b.stepId.split(".")[0]) : (b.citationFor ? Number(b.citationFor.split(".")[0]) - 0.25 : 0);
+          return as - bs || a.title.localeCompare(b.title);
+        });
+        const x = nextX + layerWidths.get(layer) / 2;
+        const totalH = arr.reduce((sum, n) => sum + n.h, 0) + Math.max(0, arr.length - 1) * 38;
+        let cursorY = 140 - totalH / 2;
+        arr.forEach((node, i) => {
+          node.x = x;
+          node.y = cursorY + node.h / 2;
+          cursorY += node.h + 38;
+        });
+        nextX += layerWidths.get(layer) + 150;
+      }
+      const minY = Math.min(...nodes.map((n) => n.y - n.h / 2), 0);
+      if (minY < 40) nodes.forEach((n) => n.y += 40 - minY);
+      const width = Math.max(980, Math.max(...nodes.map((n) => n.x + n.w / 2)) + 120);
+      const height = Math.max(620, Math.max(...nodes.map((n) => n.y + n.h / 2)) + 120);
+      return { ast, nodes, edges, width, height };
+    }
+
+    function highlightVizSyntax(src, errors) {
+      // Kept as a no-op hook so the graph parser can still surface errors in
+      // the statistics panel without showing an editor pane in visualization.
+    }
+
+    function renderVisualization() {
+      const src = CURRENT_SOURCE || "";
+      const name = CURRENT_WIT ? CURRENT_WIT.split("/").slice(-1)[0] : "—";
+      document.getElementById("viz-name").textContent = name;
+      VIZ_GRAPH = buildVizGraph(src);
+      highlightVizSyntax(src, VIZ_GRAPH.ast.errors);
+      drawVizGraph();
+      renderVizStats();
+      if (VIZ_SELECTED) renderVizInspector(VIZ_SELECTED);
+    }
+
+    function openVisualization() {
+      if (LEAN_PREVIEWING) closeLeanPreview();
+      VISUALIZING = true;
+      setTab("proofs");
+      document.body.classList.add("visualizing");
+      document.getElementById("btn-visualize").classList.add("primary");
+      renderVisualization();
+      setTimeout(fitViz, 0);
+      setStatus("visualization open");
+    }
+
+    function closeVisualization() {
+      VISUALIZING = false;
+      document.body.classList.remove("visualizing");
+      document.getElementById("btn-visualize").classList.remove("primary");
+      updateProofLayout();
+      setStatus("visualization closed");
+    }
+
+    // ─── Lean preview ────────────────────────────────────────────────────
+    function setLeanOutput(text, kind = "") {
+      const out = document.getElementById("lean-output");
+      out.textContent = text || "";
+      out.classList.toggle("ok", kind === "ok");
+      out.classList.toggle("err", kind === "err");
+    }
+
+    async function openLean(absPath, { silent = false, preserveDirty = false } = {}) {
+      if (!absPath) {
+        CURRENT_LEAN = null;
+        LEAN_SOURCE = "";
+        LEAN_DIRTY = false;
+        document.getElementById("lean-name").textContent = "—";
+        document.getElementById("lean-editor").value = "";
+        setLeanOutput("No Lean file found yet. Waiting for the orchestrator to write one.");
+        renderLeanList();
+        return;
+      }
+      if (preserveDirty && LEAN_DIRTY && absPath === CURRENT_LEAN) return;
+      try {
+        const r = await fetch("/plugins/witsoc/proxy/api/file?path=" + encodeURIComponent(absPath), { cache: "no-store" });
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        const src = await r.text();
+        const changed = src !== LEAN_SOURCE;
+        CURRENT_LEAN = absPath;
+        LEAN_SOURCE = src;
+        LEAN_DIRTY = false;
+        document.getElementById("lean-name").textContent = absPath.split("/").slice(-1)[0];
+        document.getElementById("lean-editor").value = src;
+        document.getElementById("lean-live-info").textContent = changed ? "live updated" : "live";
+        renderLeanList();
+        if (!silent) setStatus("Loaded Lean " + absPath.split("/").slice(-1)[0]);
+      } catch (e) {
+        setLeanOutput("Lean file read failed: " + (e.message || e), "err");
+        if (!silent) setStatus("Lean read failed: " + (e.message || e), "err");
+      }
+    }
+
+    async function saveLean() {
+      if (!CURRENT_LEAN) return;
+      const body = document.getElementById("lean-editor").value;
+      try {
+        const r = await fetch("/plugins/witsoc/proxy/api/file?path=" + encodeURIComponent(CURRENT_LEAN), {
+          method: "PUT",
+          body,
+        });
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        LEAN_SOURCE = body;
+        LEAN_DIRTY = false;
+        document.getElementById("lean-live-info").textContent = "saved";
+        setStatus("Lean saved");
+      } catch (e) {
+        setStatus("Lean save failed: " + (e.message || e), "err");
+      }
+    }
+
+    async function runLakeBuild() {
+      if (!CURRENT_LEAN) {
+        setLeanOutput("No Lean file selected.", "err");
+        return;
+      }
+      if (LEAN_DIRTY) await saveLean();
+      setStatus("lake build…", "pending");
+      setLeanOutput("Running lake build…");
+      try {
+        const r = await fetch("/plugins/witsoc/proxy/api/lake-build?path=" + encodeURIComponent(CURRENT_LEAN), { method: "POST" });
+        const data = await r.json();
+        const output = [
+          "cwd: " + (data.cwd || "—"),
+          "exit: " + data.exit_code + (data.timed_out ? " (timed out)" : ""),
+          "",
+          (data.stdout || "").trim(),
+          (data.stderr || "").trim(),
+        ].filter(Boolean).join("\n");
+        setLeanOutput(output || "lake build completed with no output.", data.exit_code === 0 ? "ok" : "err");
+        setStatus("lake build exit=" + data.exit_code, data.exit_code === 0 ? "ok" : "err");
+      } catch (e) {
+        setLeanOutput("lake build failed to start: " + (e.message || e), "err");
+        setStatus("lake build failed: " + (e.message || e), "err");
+      }
+    }
+
+    async function openLeanPreview() {
+      if (LEAN_PREVIEWING) { closeLeanPreview(); return; }
+      if (VISUALIZING) closeVisualization();
+      LEAN_RUN_TARGET = document.getElementById("lean-run-input").value.trim();
+      LEAN_PREVIEWING = true;
+      setTab("proofs");
+      document.body.classList.add("lean-previewing");
+      document.getElementById("btn-preview-lean").classList.add("primary");
+      await refreshLeanFiles();
+      await openLean(CURRENT_LEAN || chooseLeanFile(), { silent: true });
+      updateProofLayout();
+      setStatus("Lean preview open");
+    }
+
+    function closeLeanPreview() {
+      LEAN_PREVIEWING = false;
+      document.body.classList.remove("lean-previewing");
+      document.getElementById("btn-preview-lean").classList.remove("primary");
+      updateProofLayout();
+      setStatus("Lean preview closed");
+    }
+
+    function edgePath(a, b) {
+      const x1 = a.x + a.w / 2, y1 = a.y;
+      const x2 = b.x - b.w / 2, y2 = b.y;
+      const dx = Math.max(90, Math.abs(x2 - x1) * 0.46);
+      return "M" + x1 + " " + y1 + " C" + (x1 + dx) + " " + y1 + " " + (x2 - dx) + " " + y2 + " " + x2 + " " + y2;
+    }
+
+    function drawVizGraph() {
+      const svg = document.getElementById("viz-svg");
+      if (!VIZ_GRAPH) { svg.innerHTML = ""; return; }
+      const search = document.getElementById("viz-search").value.trim().toLowerCase();
+      const related = new Set();
+      if (VIZ_SELECTED) {
+        related.add(VIZ_SELECTED.id);
+        for (const e of VIZ_GRAPH.edges) if (e.from === VIZ_SELECTED.id || e.to === VIZ_SELECTED.id) { related.add(e.from); related.add(e.to); }
+      }
+      const byId = new Map(VIZ_GRAPH.nodes.map((n) => [n.id, n]));
+      const parts = [];
+      parts.push('<defs><marker id="viz-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#a8b0ba"/></marker><filter id="viz-glow"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>');
+      parts.push('<rect width="' + VIZ_GRAPH.width + '" height="' + VIZ_GRAPH.height + '" fill="transparent"/>');
+      parts.push('<g id="viz-world" transform="translate(' + VIZ_VIEW.x + " " + VIZ_VIEW.y + ") scale(" + VIZ_VIEW.k + ')">');
+      parts.push('<g class="edges">');
+      for (const edge of VIZ_GRAPH.edges) {
+        const a = byId.get(edge.from), b = byId.get(edge.to);
+        if (!a || !b) continue;
+        const active = related.has(edge.from) && related.has(edge.to);
+        parts.push('<path data-from="' + escapeHtml(edge.from) + '" data-to="' + escapeHtml(edge.to) + '" d="' + edgePath(a, b) + '" fill="none" stroke="' + (active ? "#5b6ee1" : "#b8c0cc") + '" stroke-width="' + (active ? 2.4 : 1.5) + '" ' + (edge.kind === "dashed" ? 'stroke-dasharray="6 5" ' : "") + 'marker-end="url(#viz-arrow)" opacity="' + (VIZ_SELECTED && !active ? 0.18 : 1) + '"/>');
+        if (active && edge.label) {
+          const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2 - 10;
+          parts.push('<text x="' + mx + '" y="' + my + '" text-anchor="middle" fill="#4b5563" font-size="11">' + escapeHtml(edge.label) + "</text>");
+        }
+      }
+      parts.push("</g><g class=\"nodes\">");
+      for (const node of VIZ_GRAPH.nodes) {
+        const c = nodeColor(node.type);
+        const match = !search || (node.title + " " + node.text).toLowerCase().includes(search);
+        const active = !VIZ_SELECTED || related.has(node.id) || node.id === VIZ_SELECTED.id;
+        const opacity = match && active ? 1 : 0.18;
+        parts.push('<g class="viz-node-g" data-id="' + escapeHtml(node.id) + '" transform="translate(' + (node.x - node.w / 2) + " " + (node.y - node.h / 2) + ')" opacity="' + opacity + '" style="cursor:pointer">');
+        parts.push('<rect width="' + node.w + '" height="' + node.h + '" rx="8" fill="' + c.fill + '" stroke="' + c.stroke + '" stroke-width="1.8" filter="' + (node.id === (VIZ_SELECTED && VIZ_SELECTED.id) ? "url(#viz-glow)" : "none") + '"/>');
+        parts.push(svgTextLines(node.title || "", 14, 20, node.w - 28, 14, 2, 'font-size="11" font-weight="700" fill="#2f3a44"', "start"));
+        parts.push(svgTextLines(node.text || "", 14, 52, node.w - 28, 16, 3, 'font-size="11" fill="#2f3a44"', "start"));
+        parts.push("</g>");
+      }
+      parts.push("</g></g>");
+      const stage = document.getElementById("viz-stage");
+      svg.setAttribute("viewBox", "0 0 " + Math.max(300, svg.clientWidth || stage.clientWidth) + " " + Math.max(240, svg.clientHeight || stage.clientHeight));
+      svg.innerHTML = parts.join("");
+      attachVizNodeEvents();
+      renderMinimap();
+    }
+
+    function attachVizNodeEvents() {
+      const tooltip = document.getElementById("viz-tooltip");
+      document.querySelectorAll("#viz-svg .viz-node-g").forEach((g) => {
+        const node = VIZ_GRAPH.nodes.find((n) => n.id === g.dataset.id);
+        g.addEventListener("mousedown", (e) => {
+          e.stopPropagation();
+          VIZ_DRAG = { type: "node", id: node.id, x: e.clientX, y: e.clientY, nx: node.x, ny: node.y };
+        });
+        g.addEventListener("click", (e) => { e.stopPropagation(); VIZ_SELECTED = node; renderVizInspector(node); drawVizGraph(); });
+        g.addEventListener("mouseenter", () => {
+          tooltip.style.display = "block";
+          tooltip.innerHTML = "<b>" + escapeHtml(node.title) + "</b><br>" + escapeHtml(truncateText(node.text, 180));
+        });
+        g.addEventListener("mousemove", (e) => { tooltip.style.left = (e.offsetX + 14) + "px"; tooltip.style.top = (e.offsetY + 14) + "px"; });
+        g.addEventListener("mouseleave", () => { tooltip.style.display = "none"; });
+      });
+    }
+
+    function renderVizInspector(node) {
+      const incoming = VIZ_GRAPH.edges.filter((e) => e.to === node.id).map((e) => VIZ_GRAPH.nodes.find((n) => n.id === e.from)).filter(Boolean);
+      const outgoing = VIZ_GRAPH.edges.filter((e) => e.from === node.id).map((e) => VIZ_GRAPH.nodes.find((n) => n.id === e.to)).filter(Boolean);
+      document.getElementById("viz-inspector").innerHTML =
+        "<h3>" + escapeHtml(node.title) + "</h3>" +
+        "<div>" + escapeHtml(node.text || "") + "</div>" +
+        (node.by ? "<h4>By</h4><div>" + escapeHtml(node.by) + "</div>" : "") +
+        "<h4>Depends on</h4>" + (incoming.length ? incoming.map((n) => "<div>• " + escapeHtml(n.title) + "</div>").join("") : '<div class="empty-msg">No incoming dependencies.</div>') +
+        "<h4>Used by</h4>" + (outgoing.length ? outgoing.map((n) => "<div>• " + escapeHtml(n.title) + "</div>").join("") : '<div class="empty-msg">No outgoing dependencies.</div>') +
+        "<h4>Explanation</h4><div>" + escapeHtml(incoming.length ? "This step is justified by the highlighted parent nodes and citations. Its result can then support each child node in the proof DAG." : "This node introduces a starting fact, external theorem, or proof frame.") + "</div>";
+    }
+
+    function renderVizStats() {
+      if (!VIZ_GRAPH) return;
+      const steps = VIZ_GRAPH.ast.proofSteps.length;
+      const lemmas = VIZ_GRAPH.nodes.filter((n) => n.type === "LEMMA").length;
+      const maxLayer = Math.max(...VIZ_GRAPH.nodes.map((n) => n.layer), 0);
+      const branching = steps ? (VIZ_GRAPH.edges.length / Math.max(1, steps)).toFixed(2) : "0";
+      document.getElementById("viz-stats").innerHTML =
+        '<div class="viz-stat-grid">' +
+        '<div class="viz-stat"><b>' + steps + '</b>steps</div>' +
+        '<div class="viz-stat"><b>' + lemmas + '</b>lemmas</div>' +
+        '<div class="viz-stat"><b>' + maxLayer + '</b>proof depth</div>' +
+        '<div class="viz-stat"><b>' + branching + '</b>branching</div>' +
+        '</div>' +
+        '<h4>Validation</h4>' + (VIZ_GRAPH.ast.errors.length ? '<div class="viz-error-list">' + VIZ_GRAPH.ast.errors.map(escapeHtml).join("<br>") + "</div>" : '<div class="empty-msg">No missing citations detected.</div>');
+    }
+
+    function renderMinimap() {
+      if (!VIZ_GRAPH) return;
+      const sx = 170 / VIZ_GRAPH.width, sy = 102 / VIZ_GRAPH.height, s = Math.min(sx, sy);
+      const nodes = VIZ_GRAPH.nodes.map((n) => {
+        const c = nodeColor(n.type);
+        return '<rect x="' + (n.x * s) + '" y="' + (n.y * s) + '" width="' + Math.max(5, n.w * s) + '" height="' + Math.max(4, n.h * s) + '" rx="2" fill="' + c.fill + '" stroke="' + c.stroke + '"/>';
+      }).join("");
+      document.getElementById("viz-minimap").innerHTML = '<svg viewBox="0 0 180 112"><rect width="180" height="112" fill="white"/><g transform="translate(5 5)">' + nodes + "</g></svg>";
+    }
+
+    function fitViz() {
+      if (!VIZ_GRAPH) return;
+      const stage = document.getElementById("viz-stage");
+      const k = Math.min((stage.clientWidth - 70) / VIZ_GRAPH.width, (stage.clientHeight - 70) / VIZ_GRAPH.height, 1.2);
+      VIZ_VIEW = { x: 35, y: 35, k: Math.max(0.25, k) };
+      drawVizGraph();
+    }
+
+    function exportVizSvg() {
+      if (!VIZ_GRAPH) return;
+      const clone = document.getElementById("viz-svg").cloneNode(true);
+      const world = clone.querySelector("#viz-world");
+      if (world) world.setAttribute("transform", "translate(0 0) scale(1)");
+      clone.setAttribute("viewBox", "0 0 " + VIZ_GRAPH.width + " " + VIZ_GRAPH.height);
+      clone.setAttribute("width", VIZ_GRAPH.width);
+      clone.setAttribute("height", VIZ_GRAPH.height);
+      clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+      const blob = new Blob([clone.outerHTML], { type: "image/svg+xml" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = (CURRENT_WIT ? CURRENT_WIT.split("/").pop().replace(/\.[^.]+$/, "") : "proof") + "-graph.svg";
+      a.click();
+      URL.revokeObjectURL(a.href);
+    }
+
+    // ─── Proof tree ───────────────────────────────────────────────────────
+    function allStepLabels() {
+      const labels = [];
+      for (const proof of ((LAST_PARSED && LAST_PARSED.proofs) || [])) {
+        for (const step of proof.steps) labels.push(step.label);
+      }
+      return labels;
+    }
+
+    function normalizeVerdict(value) {
+      const v = String(value || "").trim().toUpperCase();
+      if (v.startsWith("ACCEPT") || v === "OK" || v === "VERIFIED") return "ACCEPT";
+      if (v.startsWith("REJECT") || v.startsWith("FAIL")) return "REJECT";
+      if (v.startsWith("GAP")) return "GAP";
+      return v || null;
+    }
+
+    function parseVerifyVerdicts(data, requestedStep) {
+      const text = ((data && data.stdout) || "") + "\n" + ((data && data.stderr) || "");
+      const verdicts = [];
+      const seen = new Set();
+      const re = /(?:^|\n)\s*(?:step\s*)?\[?(\d+(?:\.\d+)*)\]?\s*[:\-]?\s*(ACCEPT(?:ED)?|REJECT(?:ED)?|GAP|FAIL(?:ED)?)\b:?\s*([^\n]*)/gi;
+      let m;
+      while ((m = re.exec(text))) {
+        const verdict = normalizeVerdict(m[2]);
+        if (!verdict) continue;
+        seen.add(m[1]);
+        verdicts.push({ label: m[1], verdict, reason: (m[3] || "").trim() });
+      }
+
+      const okVerify = data && data.exit_code === 0 && /^\s*OK:/m.test(text);
+      if (okVerify) {
+        const verifySections = [];
+        const sectionRe = /^---\s+VERIFY\s+\[(\d+(?:\.\d+)*)\](?:\s+QED)?\s+---$/gm;
+        while ((m = sectionRe.exec(text))) verifySections.push(m[1]);
+        const labels = requestedStep ? [requestedStep] : (verifySections.length ? verifySections : allStepLabels());
+        for (const label of labels) {
+          if (!seen.has(label)) verdicts.push({ label, verdict: "ACCEPT", reason: "references valid" });
+        }
+      } else if (!verdicts.length) {
+        const labels = requestedStep ? [requestedStep] : allStepLabels();
+        for (const label of labels) {
+          verdicts.push({ label, verdict: "REJECT", reason: "verify failed before returning per-step verdicts" });
+        }
+      }
+      return verdicts;
+    }
+
+    function verdictFor(label) {
+      if (LAST_VERIFY) {
+        for (const v of LAST_VERIFY.verdicts || []) {
+          if (v.label === label) return v.verdict + (v.reason ? ": " + v.reason : "");
+        }
+      }
+      if (!LAST_RECEIPT) return null;
+      const verdicts = LAST_RECEIPT.verdicts || LAST_RECEIPT.steps || [];
+      for (const v of verdicts) {
+        const lbl = v.label || v.step || v.id;
+        if (lbl === label) return normalizeVerdict(v.verdict || v.status) || v.verdict || v.status || null;
+      }
+      return null;
+    }
+    function renderTree() {
+      const treeEl = document.getElementById("tree");
+      treeEl.innerHTML = "";
+      if (!LAST_PARSED || !LAST_PARSED.proofs.length) {
+        treeEl.innerHTML = '<div class="tree-empty">No proof blocks parsed.</div>';
+        return;
+      }
+      for (const proof of LAST_PARSED.proofs) {
+        const h = document.createElement("div");
+        h.style.cssText = "padding:6px 12px 2px;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:hsl(var(--muted-foreground)/0.7);";
+        h.textContent = "PROOF · " + proof.name;
+        treeEl.appendChild(h);
+
+        for (const step of proof.steps) {
+          const verdict = (verdictFor(step.label) || "").toLowerCase();
+          if (FILTER !== "all" && !verdict.startsWith(FILTER)) continue;
+          const div = document.createElement("div");
+          div.className = "step" +
+            (verdict.startsWith("accept") ? " accept" :
+              verdict.startsWith("reject") ? " reject" :
+                verdict.startsWith("gap") ? " gap" : "") +
+            (SELECTED_STEP === step.label ? " active" : "");
+          div.dataset.label = step.label;
+          div.dataset.line = step.line;
+          div.innerHTML =
+            '<span class="dot"></span>' +
+            '<span class="lbl">[' + step.label + "]</span>" +
+            '<span class="kw">' + step.keyword + "</span>" +
+            '<span class="claim">' + escapeHtml(step.claim || "") + "</span>" +
+            (verdict ? '<span class="verdict-badge">' + escapeHtml(normalizeVerdict(verdict) || verdict) + "</span>" : "");
+          div.addEventListener("click", () => selectStep(step));
+          treeEl.appendChild(div);
+        }
+        if (proof.qed) {
+          const div = document.createElement("div");
+          div.className = "step";
+          div.style.opacity = "0.7";
+          div.innerHTML =
+            '<span class="dot"></span>' +
+            '<span class="lbl">QED</span>' +
+            '<span class="claim">BY ' + escapeHtml(proof.qed.by || "") + "</span>";
+          treeEl.appendChild(div);
         }
       }
     }
-    if (verdict) {
-      html += "<h5>Verdict</h5><div>" + escapeHtml(verdict) + "</div>";
-    } else {
-      html += '<h5>Verdict</h5><div class="empty-msg">no verdict yet — paste verifier output below</div>';
+
+    function selectStep(step) {
+      SELECTED_STEP = step.label;
+      renderTree();
+      highlightLineNum(step.line);
+      showDetail(step);
     }
-    d.innerHTML = html;
-    d.querySelectorAll(".premise").forEach((el) => {
-      el.addEventListener("click", () => {
-        const lbl = el.dataset.jump;
-        for (const proof of (LAST_PARSED.proofs || [])) {
-          for (const s of proof.steps) {
-            if (s.label === lbl) { selectStep(s); return; }
+
+    function showDetail(step) {
+      const d = document.getElementById("detail");
+      d.classList.add("open");
+      const verdict = verdictFor(step.label);
+      let html = "";
+      html += '<h5>Step [' + step.label + "]</h5>";
+      html += '<div><span class="lbl">[' + step.label + "]</span> <span class=\"kw\">" + step.keyword + "</span> " + escapeHtml(step.claim) + "</div>";
+      if (step.by) {
+        html += "<h5>By</h5><div>" + escapeHtml(step.by) + "</div>";
+      }
+      // Find referenced step labels in the BY clause and link to them.
+      if (step.by) {
+        const refs = (step.by.match(/\[(\d+(?:\.\d+)*)\]/g) || []).map((s) => s.slice(1, -1));
+        if (refs.length) {
+          html += '<h5>Premises (cited)</h5>';
+          for (const r of refs) {
+            html += '<div class="premise" data-jump="' + r + '">[' + r + "]</div>";
           }
         }
+      }
+      if (verdict) {
+        html += "<h5>Verdict</h5><div>" + escapeHtml(verdict) + "</div>";
+      } else {
+        html += '<h5>Verdict</h5><div class="empty-msg">no verdict yet — paste verifier output below</div>';
+      }
+      d.innerHTML = html;
+      d.querySelectorAll(".premise").forEach((el) => {
+        el.addEventListener("click", () => {
+          const lbl = el.dataset.jump;
+          for (const proof of (LAST_PARSED.proofs || [])) {
+            for (const s of proof.steps) {
+              if (s.label === lbl) { selectStep(s); return; }
+            }
+          }
+        });
       });
-    });
-  }
-
-  // ─── Run check / verify ───────────────────────────────────────────────
-  async function runCheck() {
-    if (!CURRENT_WIT) return;
-    setStatus("wit check…", "pending");
-    try {
-      const r = await fetch("/plugins/witsoc/proxy/api/check?path=" + encodeURIComponent(CURRENT_WIT), { method: "POST" });
-      const data = await r.json();
-      const tail = (data.stdout + "\n" + data.stderr).trim().split("\n").slice(-2).join(" · ");
-      setStatus("check exit=" + data.exit_code + (tail ? "  " + tail : ""), data.exit_code === 0 ? "ok" : "err");
-    } catch (e) { setStatus("check failed: " + (e.message || e), "err"); }
-  }
-  async function runVerify(step = null) {
-    if (!CURRENT_WIT) return;
-    setStatus("wit verify…", "pending");
-    try {
-      let url = "/plugins/witsoc/proxy/api/verify?path=" + encodeURIComponent(CURRENT_WIT);
-      if (step) url += "&step=" + encodeURIComponent(step);
-      const r = await fetch(url, { method: "POST" });
-      const data = await r.json();
-      const ta = document.getElementById("verdict-input");
-      // Pre-populate the textarea with the contexts so the user can show
-      // them to a verifier and then paste verdicts back over the top.
-      ta.value = data.stdout || "";
-      setStatus("verify exit=" + data.exit_code + " — context shown in textarea; paste verdicts back over it",
-                data.exit_code === 0 ? "ok" : "err");
-    } catch (e) { setStatus("verify failed: " + (e.message || e), "err"); }
-  }
-  async function runContext() {
-    if (!CURRENT_WIT) return;
-    setStatus("wit context…", "pending");
-    try {
-      const r = await fetch("/plugins/witsoc/proxy/api/context?path=" + encodeURIComponent(CURRENT_WIT), { method: "POST" });
-      const data = await r.json();
-      const ta = document.getElementById("verdict-input");
-      ta.value = data.stdout || "";
-      setStatus("context exit=" + data.exit_code, data.exit_code === 0 ? "ok" : "err");
-    } catch (e) { setStatus("context failed: " + (e.message || e), "err"); }
-  }
-  async function saveReceipt() {
-    if (!CURRENT_WIT) return;
-    const body = document.getElementById("verdict-input").value;
-    if (!body.trim()) { setStatus("nothing to save", "err"); return; }
-    setStatus("wit receipt…", "pending");
-    try {
-      const r = await fetch("/plugins/witsoc/proxy/api/receipt?path=" + encodeURIComponent(CURRENT_WIT), {
-        method: "POST", body,
-      });
-      const data = await r.json();
-      LAST_RECEIPT = data.receipt;
-      // Re-fetch parse so the .wit file's updated -- Status: header reflects.
-      await openWit(CURRENT_WIT);
-      setStatus("receipt saved (exit=" + data.exit_code + ")", data.exit_code === 0 ? "ok" : "err");
-      document.getElementById("receipt-info").textContent = LAST_RECEIPT
-        ? (LAST_RECEIPT.status || LAST_RECEIPT.final_verdict || "saved")
-        : "saved";
-    } catch (e) { setStatus("receipt failed: " + (e.message || e), "err"); }
-  }
-
-  // ─── Soc tab ──────────────────────────────────────────────────────────
-  async function openSoc(absPath) {
-    CURRENT_SOC = absPath;
-    setStatus("Loading .soc…", "pending");
-    try {
-      const r = await fetch("/plugins/witsoc/proxy/api/soc?path=" + encodeURIComponent(absPath));
-      if (!r.ok) throw new Error("HTTP " + r.status);
-      const data = await r.json();
-      renderSoc(data.parsed);
-      renderSocList();
-      setStatus("Loaded " + absPath.split("/").slice(-1)[0]);
-    } catch (e) { setStatus("Open .soc failed: " + (e.message || e), "err"); }
-  }
-
-  function renderSoc(s) {
-    document.getElementById("soc-goal").textContent = s.goal || "(no goal set)";
-    document.getElementById("soc-goal").classList.toggle("empty-msg", !s.goal);
-
-    const a = s.progress_a, b = s.progress_b;
-    document.getElementById("soc-progress-text").textContent =
-      (a == null ? "—" : a) + " / " + (b == null ? "—" : b);
-    const pct = (a != null && b > 0) ? Math.min(100, (a / b) * 100) : 0;
-    document.getElementById("soc-progress-fill").style.width = pct + "%";
-    document.getElementById("soc-since").textContent =
-      (s.insights_since == null ? "—" : s.insights_since) + " since insight";
-
-    const qel = document.getElementById("soc-queue");
-    qel.innerHTML = "";
-    if (!s.queue.length) qel.innerHTML = '<div class="empty-msg">No queue items.</div>';
-    for (const q of s.queue) {
-      const div = document.createElement("div");
-      div.className = "queue-item" + (q.done ? " done" : "");
-      div.innerHTML =
-        '<span class="check">' + (q.done ? "✓" : "") + "</span>" +
-        '<span class="text">' + escapeHtml(q.text) + "</span>";
-      qel.appendChild(div);
     }
 
-    const iel = document.getElementById("soc-insights");
-    iel.innerHTML = "";
-    if (!s.insights.length) iel.innerHTML = '<div class="empty-msg">No insights logged yet.</div>';
-    for (const ins of s.insights) {
-      const div = document.createElement("div");
-      div.className = "insight-item";
-      div.innerHTML = '<span class="text">• ' + escapeHtml(ins.text) + "</span>";
-      iel.appendChild(div);
+    // ─── Run check / verify ───────────────────────────────────────────────
+    async function runCheck() {
+      if (!CURRENT_WIT) return;
+      setStatus("wit check…", "pending");
+      try {
+        const r = await fetch("/plugins/witsoc/proxy/api/check?path=" + encodeURIComponent(CURRENT_WIT), { method: "POST" });
+        const data = await r.json();
+        const tail = (data.stdout + "\n" + data.stderr).trim().split("\n").slice(-2).join(" · ");
+        setStatus("check exit=" + data.exit_code + (tail ? "  " + tail : ""), data.exit_code === 0 ? "ok" : "err");
+      } catch (e) { setStatus("check failed: " + (e.message || e), "err"); }
     }
-
-    const lel = document.getElementById("soc-log");
-    lel.innerHTML = "";
-    if (!s.log.length) lel.innerHTML = '<div class="empty-msg">No log entries yet.</div>';
-    for (const item of s.log) {
-      const div = document.createElement("div");
-      div.className = "insight-item";
-      div.innerHTML = '<span class="text" style="font-family:ui-monospace,SFMono-Regular,monospace;font-size:11px;">' + escapeHtml(item.text) + "</span>";
-      lel.appendChild(div);
-    }
-  }
-
-  // ─── Tab switching ────────────────────────────────────────────────────
-  function setTab(t) {
-    TAB = t;
-    document.querySelectorAll(".tab").forEach((b) => b.classList.toggle("active", b.dataset.tab === t));
-    document.querySelectorAll(".pane").forEach((p) => p.classList.toggle("active", p.id === "pane-" + t));
-  }
-  document.querySelectorAll(".tab").forEach((b) => b.addEventListener("click", () => setTab(b.dataset.tab)));
-
-  // Filter pill
-  document.querySelectorAll("#filter-pill button").forEach((b) => {
-    b.addEventListener("click", () => {
-      FILTER = b.dataset.filter;
-      document.querySelectorAll("#filter-pill button").forEach((x) => x.classList.toggle("active", x === b));
-      renderTree();
-    });
-  });
-
-  // Buttons
-  document.getElementById("btn-refresh").addEventListener("click", refreshFiles);
-  document.getElementById("btn-check").addEventListener("click", runCheck);
-  document.getElementById("btn-verify").addEventListener("click", () => runVerify(null));
-  document.getElementById("btn-context").addEventListener("click", runContext);
-  document.getElementById("btn-clear-verdicts").addEventListener("click", () => {
-    document.getElementById("verdict-input").value = "";
-  });
-  document.getElementById("btn-save-receipt").addEventListener("click", saveReceipt);
-  document.getElementById("btn-soc-refresh").addEventListener("click", refreshFiles);
-  document.getElementById("btn-soc-init").addEventListener("click", async () => {
-    if (!WORKTREE) return;
-    try {
-      const target = WORKTREE + "/research.soc";
-      const r = await fetch("/plugins/witsoc/proxy/api/soc?path=" + encodeURIComponent(target), {
-        method: "POST",
-        body: "# Soc Working Memory\n\nGOAL: <one-line statement>\n\nPROGRESS: 0 / 0\nINSIGHTS_SINCE_LAST_UPDATE: 0\n\nQUEUE:\n  - [ ] First sub-problem\n\nINSIGHTS:\n  - (none yet)\n\nLOG:\n  -\n",
-      });
-      if (!r.ok) throw new Error("HTTP " + r.status);
-      await refreshFiles();
-      await openSoc(target);
-      setStatus("created " + target);
-    } catch (e) { setStatus("init .soc failed: " + (e.message || e), "err"); }
-  });
-
-  // Iframe commands
-  os.events.on("iframe-command", (params) => {
-    if (!params || !params.command) return;
-    const args = params.args || [];
-    const cmd = params.command;
-    if (cmd === "open"     && args[0]) {
-      const abs = args[0].startsWith("/") ? args[0] : (WORKTREE ? WORKTREE + "/" + args[0] : args[0]);
-      if (abs.endsWith(".soc")) { setTab("soc"); openSoc(abs); }
-      else { setTab("proofs"); openWit(abs); }
-    }
-    else if (cmd === "check")        runCheck();
-    else if (cmd === "verify")       runVerify(args[0] || null);
-    else if (cmd === "context")      runContext();
-    else if (cmd === "save-receipt") saveReceipt();
-    else if (cmd === "tab"  && args[0]) setTab(args[0] === "soc" ? "soc" : "proofs");
-    else if (cmd === "focus" && args[0] && LAST_PARSED) {
-      for (const proof of LAST_PARSED.proofs) {
-        for (const s of proof.steps) {
-          if (s.label === args[0]) { selectStep(s); return; }
+    async function runVerify(step = null) {
+      if (!CURRENT_WIT) return;
+      setStatus("wit verify…", "pending");
+      try {
+        let url = "/plugins/witsoc/proxy/api/verify?path=" + encodeURIComponent(CURRENT_WIT);
+        if (step) url += "&step=" + encodeURIComponent(step);
+        const r = await fetch(url, { method: "POST" });
+        const data = await r.json();
+        const ta = document.getElementById("verdict-input");
+        // Pre-populate the textarea with the contexts so the user can show
+        // them to a verifier and then paste verdicts back over the top.
+        ta.value = data.stdout || "";
+        if (data.exit_code === 0) await refreshCurrentWit();
+        LAST_VERIFY = {
+          status: data.exit_code === 0 ? "VERIFIED" : "FAILED",
+          verdicts: parseVerifyVerdicts(data, step),
+        };
+        renderHeader();
+        renderTree();
+        if (SELECTED_STEP) {
+          for (const proof of ((LAST_PARSED && LAST_PARSED.proofs) || [])) {
+            const selected = proof.steps.find((s) => s.label === SELECTED_STEP);
+            if (selected) { showDetail(selected); break; }
+          }
         }
+        setStatus("verify exit=" + data.exit_code + " — context shown in textarea; paste verdicts back over it",
+          data.exit_code === 0 ? "ok" : "err");
+      } catch (e) { setStatus("verify failed: " + (e.message || e), "err"); }
+    }
+    async function runContext() {
+      if (!CURRENT_WIT) return;
+      setStatus("wit context…", "pending");
+      try {
+        const r = await fetch("/plugins/witsoc/proxy/api/context?path=" + encodeURIComponent(CURRENT_WIT), { method: "POST" });
+        const data = await r.json();
+        const ta = document.getElementById("verdict-input");
+        ta.value = data.stdout || "";
+        setStatus("context exit=" + data.exit_code, data.exit_code === 0 ? "ok" : "err");
+      } catch (e) { setStatus("context failed: " + (e.message || e), "err"); }
+    }
+    async function saveReceipt() {
+      if (!CURRENT_WIT) return;
+      const body = document.getElementById("verdict-input").value;
+      if (!body.trim()) { setStatus("nothing to save", "err"); return; }
+      setStatus("wit receipt…", "pending");
+      try {
+        const r = await fetch("/plugins/witsoc/proxy/api/receipt?path=" + encodeURIComponent(CURRENT_WIT), {
+          method: "POST", body,
+        });
+        const data = await r.json();
+        LAST_RECEIPT = data.receipt;
+        // Re-fetch parse so the .wit file's updated -- Status: header reflects.
+        await openWit(CURRENT_WIT);
+        setStatus("receipt saved (exit=" + data.exit_code + ")", data.exit_code === 0 ? "ok" : "err");
+        document.getElementById("receipt-info").textContent = LAST_RECEIPT
+          ? (LAST_RECEIPT.status || LAST_RECEIPT.final_verdict || "saved")
+          : "saved";
+      } catch (e) { setStatus("receipt failed: " + (e.message || e), "err"); }
+    }
+
+    // ─── Soc tab ──────────────────────────────────────────────────────────
+    async function openSoc(absPath) {
+      CURRENT_SOC = absPath;
+      setStatus("Loading .soc…", "pending");
+      try {
+        const r = await fetch("/plugins/witsoc/proxy/api/soc?path=" + encodeURIComponent(absPath));
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        const data = await r.json();
+        renderSoc(data.parsed);
+        renderSocList();
+        setStatus("Loaded " + absPath.split("/").slice(-1)[0]);
+      } catch (e) { setStatus("Open .soc failed: " + (e.message || e), "err"); }
+    }
+
+    function renderSoc(s) {
+      document.getElementById("soc-goal").textContent = s.goal || "(no goal set)";
+      document.getElementById("soc-goal").classList.toggle("empty-msg", !s.goal);
+
+      const a = s.progress_a, b = s.progress_b;
+      document.getElementById("soc-progress-text").textContent =
+        (a == null ? "—" : a) + " / " + (b == null ? "—" : b);
+      const pct = (a != null && b > 0) ? Math.min(100, (a / b) * 100) : 0;
+      document.getElementById("soc-progress-fill").style.width = pct + "%";
+      document.getElementById("soc-since").textContent =
+        (s.insights_since == null ? "—" : s.insights_since) + " since insight";
+
+      const qel = document.getElementById("soc-queue");
+      qel.innerHTML = "";
+      if (!s.queue.length) qel.innerHTML = '<div class="empty-msg">No queue items.</div>';
+      for (const q of s.queue) {
+        const div = document.createElement("div");
+        div.className = "queue-item" + (q.done ? " done" : "");
+        div.innerHTML =
+          '<span class="check">' + (q.done ? "✓" : "") + "</span>" +
+          '<span class="text">' + escapeHtml(q.text) + "</span>";
+        qel.appendChild(div);
+      }
+
+      const iel = document.getElementById("soc-insights");
+      iel.innerHTML = "";
+      if (!s.insights.length) iel.innerHTML = '<div class="empty-msg">No insights logged yet.</div>';
+      for (const ins of s.insights) {
+        const div = document.createElement("div");
+        div.className = "insight-item";
+        div.innerHTML = '<span class="text">• ' + escapeHtml(ins.text) + "</span>";
+        iel.appendChild(div);
+      }
+
+      const lel = document.getElementById("soc-log");
+      lel.innerHTML = "";
+      if (!s.log.length) lel.innerHTML = '<div class="empty-msg">No log entries yet.</div>';
+      for (const item of s.log) {
+        const div = document.createElement("div");
+        div.className = "insight-item";
+        div.innerHTML = '<span class="text" style="font-family:ui-monospace,SFMono-Regular,monospace;font-size:11px;">' + escapeHtml(item.text) + "</span>";
+        lel.appendChild(div);
       }
     }
-  });
 
-  setInterval(refreshFiles, 12000);
+    // ─── Tab switching ────────────────────────────────────────────────────
+    function setTab(t) {
+      if (t !== "proofs" && VISUALIZING) closeVisualization();
+      if (t !== "proofs" && LEAN_PREVIEWING) closeLeanPreview();
+      TAB = t;
+      document.querySelectorAll(".tab").forEach((b) => b.classList.toggle("active", b.dataset.tab === t));
+      document.querySelectorAll(".pane").forEach((p) => p.classList.toggle("active", p.id === "pane-" + t));
+    }
+    document.querySelectorAll(".tab").forEach((b) => b.addEventListener("click", () => setTab(b.dataset.tab)));
 
-  bootstrap();
-</script>
+    // Filter pill
+    document.querySelectorAll("#filter-pill button").forEach((b) => {
+      b.addEventListener("click", () => {
+        FILTER = b.dataset.filter;
+        document.querySelectorAll("#filter-pill button").forEach((x) => x.classList.toggle("active", x === b));
+        renderTree();
+      });
+    });
+
+    // Buttons
+    document.getElementById("btn-refresh").addEventListener("click", refreshFiles);
+    document.getElementById("btn-check").addEventListener("click", runCheck);
+    document.getElementById("btn-verify").addEventListener("click", () => runVerify(null));
+    document.getElementById("btn-context").addEventListener("click", runContext);
+    document.getElementById("btn-visualize").addEventListener("click", openVisualization);
+    document.getElementById("btn-preview-lean").addEventListener("click", openLeanPreview);
+    document.getElementById("btn-close-viz").addEventListener("click", closeVisualization);
+    document.getElementById("btn-viz-fit").addEventListener("click", fitViz);
+    document.getElementById("btn-viz-layout").addEventListener("click", () => { renderVisualization(); fitViz(); });
+    document.getElementById("btn-viz-export").addEventListener("click", exportVizSvg);
+    document.getElementById("viz-search").addEventListener("input", drawVizGraph);
+    document.getElementById("viz-svg").addEventListener("wheel", (e) => {
+      if (!VISUALIZING) return;
+      e.preventDefault();
+      const svg = e.currentTarget;
+      const rect = svg.getBoundingClientRect();
+      const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+      const oldK = VIZ_VIEW.k;
+      const nextK = clamp(oldK * (e.deltaY < 0 ? 1.12 : 0.89), 0.18, 2.8);
+      VIZ_VIEW.x = mx - ((mx - VIZ_VIEW.x) / oldK) * nextK;
+      VIZ_VIEW.y = my - ((my - VIZ_VIEW.y) / oldK) * nextK;
+      VIZ_VIEW.k = nextK;
+      drawVizGraph();
+    }, { passive: false });
+    document.getElementById("viz-svg").addEventListener("mousedown", (e) => {
+      if (e.target.closest(".viz-node-g")) return;
+      VIZ_DRAG = { x: e.clientX, y: e.clientY, vx: VIZ_VIEW.x, vy: VIZ_VIEW.y };
+      e.currentTarget.classList.add("dragging");
+    });
+    window.addEventListener("mousemove", (e) => {
+      if (!VIZ_DRAG) return;
+      if (VIZ_DRAG.type === "node" && VIZ_GRAPH) {
+        const node = VIZ_GRAPH.nodes.find((n) => n.id === VIZ_DRAG.id);
+        if (node) {
+          node.x = VIZ_DRAG.nx + (e.clientX - VIZ_DRAG.x) / VIZ_VIEW.k;
+          node.y = VIZ_DRAG.ny + (e.clientY - VIZ_DRAG.y) / VIZ_VIEW.k;
+        }
+      } else {
+        VIZ_VIEW.x = VIZ_DRAG.vx + e.clientX - VIZ_DRAG.x;
+        VIZ_VIEW.y = VIZ_DRAG.vy + e.clientY - VIZ_DRAG.y;
+      }
+      drawVizGraph();
+    });
+    window.addEventListener("mouseup", () => {
+      VIZ_DRAG = null;
+      document.getElementById("viz-svg").classList.remove("dragging");
+    });
+    document.getElementById("viz-svg").addEventListener("click", () => {
+      VIZ_SELECTED = null;
+      document.getElementById("viz-inspector").innerHTML = '<div class="viz-empty">Select a graph node.</div>';
+      drawVizGraph();
+    });
+    document.getElementById("lean-file-select").addEventListener("change", (e) => openLean(e.target.value));
+    document.getElementById("lean-run-input").addEventListener("change", async (e) => {
+      LEAN_RUN_TARGET = e.target.value.trim();
+      CURRENT_LEAN = null;
+      LEAN_SOURCE = "";
+      LEAN_DIRTY = false;
+      await refreshLeanFiles();
+      await openLean(chooseLeanFile(), { silent: true });
+    });
+    document.getElementById("lean-editor").addEventListener("input", () => {
+      LEAN_DIRTY = document.getElementById("lean-editor").value !== LEAN_SOURCE;
+      document.getElementById("lean-live-info").textContent = LEAN_DIRTY ? "edited" : "live";
+    });
+    document.getElementById("btn-lean-refresh").addEventListener("click", () => openLean(CURRENT_LEAN || chooseLeanFile(), { preserveDirty: false }));
+    document.getElementById("btn-lean-save").addEventListener("click", saveLean);
+    document.getElementById("btn-lean-build").addEventListener("click", runLakeBuild);
+    document.getElementById("btn-files-toggle").addEventListener("click", () => setFilesCollapsed(!FILES_COLLAPSED));
+    document.getElementById("split-files").addEventListener("mousedown", (e) => startResize("files", e));
+    document.getElementById("split-tree").addEventListener("mousedown", (e) => startResize("tree", e));
+    window.addEventListener("resize", updateProofLayout);
+    document.getElementById("btn-clear-verdicts").addEventListener("click", () => {
+      document.getElementById("verdict-input").value = "";
+    });
+    document.getElementById("btn-save-receipt").addEventListener("click", saveReceipt);
+    document.getElementById("btn-soc-refresh").addEventListener("click", refreshFiles);
+    document.getElementById("btn-soc-init").addEventListener("click", async () => {
+      if (!WORKTREE) return;
+      try {
+        const target = WORKTREE + "/research.soc";
+        const r = await fetch("/plugins/witsoc/proxy/api/soc?path=" + encodeURIComponent(target), {
+          method: "POST",
+          body: "# Soc Working Memory\n\nGOAL: <one-line statement>\n\nPROGRESS: 0 / 0\nINSIGHTS_SINCE_LAST_UPDATE: 0\n\nQUEUE:\n  - [ ] First sub-problem\n\nINSIGHTS:\n  - (none yet)\n\nLOG:\n  -\n",
+        });
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        await refreshFiles();
+        await openSoc(target);
+        setStatus("created " + target);
+      } catch (e) { setStatus("init .soc failed: " + (e.message || e), "err"); }
+    });
+
+    // Iframe commands
+    os.events.on("iframe-command", (params) => {
+      if (!params || !params.command) return;
+      const args = params.args || [];
+      const cmd = params.command;
+      if (cmd === "open" && args[0]) {
+        const abs = args[0].startsWith("/") ? args[0] : (WORKTREE ? WORKTREE + "/" + args[0] : args[0]);
+        if (abs.endsWith(".soc")) { setTab("soc"); openSoc(abs); }
+        else { setTab("proofs"); openWit(abs); }
+      }
+      else if (cmd === "check") runCheck();
+      else if (cmd === "verify") runVerify(args[0] || null);
+      else if (cmd === "context") runContext();
+      else if (cmd === "visualize") openVisualization();
+      else if (cmd === "preview-lean" || cmd === "lean") {
+        if (args[0]) {
+          LEAN_RUN_TARGET = args[0];
+          document.getElementById("lean-run-input").value = LEAN_RUN_TARGET;
+          CURRENT_LEAN = null;
+        }
+        openLeanPreview();
+      }
+      else if (cmd === "lake-build") runLakeBuild();
+      else if (cmd === "save-receipt") saveReceipt();
+      else if (cmd === "tab" && args[0]) setTab(args[0] === "soc" ? "soc" : "proofs");
+      else if (cmd === "focus" && args[0] && LAST_PARSED) {
+        for (const proof of LAST_PARSED.proofs) {
+          for (const s of proof.steps) {
+            if (s.label === args[0]) { selectStep(s); return; }
+          }
+        }
+      }
+    });
+
+    setInterval(async () => {
+      await refreshFiles();
+      if (LEAN_PREVIEWING) {
+        await refreshLeanFiles();
+        if (!CURRENT_LEAN && LEAN_FILES.length) await openLean(chooseLeanFile(), { silent: true });
+        else if (CURRENT_LEAN && !LEAN_DIRTY) await openLean(CURRENT_LEAN, { silent: true, preserveDirty: true });
+      }
+    }, 4000);
+
+    updateProofLayout();
+    bootstrap();
+  </script>
 </body>
+
 </html>
