@@ -1,0 +1,40 @@
+{
+  "id": "evolution-tab",
+  "version": "0.1.0",
+  "displayName": "Evolution Tab",
+  "description": "Run-aware evolution graph for deep runs: replay, path focus, comparison, and structured steering.",
+  "publisher": "openscientist",
+  "icon": "icon.svg",
+  "engines": { "openscientist": "^0.1.0" },
+  "activationEvents": [
+    "onPluginUse:evolution-tab",
+    "onIframeUse:evolution-tab"
+  ],
+  "capabilities": [
+    "session.info",
+    "theme.subscribe",
+    "session.artifacts.read:evolution.json",
+    "session.artifacts.read:plan.json",
+    "session.artifacts.read:plugins.json",
+    "session.artifacts.read:state/agents.json",
+    "session.children.read",
+    "run.steer"
+  ],
+  "contributes": {
+    "ui": {
+      "entry": "index.html",
+      "title": "Evolution",
+      "panel": "side",
+      "iframe_commands": [
+        { "name": "focus", "args": "<node-or-path-id>", "description": "Focus a path or node in the graph" },
+        { "name": "select-node", "args": "<node-id>", "description": "Open a node in the inspector" },
+        { "name": "compare", "args": "<path-a> <path-b>", "description": "Pin two paths for visual comparison" },
+        { "name": "replay", "args": "<start|end|index>", "description": "Move the replay scrubber" },
+        { "name": "refresh", "description": "Reload evolution.json and child session state" }
+      ]
+    },
+    "bin": [
+      { "id": "evolution-tab-info", "command": "bin/bash", "description": "Print Evolution Tab usage" }
+    ]
+  }
+}

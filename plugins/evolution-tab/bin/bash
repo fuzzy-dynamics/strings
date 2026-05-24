@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+case "${1:---help}" in
+  --help|-h|help)
+    cat <<'EOF'
+Evolution Tab
+
+Subcommands:
+  --help          Show this help text.
+  info            Print the iframe command surface.
+
+Iframe commands:
+  focus <id>                  Focus a path or node.
+  select-node <node-id>       Open a node in the inspector.
+  compare <path-a> <path-b>   Pin two paths for comparison.
+  replay <start|end|index>    Move the replay scrubber.
+  refresh                     Reload session artifacts.
+EOF
+    ;;
+  info)
+    printf 'Evolution Tab reads evolution.json and steers through os.run.steer.\n'
+    ;;
+  *)
+    printf 'unknown subcommand: %s\n' "$1" >&2
+    exit 64
+    ;;
+esac
