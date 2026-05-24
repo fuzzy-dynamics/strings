@@ -1,8 +1,0 @@
-[witsoc] creating venv at /Users/anvaykarmore/.openscientist/plugins/witsoc/data/venv (one-time, ~20s)...
-[witsoc] installing witsoc from PyPI (fallback)
-[31mERROR: Could not find a version that satisfies the requirement witsoc (from versions: none)[0m[31m
-[0m[31mERROR: No matching distribution found for witsoc[0m[31m
-[0m[witsoc] PyPI install failed — set WITSOC_SOURCE=/path/to/witsoc and retry
-[witsoc] creating venv at /Users/anvaykarmore/.openscientist/plugins/witsoc/data/venv (one-time, ~20s)...
-[witsoc] installing editable from /Users/anvaykarmore/Development/witsoc/witsoc
-[witsoc] venv ready: ERROR: unknown command '--version'. Use 'wit check', 'wit verify', or 'wit context'.
