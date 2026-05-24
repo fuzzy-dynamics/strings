@@ -1,6 +1,6 @@
 ---
 name: planning-with-files
-description: Manus-style file-based persistent memory for long-running deep agents. Maintains the deep-run UI files in `$PLANE_SESSION_DIR` (`plan.json`, findings.md, progress.md, report.md, claims.md, preview.html) and mirrors markdown state into `.openscientist/sessions/<run-session-id>/` for git history. Use whenever a task spans many tool calls and you need to survive context compaction or worker handoffs. **Stacks cleanly on top of any other meta-skill** (autoresearch, lit-review, …) — it never owns the work, only the bookkeeping. The frontend deep-run window reads `$PLANE_SESSION_DIR` through the plane files API; updating those files is how the user sees progress. Activated by both orchestrator and workers.
+description: Manus-style file-based persistent memory for long-running deep agents. Maintains the deep-run UI files in `$PLANE_SESSION_DIR` (`plan.json`, evolution.json, findings.md, progress.md, report.md, claims.md, preview.html) and mirrors markdown state into `.openscientist/sessions/<run-session-id>/` for git history. Use whenever a task spans many tool calls and you need to survive context compaction or worker handoffs. **Stacks cleanly on top of any other meta-skill** (autoresearch, lit-review, …) — it never owns the work, only the bookkeeping. The frontend deep-run window reads `$PLANE_SESSION_DIR` through the plane files API; updating those files is how the user sees progress. Activated by both orchestrator and workers.
 metadata:
   skill-author: OpenScientist
 category: memory
@@ -17,6 +17,7 @@ For an orchestrator deep run, the UI-visible canonical files live directly in th
 ```
 $PLANE_SESSION_DIR/
   plan.json       # the Plan panel: phases + tasks, valid JSON
+  evolution.json  # the Evolution panel: causal mission/path graph, valid JSON
   findings.md     # evidence the orchestrator has surfaced
   progress.md     # session log: one line per significant event, time-ordered
   report.md       # the final deliverable for the user
@@ -29,6 +30,7 @@ The orchestrator also keeps a git-backed mirror in the worktree:
 ```
 .openscientist/sessions/$SESSION/
   plan.json       # mirror of the UI plan
+  evolution.json  # mirror of the UI evolution graph
   task_plan.md     # the plan: task, phases, decisions, errors, paths
   findings.md      # mirror of the UI findings
   progress.md      # mirror of the UI progress log
@@ -39,11 +41,11 @@ The orchestrator also keeps a git-backed mirror in the worktree:
     <session-id>/  # one directory per worker / hypothesizer / scout — their private scratch
 ```
 
-The frontend deep-run window reads `$PLANE_SESSION_DIR` through the plane files API. The worktree mirror exists for commits, pull-back, and worker scratch. Update both; the user sees `$PLANE_SESSION_DIR` on the next poll, and the Evolution panel sees the mirror commit.
+The frontend deep-run window reads `$PLANE_SESSION_DIR` through the plane files API. The worktree mirror exists for commits, pull-back, and worker scratch. Update both; the user sees `$PLANE_SESSION_DIR` on the next poll, including the Evolution graph from `evolution.json`.
 
 ### Single-writer rule for the canonical files
 
-The **orchestrator** is the only writer of `$PLANE_SESSION_DIR/plan.json`, `progress.md`, `findings.md`, `claims.md`, `report.md`, `preview.html`, and the worktree mirror's `task_plan.md`. Children (workers, hypothesizers, scouts) **never** edit those files. They:
+The **orchestrator** is the only writer of `$PLANE_SESSION_DIR/plan.json`, `evolution.json`, `progress.md`, `findings.md`, `claims.md`, `report.md`, `preview.html`, and the worktree mirror's `task_plan.md`. Children (workers, hypothesizers, scouts) **never** edit those files. They:
 
 - commit their work to their own branches (per-experiment commits, structured trailers);
 - write any longer-form notes / drafts into their own scratch directory under `.openscientist/sessions/$SESSION/agents/<their-session-id>/`;
@@ -85,6 +87,46 @@ Before any non-trivial work, `$PLANE_SESSION_DIR/plan.json` exists with at minim
 ```
 
 Valid task statuses are `pending`, `running`, `completed`, `failed`, and `skipped`.
+
+Before dispatching workers, `$PLANE_SESSION_DIR/evolution.json` also exists. If paths are not known yet, start with:
+
+```json
+{ "missions": [] }
+```
+
+As soon as missions or workers are chosen, replace it with a graph like:
+
+```json
+{
+  "missions": [
+    {
+      "mission_name": "state-of-vla-models",
+      "mission_base_branch": "openscientist/session-cebf82-root",
+      "selected_branch": "",
+      "candidates": [
+        {
+          "candidate_name": "key-architectures",
+          "candidate_branch": "openscientist/session-cebf82/missions/key-architectures/candidates/research",
+          "branched_from": "openscientist/session-cebf82-root",
+          "hypothesis": "Transformer and decision-transformer style policies explain the dominant VLA architecture families.",
+          "verdict": "weak",
+          "active": true,
+          "metrics": [
+            {
+              "metric_name": "evidence status",
+              "metric_type": "card",
+              "configuration": {},
+              "data": { "label": "architectures.md", "value": "running" }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+```
+
+The top-level shape is always `{ "missions": [...] }`. Do not write `mission_branches`, `worker_sessions`, or a plain agent map as the Evolution file.
 
 The worktree mirror's `task_plan.md` also exists with at minimum:
 
@@ -132,7 +174,7 @@ Three-strike rule: **never** repeat the exact same failing action. Each retry mu
 
 ### 1.5 Commit after update
 
-Every meaningful update to `$PLANE_SESSION_DIR/plan.json` / `findings.md` / `progress.md` / `report.md` / `claims.md` is mirrored into `.openscientist/sessions/$SESSION/` and followed by a git commit on the worktree's session branch. The Evolution panel of the deep-run window shows your commits — uncommitted mirror updates are invisible.
+Every meaningful update to `$PLANE_SESSION_DIR/plan.json` / `evolution.json` / `findings.md` / `progress.md` / `report.md` / `claims.md` is mirrored into `.openscientist/sessions/$SESSION/` and followed by a git commit on the worktree's session branch. The Evolution panel reads `$PLANE_SESSION_DIR/evolution.json`; the mirror commit is for recovery and pull-back.
 
 ```bash
 git add .openscientist/sessions/$SESSION/
@@ -161,6 +203,44 @@ Keep it valid JSON. Phases are stable containers. Tasks are the live status rows
 ```
 
 Every task's `phase` must exactly match a phase `name`. `subphase` is optional, but if present it must match a listed subphase. Do not put markdown in this file.
+
+### `evolution.json`
+
+The Evolution panel's data source. It lives in `$PLANE_SESSION_DIR/evolution.json` and is mirrored to `.openscientist/sessions/$SESSION/evolution.json`.
+
+Keep it valid JSON. It is a causal graph over alternatives, not a chronological log. One candidate is one path; `hypothesis` explains why the path exists; `metrics` holds the current evidence; `selected_branch` marks the path taken while siblings remain visible as alternatives.
+
+```json
+{
+  "missions": [
+    {
+      "mission_name": "state-of-vla-models",
+      "mission_base_branch": "openscientist/session-cebf82-root",
+      "selected_branch": "openscientist/session-cebf82/missions/synthesis/candidates/final-report",
+      "candidates": [
+        {
+          "candidate_name": "training-datasets",
+          "candidate_branch": "openscientist/session-cebf82/missions/training-datasets/candidates/research",
+          "branched_from": "openscientist/session-cebf82-root",
+          "hypothesis": "Training methodology and dataset coverage explain the largest VLA capability gaps.",
+          "verdict": "positive",
+          "active": false,
+          "metrics": [
+            {
+              "metric_name": "evidence status",
+              "metric_type": "card",
+              "configuration": {},
+              "data": { "label": "datasets.md", "value": "complete" }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+```
+
+Valid verdicts are `weak`, `positive`, and `negative`. Update this file in the same turn as each worker dispatch, completion, escalation, prune, merge, or synthesis decision. Do not wait until the report is complete.
 
 ### `task_plan.md`
 

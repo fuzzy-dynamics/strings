@@ -190,7 +190,7 @@ The deep-run UI is file-backed. Your chat is not the product surface. The user w
 | Panel | Source | Rendered as |
 |---|---|---|
 | Plan | `$PLANE_SESSION_DIR/plan.json` | Structured phase/task tree |
-| Evolution | `$PLANE_SESSION_DIR/evolution.json` | Mission/candidate evolution graph |
+| Evolution | `$PLANE_SESSION_DIR/evolution.json` | Causal decision graph over missions, paths, hypotheses, experiments, escalations, and steers |
 | Report | `$PLANE_SESSION_DIR/{report,findings,claims,progress}.md` | Markdown sections |
 | Preview | `$PLANE_SESSION_DIR/preview.html` | Live HTML iframe |
 | Mail | Plane session mail | Session mail list |
@@ -215,13 +215,13 @@ Examples:
 
 | Orchestrator action | Write before action | Trigger | Write after result |
 |---|---|---|---|
-| Ask a hypothesizer for directions | `plan.json` marks hypothesis-generation `running`; `progress.md` records why it is needed | `launch-worker --agent osci-hypothesizer` | `findings.md` records useful hypotheses; `plan.json` adds/updates tasks; `evolution.json` adds missions/candidates if paths are selected |
-| Dispatch a worker on a candidate | `plan.json` marks the task `running`; `evolution.json` adds the candidate branch and hypothesis; `progress.md` records dispatch | `launch-worker --agent osci-worker ...` or `send-mail --subject dispatch` | `plan.json` flips status; `findings.md` records evidence; `claims.md` updates supported/contradicted claims; `preview.html` updates if the result changes the visible story |
+| Ask a hypothesizer for directions | `plan.json` marks hypothesis-generation `running`; `progress.md` records why it is needed | `launch-worker --agent osci-hypothesizer` | `findings.md` records useful hypotheses; `plan.json` adds/updates tasks; `evolution.json` adds missions/candidates as graph alternatives if paths are selected |
+| Dispatch a worker on a candidate | `plan.json` marks the task `running`; `evolution.json` adds the candidate branch, hypothesis, active flag, and initial metric target; `progress.md` records dispatch | `launch-worker --agent osci-worker ...` or `send-mail --subject dispatch` | `plan.json` flips status; `evolution.json` updates metrics/verdict/active; `findings.md` records evidence; `claims.md` updates supported/contradicted claims; `preview.html` updates if the result changes the visible story |
 | Use a plugin | `progress.md` records why the plugin is being used | `plugins use`, `plugins bash`, `plugins iframe use`, or `plugins iframe bash` | `plugins.json` is updated by plane-tool; `findings.md` records plugin output if it shaped the result; `preview.html` updates if an iframe or visual artifact matters |
 | Receive worker completion mail | No action before wake | `get-status` drains mail | `progress.md` records the event; `findings.md` records verified output; `plan.json` marks task `completed` or `failed`; `evolution.json` updates verdict/metrics |
-| Merge or select a winning path | `plan.json` marks merge/synthesis `running`; `progress.md` records selected candidate and reason | merge worktree/branch or mail an integrator | `evolution.json` sets `selected_branch`; `report.md` updates best answer; `preview.html` promotes the visible winner |
-| Hit a blocker | `plan.json` marks affected task `failed` or `skipped` | mail for adjustment, spawn replacement, or stop if unrecoverable | `report.md` starts with `BLOCKED:`; `claims.md` lowers confidence or marks claim unusable; `progress.md` records next recoverable action |
-| Finish the run | `plan.json` has no unresolved required work; `report.md` is coherent; `claims.md` has evidence | unbiased critic and final commit check | `report.md` states final answer and residual risk; `progress.md` records completion; worktree is committed |
+| Merge or select a winning path | `plan.json` marks merge/synthesis `running`; `progress.md` records selected candidate and reason | merge worktree/branch or mail an integrator | `evolution.json` sets `selected_branch` and leaves sibling candidates visible as alternatives; `report.md` updates best answer; `preview.html` promotes the visible winner |
+| Hit a blocker | `plan.json` marks affected task `failed` or `skipped` | mail for adjustment, spawn replacement, or stop if unrecoverable | `evolution.json` marks the affected candidate `weak` or `negative`; `report.md` starts with `BLOCKED:`; `claims.md` lowers confidence or marks claim unusable; `progress.md` records next recoverable action |
+| Finish the run | `plan.json` has no unresolved required work; `evolution.json` exists and has a top-level `missions` array; `report.md` is coherent; `claims.md` has evidence | unbiased critic and final commit check | `evolution.json` sets `selected_branch` or final verdicts; `report.md` states final answer and residual risk; `progress.md` records completion; worktree is committed |
 
 ### `plan.json`
 
@@ -276,7 +276,21 @@ Valid task statuses: `pending`, `running`, `completed`, `failed`, `skipped`.
 
 ### `evolution.json`
 
-Rendered as the Evolution panel: missions, candidate branches, hypotheses, verdicts, and charts.
+Rendered as the Evolution panel. The frontend turns this file into a causal decision graph, not a chronological log: hypotheses become path-entry nodes, metric cards become experiment nodes, weak or negative results become escalation/prune nodes, and the selected branch becomes the path-taken output.
+
+The top level **must** be exactly an object with a `missions` array. Do not write alternate shapes such as `mission_branches`, `worker_sessions`, `branches`, or a plain status map. If you need to record worker session IDs, put them in `progress.md` or `findings.md`; `evolution.json` stays graph data.
+
+Create `evolution.json` during bootstrap. If you do not know the paths yet, write `{ "missions": [] }` first, then replace it as soon as workers are chosen. A finished deep run with no `evolution.json` is incomplete, even if `report.md` exists.
+
+Keep the existing mission/candidate schema below, but write it with decision-graph semantics:
+
+- One candidate is one path.
+- `hypothesis` is the hypothesizer suggestion shown on the hypothesis node.
+- `metrics` should include the strongest current metric value, `previous` when available, and `baseline` when available so the graph can show metric value and delta.
+- `verdict` drives path status: `positive` continues or merges, `weak` may escalate or defer, `negative` may prune.
+- `active: true` marks the path currently being worked.
+- `selected_branch` marks the path taken; siblings remain visible as alternatives not taken.
+- Update this file when you dispatch a worker, receive worker mail, hit an escalation, steer a path, prune a path, or select a winner.
 
 ```json
 {
@@ -332,6 +346,54 @@ Rendered as the Evolution panel: missions, candidate branches, hypotheses, verdi
 ```
 
 Valid verdicts: `weak`, `positive`, `negative`.
+
+For report-style runs with independent missions, use the same schema. Example after five research workers finish:
+
+```json
+{
+  "missions": [
+    {
+      "mission_name": "state-of-vla-models",
+      "mission_base_branch": "openscientist/session-cebf82-root",
+      "selected_branch": "openscientist/session-cebf82/missions/synthesis/candidates/final-report",
+      "candidates": [
+        {
+          "candidate_name": "key-architectures",
+          "candidate_branch": "openscientist/session-cebf82/missions/key-architectures/candidates/research",
+          "branched_from": "openscientist/session-cebf82-root",
+          "hypothesis": "Architecture research explains which transformer, decision-transformer, and modular policy families dominate VLA work.",
+          "verdict": "positive",
+          "active": false,
+          "metrics": [
+            {
+              "metric_name": "evidence status",
+              "metric_type": "card",
+              "configuration": {},
+              "data": { "label": "architectures.md", "value": "complete" }
+            }
+          ]
+        },
+        {
+          "candidate_name": "open-challenges",
+          "candidate_branch": "openscientist/session-cebf82/missions/open-challenges/candidates/research",
+          "branched_from": "openscientist/session-cebf82-root",
+          "hypothesis": "Failure modes and future directions explain where 2026 VLA systems still break.",
+          "verdict": "positive",
+          "active": false,
+          "metrics": [
+            {
+              "metric_name": "evidence status",
+              "metric_type": "card",
+              "configuration": {},
+              "data": { "label": "challenges.md", "value": "complete" }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+```
 
 ### `progress.md`
 
@@ -565,8 +627,9 @@ Every loop, run `get-relatives` and check each alive child:
 
 1. `mkdir -p "$PLANE_SESSION_DIR"` (the plane has already created it for you, but be defensive). No random hex, no `$SESSION` variable — `$PLANE_SESSION_DIR` already names your storage uniquely by plane sid.
 2. Write the initial `plan.json` to `$PLANE_SESSION_DIR/plan.json` — at minimum `start_phase`, the first phase's `phases[]` entry, and one `running` task pointing at "decompose user task". The user's verbatim task goes into the first phase's `description` (or into `$PLANE_SESSION_DIR/report.md`'s opening); never invent narrative for `plan.json`. No commit needed — `$PLANE_SESSION_DIR` is outside the worktree and served live over plane HTTP.
-3. Write the initial `preview.html` to `$PLANE_SESSION_DIR/preview.html` — a compact live status board with the user goal, current phase (`bootstrap` / `decompose user task`), evidence marked as "not gathered yet", blockers marked as "none known yet", and next action ("select meta-skill"). Use standalone HTML and save atomically via `preview.html.tmp` then `mv`. This is the Preview tab's bootstrap state; do not wait for the final report or a visual artifact.
-4. Inspect the available skills with `"$PLANE_TOOL_BIN" skills-list`, then load the best match with `"$PLANE_TOOL_BIN" skill-view <name>/SKILL.md` — or spawn an `osci-general` to recommend if you are unsure.
-5. Inspect installed plugins with `"$PLANE_TOOL_BIN" plugins list`. Compare the plugin descriptions, surfaces, and tools against the user's task. If a plugin may help, read it with `"$PLANE_TOOL_BIN" plugins view <plugin>` and record the selection in `progress.md`; if none match, record that no installed plugin is relevant. The active meta-skill still owns the run loop.
+3. Write the initial `evolution.json` to `$PLANE_SESSION_DIR/evolution.json` — at minimum `{ "missions": [] }`. If the user task already lists missions or paths, write those as candidate nodes immediately using the schema above. Use `evolution.json.tmp` then `mv`.
+4. Write the initial `preview.html` to `$PLANE_SESSION_DIR/preview.html` — a compact live status board with the user goal, current phase (`bootstrap` / `decompose user task`), evidence marked as "not gathered yet", blockers marked as "none known yet", and next action ("select meta-skill"). Use standalone HTML and save atomically via `preview.html.tmp` then `mv`. This is the Preview tab's bootstrap state; do not wait for the final report or a visual artifact.
+5. Inspect the available skills with `"$PLANE_TOOL_BIN" skills-list`, then load the best match with `"$PLANE_TOOL_BIN" skill-view <name>/SKILL.md` — or spawn an `osci-general` to recommend if you are unsure.
+6. Inspect installed plugins with `"$PLANE_TOOL_BIN" plugins list`. Compare the plugin descriptions, surfaces, and tools against the user's task. If a plugin may help, read it with `"$PLANE_TOOL_BIN" plugins view <plugin>` and record the selection in `progress.md`; if none match, record that no installed plugin is relevant. The active meta-skill still owns the run loop.
 
 After a meta-skill is active, **the meta-skill owns the loop**. Re-read this prompt only if the meta-skill explicitly says to, or to consult §1–§10 as policy when you hit a gray area.

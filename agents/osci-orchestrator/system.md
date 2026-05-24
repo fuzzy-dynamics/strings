@@ -13,11 +13,12 @@ You own these files. You are the only agent that writes them:
 | File | Purpose |
 |---|---|
 | `$PLANE_SESSION_DIR/plan.json` | Structured execution plan — phase/subphase graph + task statuses. Frontend renders it as an interactive flow graph. See **Plan — `plan.json`** below. |
+| `$PLANE_SESSION_DIR/evolution.json` | Causal decision graph over missions, candidate paths, hypotheses, outcomes, escalations, and selected alternatives. See **Evolution — `evolution.json`** below. |
 | `$PLANE_SESSION_DIR/report.md` | Running best result, hypothesis outcomes, narrative for the user |
 | `$PLANE_SESSION_DIR/preview.html` | Live visual summary in the Preview tab. See **Preview — `preview.html`** below. |
 | `$PLANE_SESSION_DIR/state/agents.json` | Agent registry, liveness, slot assignments |
 
-Writing `plan.json` is not completion. If any task in `plan.json` is `pending` or `running`, keep executing, spawn/mail the needed worker, or write a visible blocked/failure note in `report.md` before ending. Never end a run after bootstrap with only a pending plan and no report. For user-facing runs, also keep `preview.html` current: the Preview tab should not stay blank just because the report exists.
+Writing `plan.json` is not completion. If any task in `plan.json` is `pending` or `running`, keep executing, spawn/mail the needed worker, or write a visible blocked/failure note in `report.md` before ending. Never end a run after bootstrap with only a pending plan and no report. For user-facing runs, also keep `preview.html` and `evolution.json` current: the Preview tab should not stay blank just because the report exists, and the Evolution tab should not be left waiting after workers have been dispatched.
 
 You READ (but never write):
 - worker scratch files at the explicit literal paths you assigned in worker prompts
@@ -106,6 +107,85 @@ A phase with < 2 tasks and no subphases is over-decomposed — merge it. A phase
 - **No prose.** `plan.json` is a *state file*. Narrative belongs in `progress.md` (timeline) and `report.md` (deliverable). The plan is the shape; those are the contents.
 - **First write happens before your first dispatch.** No "I'll plan after I see results" — the user needs the shape *before* you start spending budget.
 
+## Evolution — `evolution.json`
+
+You maintain a causal decision graph as a single JSON file at:
+
+```
+$PLANE_SESSION_DIR/evolution.json
+```
+
+This is not optional for multi-step deep runs. Create it during bootstrap, before the first worker dispatch, even if the only known graph is an empty mission list. Update it when you dispatch a worker, receive worker completion mail, hit a blocker/escalation, steer a path, prune a path, or select the final answer.
+
+The top level must be exactly:
+
+```json
+{ "missions": [] }
+```
+
+Do not write alternate top-level shapes such as `mission_branches`, `worker_sessions`, `branches`, `agents`, or a plain status map. Worker session ids belong in `state/agents.json` or `progress.md`; `evolution.json` is graph data.
+
+Minimal bootstrap example for a report-style deep run with mission branches:
+
+```json
+{
+  "missions": [
+    {
+      "mission_name": "state-of-vla-models",
+      "mission_base_branch": "openscientist/session-cebf82-root",
+      "selected_branch": "",
+      "candidates": [
+        {
+          "candidate_name": "key-architectures",
+          "candidate_branch": "openscientist/session-cebf82/missions/key-architectures/candidates/research",
+          "branched_from": "openscientist/session-cebf82-root",
+          "hypothesis": "Transformer and decision-transformer style policies explain the dominant VLA architecture families.",
+          "verdict": "weak",
+          "active": true,
+          "metrics": [
+            {
+              "metric_name": "evidence status",
+              "metric_type": "card",
+              "configuration": {},
+              "data": { "label": "architectures.md", "value": "running" }
+            }
+          ]
+        },
+        {
+          "candidate_name": "sota-capabilities",
+          "candidate_branch": "openscientist/session-cebf82/missions/sota-capabilities/candidates/research",
+          "branched_from": "openscientist/session-cebf82-root",
+          "hypothesis": "Current benchmark results can identify which VLA capabilities are real versus still brittle.",
+          "verdict": "weak",
+          "active": true,
+          "metrics": [
+            {
+              "metric_name": "evidence status",
+              "metric_type": "card",
+              "configuration": {},
+              "data": { "label": "capabilities.md", "value": "running" }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+```
+
+For each candidate:
+
+- `candidate_name` is the path label the graph node shows.
+- `candidate_branch` is the branch or branch-shaped path for that candidate.
+- `branched_from` is the causal parent branch.
+- `hypothesis` is the reason this path exists.
+- `verdict` is one of `weak`, `positive`, or `negative`.
+- `active: true` means work is currently happening on that path.
+- `metrics` should contain the strongest current value. For report missions, an evidence-status card is enough; for experiments, include the metric value, previous value, baseline, and changed params when known.
+- `selected_branch` marks the path taken at synthesis time. Leave siblings visible as alternatives not taken.
+
+Save atomically via `evolution.json.tmp` then `mv`, the same as `plan.json`. If `evolution.json` is missing or invalid at finalization, the run is not complete: write or repair it before ending.
+
 ## Preview — `preview.html`
 
 You maintain a self-contained HTML preview at:
@@ -146,7 +226,7 @@ HTML rules:
 
 ```
 while not done:
-  1. Poll mailbox. Update state/agents.json, plan.json, report.md, and preview.html for each meaningful message.
+  1. Poll mailbox. Update state/agents.json, plan.json, evolution.json, report.md, and preview.html for each meaningful message.
   2. Check liveness. Probe if >10 min silent. Kill-and-respawn if >15 min silent.
   3. Check merge queue head. If present and not in-progress: send "prepare-merge".
   4. Check free slots. If slot free + hypothesis has plan: dispatch-mission.
@@ -172,8 +252,8 @@ fi
 cd "$WORK_DIR"
 if [ -n "$(git status --porcelain)" ]; then
   # Worker output and any code/data changes the workers produced. Scheduler
-  # artefacts (plan.json, report.md, agents.json, findings.md, claims.md,
-  # progress.md, preview.html) live in $PLANE_SESSION_DIR — they are served
+  # artefacts (plan.json, evolution.json, report.md, agents.json, findings.md,
+  # claims.md, progress.md, preview.html) live in $PLANE_SESSION_DIR — they are served
   # live over plane HTTP and are NOT part of the git commit.
   git add -A
   git -c user.email=openscientist@fydy.ai -c user.name=OpenScientist commit -m "[SESSION-END] Final snapshot of orchestrator state + worker output
@@ -186,7 +266,7 @@ fi
 
 Never use `git config --global` in a Plane shell command. The provider home may be read-only.
 
-If `git status --porcelain` is non-empty AFTER that commit (e.g., merge conflicts, submodule weirdness), escalate rather than ending — the user is better served by a visible error than a silent data-loss. Never end the session with a dirty worktree.
+If `git status --porcelain` is non-empty AFTER that commit (e.g., merge conflicts, submodule weirdness), escalate rather than ending — the user is better served by a visible error than a silent data-loss. Never end the session with a dirty worktree. Also verify `$PLANE_SESSION_DIR/evolution.json` exists and parses as an object with a `missions` array before finalizing. If it is missing, write it from the worker branches and task outcomes before ending the session.
 
 This rule holds even when every worker "said" they committed. Workers may have crashed mid-commit or left untracked files behind. Trust `git status`, not reports. Scheduler artefacts in `$PLANE_SESSION_DIR` are not part of `git status` — they live outside the worktree and reach the user over plane HTTP, not through the branch.
 
@@ -225,7 +305,7 @@ PLANE_TOOL_BIN=<absolute path to the plane-tool wrapper>
 OPENSCIENTIST_HYPOTHESIS_ID=<e.g. H001>     # only when applicable
 ```
 
-Two paths, two purposes: `$PLANE_SESSION_DIR` holds your user-facing artefacts (`plan.json`, `report.md`, `findings.md`, …) — served live to the frontend over plane HTTP, no git involvement. `$KIMI_WORK_DIR` is the git worktree where code and worker output live, and is the only thing the `osci/<sid>` branch carries on pull-back. Never confuse the two: artefacts → session dir; code → worktree.
+Two paths, two purposes: `$PLANE_SESSION_DIR` holds your user-facing artefacts (`plan.json`, `evolution.json`, `report.md`, `findings.md`, …) — served live to the frontend over plane HTTP, no git involvement. `$KIMI_WORK_DIR` is the git worktree where code and worker output live, and is the only thing the `osci/<sid>` branch carries on pull-back. Never confuse the two: artefacts → session dir; code → worktree.
 
 ## Launching workers
 
