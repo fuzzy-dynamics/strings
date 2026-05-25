@@ -11,8 +11,7 @@ A `.soc` file contains:
 3. Current work and notes
 4. Insights accumulated across approaches
 5. Progress tracking
-6. Failed approaches and recovery plan
-7. Optionally: a queue of sub-problems or sub-tasks
+6. Optionally: a queue of sub-problems or sub-tasks
 
 ## Status Header
 
@@ -73,44 +72,6 @@ PROGRESS:
 
 The stop hook reads `problems_since_last_progress`. If this exceeds a threshold (configured in `witsoc.toml`, default 5) with no new insights, the hook suggests stopping.
 
-## Failed Approaches
-
-For serious problems, every blocked method should be preserved before trying a new one:
-
-```
-FAILED_APPROACHES:
-  - id: approach_1
-    method: direct induction on n
-    status: rejected
-    blocker: induction step requires a stronger invariant not present in the target
-    evidence: runs/problem/approach_1_failure.md
-    do_not_repeat: same induction variable with unchanged invariant
-    next_methods:
-      - strengthen invariant through lemma discovery agent
-      - try extremal/minimal-counterexample proof agent
-```
-
-Failure entries are inputs for new agents. The next worker must be told what failed and what not to repeat.
-
-## Recovery Agents
-
-When the main target fails or a Lean/WIT route is blocked, Witsoc should try distinct methods with different agents before marking the problem finally stuck:
-
-```
-RECOVERY_AGENTS:
-  - agent: alternate-proof-strategy
-    prompt: Try a minimal-counterexample proof. Do not repeat approach_1 induction.
-    status: running
-  - agent: obstruction-search
-    prompt: Search for counterexamples or missing hypotheses blocking the target.
-    status: running
-  - agent: synthesis-critic
-    prompt: Compare failed approaches and recommend the next route.
-    status: pending
-```
-
-Use at least two alternate-method agents when worker spawning is available. If all alternates fail, run a synthesis/critic pass and record the shared blocker before changing the problem status to `STUCK`, `GAP`, `PARTIAL`, `CONDITIONAL`, `FAILED_ATTEMPT`, or `OPEN`.
-
 ## Queue (optional)
 
 Example:
@@ -157,25 +118,6 @@ INSIGHTS:
 
 PROGRESS:
   - problems_since_last_progress: 1
-
-FAILED_APPROACHES:
-  - id: approach_1
-    method: direct extension of Thomassen's 5-choosability induction
-    status: rejected
-    blocker: degree-4 boundary vertices can force incompatible list assignments
-    evidence: runs/3choosable/approach_1_failure.md
-    do_not_repeat: same outer-face induction without a new reducible configuration
-    next_methods:
-      - search for reducible configurations with discharging
-      - try counterexample/minimal-obstruction enumeration
-
-RECOVERY_AGENTS:
-  - agent: discharging-route
-    prompt: Find a reducible configuration route avoiding the failed outer-face induction.
-    status: running
-  - agent: obstruction-search
-    prompt: Search for small counterexamples or missing hypotheses.
-    status: running
 ```
 
 ### Multiple related sub-problems

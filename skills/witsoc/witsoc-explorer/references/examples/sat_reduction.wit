@@ -1,0 +1,39 @@
+-- NP-hardness of A1 estimation
+-- Estimating A1 to precision epsilon < 1/(72(n-1)) is NP-hard.
+-- Status: UNVERIFIED
+
+MODULE a1_hardness
+
+REDUCTION a1_to_sat:
+  FROM: SAT
+  TO: $A_1$ estimation to precision $\varepsilon < 1/(72(n-1))$
+  PRESERVING: polynomial-time equivalence
+
+PROOF OF a1_to_sat:
+
+  [1] ASSUME $\phi$ is a SAT instance on $n$ variables.
+
+  [2] HAVE there exists a diagonal Hamiltonian $H_z$ on $N = 2^n$ states
+      with eigenvalues $E_0 < E_1$ and degeneracies $d_0, d_1$ such that
+      $A_1 = N \cdot d_0 / (d_0 + d_1)$ encodes satisfiability of $\phi$.
+      BY Paper, Theorem 6.1: construction of $H_z$ from Boolean formula.
+
+  [3] HAVE if $\phi$ is satisfiable then $A_1 \geq 1 + 1/(72(n-1))$.
+      BY [2], Paper, Lemma 6.3: gap analysis for satisfiable instances.
+
+  [4] HAVE if $\phi$ is unsatisfiable then $A_1 = 1$.
+      BY [2], Paper, Lemma 6.4: all eigenvalues equal when unsatisfiable.
+
+  [5] HAVE an estimator with precision $\varepsilon < 1/(72(n-1))$ distinguishes
+      $A_1 = 1$ from $A_1 \geq 1 + 1/(72(n-1))$.
+      BY [3], [4], the gap exceeds $2\varepsilon$.
+
+  [6] HAVE the construction of $H_z$ from $\phi$ is computable in $\mathrm{poly}(n)$ time.
+      BY [2], the Hamiltonian is diagonal with $2^n$ entries computable
+      from clause evaluation.
+
+  [7] SHOW estimating $A_1$ to precision $\varepsilon < 1/(72(n-1))$ solves SAT.
+      BY [5], [6]: given $\phi$, construct $H_z$ in poly-time, estimate $A_1$,
+      accept iff $\hat{A}_1 > 1 + \varepsilon$.
+
+  QED BY [7].
