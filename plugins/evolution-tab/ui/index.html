@@ -179,6 +179,7 @@
     .node.escalation { border-color: rgba(232, 198, 106, 0.48); }
     .node.terminal { border-color: rgba(178, 186, 194, 0.38); }
     .node.root { border-color: rgba(208, 214, 221, 0.42); }
+    .node.mission { border-color: rgba(117, 208, 214, 0.44); }
 
     .meta {
       display: flex;
@@ -406,6 +407,7 @@
 
     const typeLabel = {
       root: "Run",
+      mission: "Mission",
       hypothesis: "Hypothesis",
       experiment: "Evidence",
       escalation: "Escalation",
@@ -513,6 +515,123 @@
       return { nodes, edges };
     }
 
+    function metricSummary(metric) {
+      if (!metric || typeof metric !== "object") return "";
+      const data = metric.data && typeof metric.data === "object" ? metric.data : {};
+      const label = text(data.label || data.name || data.title || metric.metric_name || metric.name, "");
+      const value = text(data.value || data.status || data.result || metric.value, "");
+      return [label, value].filter(Boolean).join(": ");
+    }
+
+    function normalizeMissions(source) {
+      if (!Array.isArray(source?.missions)) return null;
+      const nodes = [];
+      const edges = [];
+      const rootId = "run-root";
+      const missions = source.missions;
+      const rowHeight = 156;
+      const missionGap = 92;
+      const totalCandidates = missions.reduce((sum, mission) => {
+        return sum + (Array.isArray(mission?.candidates) ? mission.candidates.length : 0);
+      }, 0);
+
+      nodes.push({
+        id: rootId,
+        type: "root",
+        title: text(source.title || source.runTitle || source.task || "Deep run", "Deep run"),
+        body: text(source.summary || source.prompt || "Mission and candidate outcomes.", ""),
+        status: text(source.status || "active"),
+        x: 72,
+        y: 96,
+        pathId: "",
+        chips: [`missions ${missions.length}`, `candidates ${totalCandidates}`],
+        raw: source,
+      });
+
+      let yCursor = 54;
+      missions.forEach((mission, missionIndex) => {
+        const missionId = slug(mission.mission_name || mission.name || mission.title || `mission-${missionIndex + 1}`);
+        const candidates = Array.isArray(mission.candidates) ? mission.candidates : [];
+        const missionNodeId = `${missionId}:mission`;
+        const selectedBranch = text(mission.selected_branch || mission.selectedBranch, "");
+        const missionY = yCursor;
+
+        nodes.push({
+          id: missionNodeId,
+          type: "mission",
+          title: text(mission.mission_name || mission.name || mission.title || missionId, missionId),
+          body: text(mission.description || mission.summary || mission.mission_base_branch || mission.base_branch || "Mission branch group.", ""),
+          status: selectedBranch ? "selected" : text(mission.status || "active"),
+          x: 320,
+          y: missionY,
+          pathId: missionId,
+          targetSessionId: "",
+          chips: [selectedBranch && "selected branch", candidates.length && `${candidates.length} candidates`].filter(Boolean),
+          raw: mission,
+        });
+        edges.push({ from: rootId, to: missionNodeId, label: "contains" });
+
+        candidates.forEach((candidate, candidateIndex) => {
+          const candidateId = slug(candidate.candidate_name || candidate.name || candidate.title || `candidate-${candidateIndex + 1}`);
+          const nodeId = `${missionId}:${candidateId}`;
+          const metrics = Array.isArray(candidate.metrics) ? candidate.metrics : [];
+          const child = childForPath({
+            id: candidateId,
+            title: candidate.candidate_name,
+            target: candidate.hypothesis,
+          });
+          const status = text(candidate.verdict || candidate.status || candidate.outcome || child?.status || "");
+          const y = missionY + candidateIndex * rowHeight;
+          const isSelected = selectedBranch && selectedBranch === text(candidate.candidate_branch || candidate.branch, "");
+
+          nodes.push({
+            id: nodeId,
+            type: "hypothesis",
+            title: text(candidate.candidate_name || candidate.name || candidate.title || candidateId, candidateId),
+            body: text(candidate.hypothesis || candidate.description || candidate.summary || "Candidate path.", ""),
+            status: isSelected ? "selected" : status,
+            x: 580,
+            y,
+            pathId: candidateId,
+            targetSessionId: child?.id || "",
+            chips: [
+              candidate.active ? "active" : "",
+              status,
+              text(candidate.candidate_branch || candidate.branch, "").split("/").slice(-1)[0],
+            ].filter(Boolean),
+            raw: candidate,
+          });
+          edges.push({ from: missionNodeId, to: nodeId, label: "candidate" });
+
+          metrics.forEach((metric, metricIndex) => {
+            const metricId = `${nodeId}:metric-${metricIndex + 1}`;
+            nodes.push({
+              id: metricId,
+              type: "experiment",
+              title: text(metric.metric_name || metric.name || `metric ${metricIndex + 1}`, `metric ${metricIndex + 1}`),
+              body: metricSummary(metric) || text(metric.summary || metric.description || "Metric evidence.", ""),
+              status,
+              x: 840 + metricIndex * 250,
+              y,
+              pathId: candidateId,
+              targetSessionId: child?.id || "",
+              chips: [text(metric.metric_type || metric.type, "")].filter(Boolean),
+              raw: metric,
+            });
+            edges.push({
+              from: metricIndex === 0 ? nodeId : `${nodeId}:metric-${metricIndex}`,
+              to: metricId,
+              label: metricIndex === 0 ? "evidence" : "then",
+            });
+          });
+        });
+
+        yCursor += Math.max(rowHeight, candidates.length * rowHeight) + missionGap;
+      });
+
+      return { nodes, edges };
+    }
+
     function normalizeFallback(source) {
       const paths = coercePaths(source);
       const nodes = [];
@@ -608,7 +727,7 @@
     }
 
     function normalize(source) {
-      return normalizeExplicit(source) || normalizeFallback(source);
+      return normalizeExplicit(source) || normalizeMissions(source) || normalizeFallback(source);
     }
 
     function visibleNodes() {

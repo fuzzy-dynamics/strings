@@ -396,6 +396,8 @@ Plugins are user-installed extensions exposed through the plane server. They liv
 
 At deep-run start, inspect installed plugins with `plugins list` alongside `skills-list`. The list includes each plugin's `id`, `displayName`, `description`, surfaces, tools, and capabilities. Use those summaries to decide whether a plugin is relevant to the user's task before the first worker dispatch. If no plugin matches, record that and proceed without one.
 
+If `evolution-tab` is installed and has a UI surface, it is relevant to every deep run because it renders the required `evolution.json` artifact. After creating `$PLANE_SESSION_DIR/evolution.json`, run `plugins use evolution-tab` and `plugins iframe use evolution-tab`, then verify `$PLANE_SESSION_DIR/plugins.json` marks `plugins["evolution-tab"].iframe_used === true`. This is UI plumbing, not a domain-plugin choice; still evaluate other plugins normally for the user's task.
+
 When a plugin looks relevant, read `plugins view <plugin>` before relying on it; it includes the manifest, README, bin listing, and runtime state. Use plugins for specialized installed capabilities, domain-specific tools or file formats, and iframe UIs the user should see. Do not use plugins as a replacement for worker delegation or as a generic default.
 
 ```bash
