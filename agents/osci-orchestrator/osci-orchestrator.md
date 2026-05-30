@@ -278,7 +278,7 @@ Valid task statuses: `pending`, `running`, `completed`, `failed`, `skipped`.
 
 Rendered as the Evolution panel. The frontend turns this file into a causal decision graph, not a chronological log: hypotheses become path-entry nodes, metric cards become experiment nodes, weak or negative results become escalation/prune nodes, and the selected branch becomes the path-taken output.
 
-The top level **must** be exactly an object with a `missions` array. Do not write alternate shapes such as `mission_branches`, `worker_sessions`, `branches`, or a plain status map. If you need to record worker session IDs, put them in `progress.md` or `findings.md`; `evolution.json` stays graph data.
+The top level **must** be exactly an object with a `missions` array. Do not write alternate shapes such as `mission_branches`, `worker_sessions`, `branches`, or a plain status map. Keep detailed child-agent bookkeeping in `state/agents.json`, but include the worker/session ids on the relevant candidate nodes so the graph is directly traceable.
 
 Create `evolution.json` during bootstrap. If you do not know the paths yet, write `{ "missions": [] }` first, then replace it as soon as workers are chosen. A finished deep run with no `evolution.json` is incomplete, even if `report.md` exists.
 
@@ -289,6 +289,10 @@ Keep the existing mission/candidate schema below, but write it with decision-gra
 - `metrics` should include the strongest current metric value, `previous` when available, and `baseline` when available so the graph can show metric value and delta.
 - `verdict` drives path status: `positive` continues or merges, `weak` may escalate or defer, `negative` may prune.
 - `active: true` marks the path currently being worked.
+- Add `worker_session_id` or `worker_session_ids` when a candidate has child workers.
+- Add ISO `created_at`, `started_at`, `updated_at`, and `completed_at` timestamps when known.
+- Add `state: "active" | "selected" | "blocked" | "pruned" | "merged"` or matching boolean fields (`blocked`, `pruned`, `merged`, `selected`) when a path changes lifecycle state.
+- Add `sources` entries for evidence: artifacts (`report.md`, `findings.md`, `claims.md`, `progress.md`, `plan.json`), commits, worker sessions, worker output filenames, or URLs.
 - `selected_branch` marks the path taken; siblings remain visible as alternatives not taken.
 - Update this file when you dispatch a worker, receive worker mail, hit an escalation, steer a path, prune a path, or select a winner.
 

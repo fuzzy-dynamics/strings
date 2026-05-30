@@ -123,7 +123,7 @@ The top level must be exactly:
 { "missions": [] }
 ```
 
-Do not write alternate top-level shapes such as `mission_branches`, `worker_sessions`, `branches`, `agents`, or a plain status map. Worker session ids belong in `state/agents.json` or `progress.md`; `evolution.json` is graph data.
+Do not write alternate top-level shapes such as `mission_branches`, `worker_sessions`, `branches`, `agents`, or a plain status map. `state/agents.json` remains the detailed child-agent ledger, but `evolution.json` should include the worker/session ids needed to make graph nodes directly traceable.
 
 Minimal bootstrap example for a report-style deep run with mission branches:
 
@@ -140,8 +140,16 @@ Minimal bootstrap example for a report-style deep run with mission branches:
           "candidate_branch": "openscientist/session-cebf82/missions/key-architectures/candidates/research",
           "branched_from": "openscientist/session-cebf82-root",
           "hypothesis": "Transformer and decision-transformer style policies explain the dominant VLA architecture families.",
+          "worker_session_id": "sess_worker_key_architectures",
+          "started_at": "2026-05-31T10:00:00Z",
+          "updated_at": "2026-05-31T10:12:00Z",
           "verdict": "weak",
           "active": true,
+          "state": "active",
+          "sources": [
+            { "type": "artifact", "label": "Findings", "artifact": "findings.md" },
+            { "type": "worker-output", "label": "architectures.md" }
+          ],
           "metrics": [
             {
               "metric_name": "evidence status",
@@ -179,8 +187,12 @@ For each candidate:
 - `candidate_branch` is the branch or branch-shaped path for that candidate.
 - `branched_from` is the causal parent branch.
 - `hypothesis` is the reason this path exists.
+- `worker_session_id` or `worker_session_ids` points to the worker sessions that produced the evidence.
+- `created_at`, `started_at`, `updated_at`, and `completed_at` are ISO timestamps when known.
 - `verdict` is one of `weak`, `positive`, or `negative`.
+- `state` can be `active`, `selected`, `blocked`, `pruned`, or `merged`; boolean `selected`, `blocked`, `pruned`, and `merged` fields are also accepted.
 - `active: true` means work is currently happening on that path.
+- `sources` links evidence to artifacts, commits, URLs, or worker outputs. Use `{ "artifact": "report.md" }`, `{ "artifact": "findings.md" }`, `{ "commit": "<sha>" }`, `{ "sessionId": "<worker-session>" }`, or `{ "href": "https://..." }`.
 - `metrics` should contain the strongest current value. For report missions, an evidence-status card is enough; for experiments, include the metric value, previous value, baseline, and changed params when known.
 - `selected_branch` marks the path taken at synthesis time. Leave siblings visible as alternatives not taken.
 

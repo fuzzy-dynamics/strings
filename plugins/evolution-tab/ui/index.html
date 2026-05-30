@@ -95,6 +95,18 @@
       gap: 8px;
     }
 
+    .filter {
+      width: 168px;
+      min-width: 0;
+      border: 1px solid var(--line);
+      border-radius: var(--radius, 6px);
+      background: hsl(var(--background));
+      color: var(--main-text);
+      padding: 7px 9px;
+      outline: none;
+    }
+    .filter:focus { border-color: hsl(var(--ring)); }
+
     .button {
       border: 1px solid var(--line);
       border-radius: var(--radius, 6px);
@@ -171,6 +183,11 @@
     .node.selected { outline: 2px solid hsl(var(--primary) / 0.65); outline-offset: 2px; }
     .node.compare { outline: 2px solid hsl(42 82% 56% / 0.72); outline-offset: 2px; }
     .node.dim { opacity: 0.24; }
+    .node.search-dim { opacity: 0.18; }
+    .node.selected-path { box-shadow: 0 0 0 1px hsl(var(--primary) / 0.35), 0 16px 34px var(--shadow); }
+    .node.state-blocked { border-style: dashed; border-color: hsl(var(--destructive) / 0.65); }
+    .node.state-pruned { opacity: 0.58; border-style: dashed; }
+    .node.state-merged { border-color: hsl(187 70% 45% / 0.72); }
 
     .node.hypothesis { border-color: hsl(142 55% 45% / 0.52); }
     .node.experiment { border-color: hsl(231 88% 70% / 0.48); }
@@ -207,6 +224,7 @@
     .status.good { color: hsl(142 55% 40%); background: hsl(142 55% 45% / 0.13); }
     .status.warn { color: hsl(42 82% 42%); background: hsl(42 82% 56% / 0.14); }
     .status.bad { color: hsl(var(--destructive)); background: hsl(var(--destructive) / 0.14); }
+    .status.selected { color: hsl(var(--primary)); background: hsl(var(--primary) / 0.13); }
 
     .node-title {
       font-weight: 650;
@@ -273,6 +291,42 @@
     }
     .kv span:first-child { color: var(--muted-text); }
     .kv span:last-child { overflow-wrap: anywhere; }
+
+    .source-list {
+      display: grid;
+      gap: 7px;
+    }
+    .source-button {
+      width: 100%;
+      text-align: left;
+      border: 1px solid var(--line);
+      border-radius: var(--radius, 6px);
+      background: hsl(var(--background));
+      color: var(--main-text);
+      padding: 8px 9px;
+      cursor: pointer;
+    }
+    .source-button:hover { border-color: hsl(var(--ring)); }
+    .source-button span {
+      display: block;
+      color: var(--muted-text);
+      font-size: 10px;
+      margin-top: 2px;
+    }
+    .source-preview {
+      margin: 10px 0 0;
+      max-height: 220px;
+      overflow: auto;
+      white-space: pre-wrap;
+      border: 1px solid var(--line);
+      border-radius: var(--radius, 6px);
+      background: hsl(var(--background));
+      color: var(--soft-text);
+      padding: 9px;
+      font-family: var(--host-font-mono);
+      font-size: 11px;
+      line-height: 1.45;
+    }
 
     textarea {
       width: 100%;
@@ -344,6 +398,7 @@
         <div class="count" id="stepCount">0/0</div>
       </div>
       <div class="toolbar">
+        <input class="filter" id="filter" type="search" placeholder="Filter graph" />
         <button class="button" id="fitBtn">Center</button>
         <button class="button" id="refreshBtn">Refresh</button>
       </div>
@@ -362,6 +417,11 @@
         <div id="details">
           <div class="kv"><span>Status</span><span>No node selected</span></div>
         </div>
+      </div>
+      <div class="section">
+        <h2>Sources</h2>
+        <div class="source-list" id="sources"></div>
+        <pre class="source-preview" id="sourcePreview" hidden></pre>
       </div>
       <div class="section">
         <h2>Steer Note</h2>
@@ -387,6 +447,8 @@
       playTimer: null,
       contextNode: null,
       drag: null,
+      query: "",
+      sourcePreview: null,
     };
 
     const el = {
@@ -399,9 +461,12 @@
       scrubber: document.getElementById("scrubber"),
       stepCount: document.getElementById("stepCount"),
       playBtn: document.getElementById("playBtn"),
+      filter: document.getElementById("filter"),
       fitBtn: document.getElementById("fitBtn"),
       refreshBtn: document.getElementById("refreshBtn"),
       details: document.getElementById("details"),
+      sources: document.getElementById("sources"),
+      sourcePreview: document.getElementById("sourcePreview"),
       actions: document.getElementById("actions"),
       note: document.getElementById("note"),
     };
@@ -441,10 +506,153 @@
 
     function statusClass(status) {
       const s = String(status || "").toLowerCase();
+      if (["selected", "winner", "winning"].some((x) => s.includes(x))) return "selected";
       if (["complete", "completed", "merged", "success", "positive", "done"].some((x) => s.includes(x))) return "good";
       if (["regress", "failed", "stop", "prune", "error", "negative"].some((x) => s.includes(x))) return "bad";
       if (["plateau", "warn", "pending", "defer", "running", "active"].some((x) => s.includes(x))) return "warn";
       return "";
+    }
+
+    function asArray(value) {
+      if (Array.isArray(value)) return value;
+      if (value == null || value === "") return [];
+      return [value];
+    }
+
+    function firstText(...values) {
+      for (const value of values) {
+        const next = text(value, "");
+        if (next) return next;
+      }
+      return "";
+    }
+
+    function compactDate(value) {
+      const raw = text(value, "");
+      if (!raw) return "";
+      const d = new Date(raw);
+      if (Number.isNaN(d.getTime())) return raw;
+      return d.toLocaleString(undefined, {
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    }
+
+    function collectTimestamps(raw) {
+      if (!raw || typeof raw !== "object") return [];
+      const fields = [
+        ["created", raw.created_at || raw.createdAt || raw.created],
+        ["started", raw.started_at || raw.startedAt || raw.started],
+        ["updated", raw.updated_at || raw.updatedAt || raw.updated || raw.last_updated],
+        ["completed", raw.completed_at || raw.completedAt || raw.completed || raw.finished_at || raw.finishedAt],
+      ];
+      return fields.flatMap(([label, value]) => {
+        const formatted = compactDate(value);
+        return formatted ? [{ label, value: formatted, raw: text(value, "") }] : [];
+      });
+    }
+
+    function stateTagFor(raw, selected = false) {
+      const status = `${raw?.state || ""} ${raw?.status || ""} ${raw?.verdict || ""} ${raw?.outcome || ""}`.toLowerCase();
+      if (selected || raw?.selected || raw?.winning || raw?.winner) return "selected";
+      if (raw?.blocked || status.includes("blocked") || status.includes("blocker")) return "blocked";
+      if (raw?.pruned || raw?.stopped || status.includes("pruned") || status.includes("stopped") || status.includes("stop")) return "pruned";
+      if (raw?.merged || status.includes("merged")) return "merged";
+      return "";
+    }
+
+    function displayStatus(raw, fallback = "") {
+      const tag = stateTagFor(raw);
+      if (tag) return tag;
+      return firstText(raw?.verdict, raw?.status, raw?.state, raw?.outcome, fallback);
+    }
+
+    function collectWorkerIds(raw, child) {
+      const ids = [
+        ...asArray(raw?.worker_session_ids || raw?.workerSessionIds || raw?.worker_sessions || raw?.workerSessions),
+        raw?.worker_session_id,
+        raw?.workerSessionId,
+        raw?.session_id,
+        raw?.sessionId,
+        raw?.target_session_id,
+        raw?.targetSessionId,
+        raw?.worker?.session_id,
+        raw?.worker?.sessionId,
+        child?.id,
+      ];
+      return [...new Set(ids.map((id) => text(id, "").trim()).filter(Boolean))];
+    }
+
+    function artifactLabel(name) {
+      const normalized = text(name, "");
+      if (normalized === "report.md") return "Report";
+      if (normalized === "findings.md") return "Findings";
+      if (normalized === "claims.md") return "Claims";
+      if (normalized === "progress.md") return "Progress";
+      if (normalized === "plan.json") return "Plan";
+      return normalized;
+    }
+
+    const readableArtifacts = new Set(["report.md", "findings.md", "claims.md", "progress.md", "plan.json"]);
+
+    function sourceFrom(value, fallbackType = "source") {
+      if (!value) return null;
+      if (typeof value === "string") {
+        const raw = value.trim();
+        if (!raw) return null;
+        if (/^https?:\/\//i.test(raw)) return { type: "link", label: raw, href: raw };
+        if (/^(report|findings|claims|progress)\.md$|^plan\.json$/i.test(raw)) {
+          return { type: "artifact", label: artifactLabel(raw), artifact: raw };
+        }
+        if (/^[0-9a-f]{7,40}$/i.test(raw)) return { type: "commit", label: raw.slice(0, 12), commit: raw };
+        return { type: fallbackType, label: raw };
+      }
+      if (typeof value !== "object") return null;
+      const artifact = text(value.artifact || value.file || value.path, "");
+      const commit = text(value.commit || value.sha, "");
+      const sessionId = text(value.sessionId || value.session_id || value.workerSessionId || value.worker_session_id, "");
+      const href = text(value.href || value.url, "");
+      const label = firstText(value.label, value.title, artifact && artifactLabel(artifact), commit && commit.slice(0, 12), sessionId, href, fallbackType);
+      if (artifact && readableArtifacts.has(artifact)) return { type: text(value.type, "artifact"), label, artifact };
+      if (artifact) return { type: text(value.type, "worker-output"), label, detail: artifact };
+      if (commit) return { type: text(value.type, "commit"), label, commit };
+      if (sessionId) return { type: text(value.type, "worker"), label, sessionId };
+      if (href) return { type: text(value.type, "link"), label, href };
+      return { type: text(value.type, fallbackType), label, detail: text(value.detail || value.description || value.summary, "") };
+    }
+
+    function collectSources(raw, metrics = []) {
+      const sources = [
+        ...asArray(raw?.sources),
+        ...asArray(raw?.source_links || raw?.sourceLinks),
+        ...asArray(raw?.evidence_sources || raw?.evidenceSources),
+        ...asArray(raw?.evidence_links || raw?.evidenceLinks),
+        ...asArray(raw?.commits || raw?.commit),
+      ].map((item) => sourceFrom(item)).filter(Boolean);
+
+      if (raw?.report || raw?.report_md) sources.push(sourceFrom("report.md"));
+      if (raw?.findings || raw?.findings_md) sources.push(sourceFrom("findings.md"));
+
+      for (const metric of metrics) {
+        const data = metric?.data && typeof metric.data === "object" ? metric.data : {};
+        const label = text(data.label || metric?.label || metric?.file, "");
+        const value = text(data.value || metric?.value || "", "");
+        const inferred = sourceFrom(label, "worker-output");
+        if (inferred) {
+          inferred.detail = value || inferred.detail || "";
+          sources.push(inferred);
+        }
+      }
+
+      const seen = new Set();
+      return sources.filter((source) => {
+        const key = `${source.type}:${source.artifact || source.commit || source.sessionId || source.href || source.label}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
     }
 
     function childForPath(path) {
@@ -488,9 +696,13 @@
           type: type.includes("exp") ? "experiment" : type.includes("steer") ? "steer" : type.includes("esc") ? "escalation" : type.includes("stop") || type.includes("merge") ? "terminal" : type,
           title,
           body: text(raw.body || raw.description || raw.summary, ""),
-          status: text(raw.status || raw.outcome || raw.decision, ""),
+          status: displayStatus(raw, text(raw.decision, "")),
+          stateTag: stateTagFor(raw),
           pathId: text(raw.pathId || raw.path_id || raw.path, ""),
           targetSessionId: text(raw.targetSessionId || raw.sessionId || raw.session_id, ""),
+          workerSessionIds: collectWorkerIds(raw, null),
+          timestamps: collectTimestamps(raw),
+          sources: collectSources(raw, asArray(raw.metrics)),
           chips: raw.chips || [],
           raw,
         };
@@ -542,9 +754,13 @@
         title: text(source.title || source.runTitle || source.task || "Deep run", "Deep run"),
         body: text(source.summary || source.prompt || "Mission and candidate outcomes.", ""),
         status: text(source.status || "active"),
+        stateTag: stateTagFor(source),
         x: 72,
         y: 96,
         pathId: "",
+        workerSessionIds: [],
+        timestamps: collectTimestamps(source),
+        sources: [sourceFrom("report.md"), sourceFrom("findings.md")].filter(Boolean),
         chips: [`missions ${missions.length}`, `candidates ${totalCandidates}`],
         raw: source,
       });
@@ -555,7 +771,9 @@
         const candidates = Array.isArray(mission.candidates) ? mission.candidates : [];
         const missionNodeId = `${missionId}:mission`;
         const selectedBranch = text(mission.selected_branch || mission.selectedBranch, "");
+        const selectedCandidate = text(mission.selected_candidate || mission.selectedCandidate || mission.winning_candidate || mission.winningCandidate, "");
         const missionY = yCursor;
+        const missionSources = collectSources(mission, []);
 
         nodes.push({
           id: missionNodeId,
@@ -563,10 +781,14 @@
           title: text(mission.mission_name || mission.name || mission.title || missionId, missionId),
           body: text(mission.description || mission.summary || mission.mission_base_branch || mission.base_branch || "Mission branch group.", ""),
           status: selectedBranch ? "selected" : text(mission.status || "active"),
+          stateTag: stateTagFor(mission, Boolean(selectedBranch)),
           x: 320,
           y: missionY,
           pathId: missionId,
           targetSessionId: "",
+          workerSessionIds: collectWorkerIds(mission, null),
+          timestamps: collectTimestamps(mission),
+          sources: missionSources.length ? missionSources : [sourceFrom("report.md"), sourceFrom("findings.md")].filter(Boolean),
           chips: [selectedBranch && "selected branch", candidates.length && `${candidates.length} candidates`].filter(Boolean),
           raw: mission,
         });
@@ -581,9 +803,17 @@
             title: candidate.candidate_name,
             target: candidate.hypothesis,
           });
-          const status = text(candidate.verdict || candidate.status || candidate.outcome || child?.status || "");
+          const isSelected = Boolean(
+            selectedCandidate && selectedCandidate === text(candidate.candidate_name || candidate.name || candidate.title, "")
+          ) || Boolean(
+            selectedBranch && selectedBranch === text(candidate.candidate_branch || candidate.branch, "")
+          );
+          const stateTag = stateTagFor(candidate, isSelected);
+          const status = displayStatus(candidate, child?.status || "");
+          const workerSessionIds = collectWorkerIds(candidate, child);
+          const timestamps = collectTimestamps(candidate);
+          const sources = collectSources(candidate, metrics);
           const y = missionY + candidateIndex * rowHeight;
-          const isSelected = selectedBranch && selectedBranch === text(candidate.candidate_branch || candidate.branch, "");
 
           nodes.push({
             id: nodeId,
@@ -591,13 +821,19 @@
             title: text(candidate.candidate_name || candidate.name || candidate.title || candidateId, candidateId),
             body: text(candidate.hypothesis || candidate.description || candidate.summary || "Candidate path.", ""),
             status: isSelected ? "selected" : status,
+            stateTag,
             x: 580,
             y,
             pathId: candidateId,
-            targetSessionId: child?.id || "",
+            targetSessionId: workerSessionIds[0] || "",
+            workerSessionIds,
+            timestamps,
+            sources,
             chips: [
               candidate.active ? "active" : "",
-              status,
+              stateTag || status,
+              workerSessionIds[0] ? `worker ${workerSessionIds[0].slice(0, 8)}` : "",
+              timestamps[0] ? timestamps[0].value : "",
               text(candidate.candidate_branch || candidate.branch, "").split("/").slice(-1)[0],
             ].filter(Boolean),
             raw: candidate,
@@ -612,10 +848,14 @@
               title: text(metric.metric_name || metric.name || `metric ${metricIndex + 1}`, `metric ${metricIndex + 1}`),
               body: metricSummary(metric) || text(metric.summary || metric.description || "Metric evidence.", ""),
               status,
+              stateTag,
               x: 840 + metricIndex * 250,
               y,
               pathId: candidateId,
-              targetSessionId: child?.id || "",
+              targetSessionId: workerSessionIds[0] || "",
+              workerSessionIds,
+              timestamps: collectTimestamps(metric),
+              sources: collectSources(metric, [metric]),
               chips: [text(metric.metric_type || metric.type, "")].filter(Boolean),
               raw: metric,
             });
@@ -645,9 +885,13 @@
         title,
         body: text(source?.summary || source?.prompt || "Orchestrator decisions and path outcomes.", ""),
         status: text(source?.status || "active"),
+        stateTag: stateTagFor(source),
         x: 72,
         y: 86,
         pathId: "",
+        workerSessionIds: [],
+        timestamps: collectTimestamps(source),
+        sources: [sourceFrom("report.md"), sourceFrom("findings.md")].filter(Boolean),
         chips: [`paths ${paths.length || 0}`],
         raw: source || {},
       });
@@ -659,7 +903,11 @@
         const child = childForPath(path);
         const y = 54 + lane * 142;
         const title = text(path.title || path.name || path.mission || pathId, pathId);
-        const status = text(path.status || path.outcome || path.decision || child?.status || "active");
+        const status = displayStatus(path, child?.status || "active");
+        const stateTag = stateTagFor(path);
+        const workerSessionIds = collectWorkerIds(path, child);
+        const timestamps = collectTimestamps(path);
+        const sources = collectSources(path, []);
         const confidence = text(path.prior_confidence || path.priorConfidence || path.confidence || path.posterior_confidence, "");
         const metric = text(path.metric || path.metric_value || path.score || path.delta || path.metricTarget, "");
         const hypId = `${pathId}:hypothesis`;
@@ -672,11 +920,15 @@
           title,
           body: summaryOf(path) || "Path proposal and initial prior.",
           status,
+          stateTag,
           x: 330,
           y,
           pathId,
-          targetSessionId: child?.id || "",
-          chips: [confidence && `prior ${confidence}`, metric && `target ${metric}`].filter(Boolean),
+          targetSessionId: workerSessionIds[0] || "",
+          workerSessionIds,
+          timestamps,
+          sources,
+          chips: [confidence && `prior ${confidence}`, metric && `target ${metric}`, stateTag].filter(Boolean),
           raw: path,
         });
         nodes.push({
@@ -685,10 +937,14 @@
           title: text(path.experiment || path.commit || path.exp || "evidence", "evidence"),
           body: text(path.evidence || path.result || path.finding || path.findings || "Evidence collected for this path.", ""),
           status,
+          stateTag,
           x: 590,
           y,
           pathId,
-          targetSessionId: child?.id || "",
+          targetSessionId: workerSessionIds[0] || "",
+          workerSessionIds,
+          timestamps,
+          sources,
           chips: [metric && `metric ${metric}`, text(path.delta || path.change, "") && `delta ${text(path.delta || path.change)}`].filter(Boolean),
           raw: path,
         });
@@ -698,11 +954,15 @@
           title: text(path.decision || path.action || "decision", "decision"),
           body: text(path.instruction || path.reason || path.rationale || "Orchestrator decision for this path.", ""),
           status,
+          stateTag,
           x: 850,
           y,
           pathId,
-          targetSessionId: child?.id || "",
-          chips: [child?.id ? "worker" : "", text(path.alternative || path.alt, "") ? "alternative" : ""].filter(Boolean),
+          targetSessionId: workerSessionIds[0] || "",
+          workerSessionIds,
+          timestamps,
+          sources,
+          chips: [workerSessionIds[0] ? "worker" : "", text(path.alternative || path.alt, "") ? "alternative" : ""].filter(Boolean),
           raw: path,
         });
         nodes.push({
@@ -711,10 +971,14 @@
           title: status.toLowerCase().includes("stop") ? "stopped" : "path outcome",
           body: text(path.output || path.outcome_summary || path.alternative || path.alt || "Latest retained outcome.", ""),
           status,
+          stateTag,
           x: 1110,
           y,
           pathId,
-          targetSessionId: child?.id || "",
+          targetSessionId: workerSessionIds[0] || "",
+          workerSessionIds,
+          timestamps,
+          sources,
           chips: [child?.status || ""].filter(Boolean),
           raw: path,
         });
@@ -746,6 +1010,24 @@
       const by = b.y + 47;
       const mid = Math.max(36, Math.abs(bx - ax) / 2);
       return `M ${ax} ${ay} C ${ax + mid} ${ay}, ${bx - mid} ${by}, ${bx} ${by}`;
+    }
+
+    function nodeMatchesQuery(node) {
+      const q = state.query.trim().toLowerCase();
+      if (!q) return true;
+      const haystack = [
+        node.type,
+        node.title,
+        node.body,
+        node.status,
+        node.stateTag,
+        node.pathId,
+        node.targetSessionId,
+        ...(node.workerSessionIds || []),
+        ...(node.chips || []),
+        ...(node.sources || []).map((source) => `${source.type} ${source.label} ${source.artifact || ""} ${source.commit || ""}`),
+      ].join(" ").toLowerCase();
+      return haystack.includes(q);
     }
 
     function render() {
@@ -784,7 +1066,16 @@
 
       nodes.forEach((node) => {
         const div = document.createElement("div");
-        div.className = `node ${node.type || "hypothesis"}${node.id === state.selectedId ? " selected" : ""}${state.compareIds.has(node.pathId) ? " compare" : ""}`;
+        const classNames = [
+          "node",
+          node.type || "hypothesis",
+          node.id === state.selectedId ? "selected" : "",
+          node.stateTag ? `state-${node.stateTag}` : "",
+          node.stateTag === "selected" ? "selected-path" : "",
+          state.compareIds.has(node.pathId) ? "compare" : "",
+          nodeMatchesQuery(node) ? "" : "search-dim",
+        ].filter(Boolean);
+        div.className = classNames.join(" ");
         div.style.left = `${node.x}px`;
         div.style.top = `${node.y}px`;
         div.dataset.id = node.id;
@@ -818,6 +1109,7 @@
     }
 
     function selectNode(id) {
+      if (state.selectedId !== id) state.sourcePreview = null;
       state.selectedId = id;
       render();
       const nodeEl = el.graph.querySelector(`[data-id="${CSS.escape(id)}"]`);
@@ -828,16 +1120,25 @@
       const node = selectedNode();
       if (!node) {
         el.details.innerHTML = '<div class="kv"><span>Status</span><span>No node selected</span></div>';
+        el.sources.innerHTML = '<div class="kv"><span>Status</span><span>No sources</span></div>';
+        el.sourcePreview.hidden = true;
         el.actions.innerHTML = "";
         return;
       }
+      const timestampText = (node.timestamps || []).map((item) => `${item.label} ${item.value}`).join(" · ");
+      const workerText = (node.workerSessionIds || []).join(", ");
       el.details.innerHTML = [
         ["Type", typeLabel[node.type] || node.type],
         ["Title", node.title],
         ["Status", node.status || "active"],
+        ["State", node.stateTag || "—"],
         ["Path", node.pathId || "run"],
         ["Target", node.targetSessionId || "orchestrator"],
+        ["Workers", workerText || "—"],
+        ["Times", timestampText || "—"],
       ].map(([key, value]) => `<div class="kv"><span>${escapeHtml(key)}</span><span>${escapeHtml(value)}</span></div>`).join("");
+
+      renderSources(node);
 
       el.actions.innerHTML = operationsFor(node).map((op) => {
         const danger = op.operation === "stop_path" ? " danger" : op.primary ? " primary" : "";
@@ -846,6 +1147,68 @@
       el.actions.querySelectorAll("button[data-op]").forEach((button) => {
         button.addEventListener("click", () => sendSteer(button.dataset.op, node));
       });
+    }
+
+    function sourceTypeLabel(source) {
+      if (source.artifact) return "artifact";
+      if (source.commit) return "commit";
+      if (source.sessionId) return "worker session";
+      if (source.href) return "link";
+      return source.type || "source";
+    }
+
+    function renderSources(node) {
+      const sources = node.sources || [];
+      if (!sources.length) {
+        el.sources.innerHTML = '<div class="kv"><span>Status</span><span>No sources attached</span></div>';
+        el.sourcePreview.hidden = true;
+        return;
+      }
+      el.sources.innerHTML = sources.map((source, index) => {
+        const detail = source.artifact || source.commit || source.sessionId || source.href || source.detail || "";
+        return `
+          <button class="source-button" data-source-index="${index}">
+            ${escapeHtml(source.label || sourceTypeLabel(source))}
+            <span>${escapeHtml(sourceTypeLabel(source))}${detail ? ` · ${escapeHtml(detail)}` : ""}</span>
+          </button>
+        `;
+      }).join("");
+      el.sources.querySelectorAll("button[data-source-index]").forEach((button) => {
+        button.addEventListener("click", () => showSource(sources[Number(button.dataset.sourceIndex) || 0]));
+      });
+      if (state.sourcePreview && state.sourcePreview.nodeId === node.id) {
+        el.sourcePreview.hidden = false;
+        el.sourcePreview.textContent = state.sourcePreview.text;
+      } else {
+        el.sourcePreview.hidden = true;
+      }
+    }
+
+    async function showSource(source) {
+      const node = selectedNode();
+      if (!source || !node) return;
+      if (source.href) {
+        window.open(source.href, "_blank", "noopener");
+        return;
+      }
+      let preview = "";
+      if (source.artifact) {
+        try {
+          const content = await os.session.readArtifact(source.artifact);
+          preview = typeof content === "string" ? content : JSON.stringify(content, null, 2);
+        } catch (error) {
+          preview = `Could not read ${source.artifact}: ${error?.message || error}`;
+        }
+      } else if (source.commit) {
+        preview = `Commit ${source.commit}`;
+      } else if (source.sessionId) {
+        preview = `Worker session ${source.sessionId}`;
+      } else {
+        preview = source.detail || source.label || "No preview available.";
+      }
+      const clipped = preview.length > 4000 ? `${preview.slice(0, 4000)}\n\n... clipped ...` : preview;
+      state.sourcePreview = { nodeId: node.id, text: clipped };
+      renderInspector();
     }
 
     function operationsFor(node) {
@@ -1023,6 +1386,11 @@
 
     el.scrubber.addEventListener("input", () => {
       state.replayIndex = Number(el.scrubber.value) || 0;
+      render();
+    });
+
+    el.filter.addEventListener("input", () => {
+      state.query = el.filter.value || "";
       render();
     });
 

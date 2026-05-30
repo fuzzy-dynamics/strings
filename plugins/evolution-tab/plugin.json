@@ -17,6 +17,10 @@
     "session.artifacts.read:plan.json",
     "session.artifacts.read:plugins.json",
     "session.artifacts.read:state/agents.json",
+    "session.artifacts.read:report.md",
+    "session.artifacts.read:findings.md",
+    "session.artifacts.read:claims.md",
+    "session.artifacts.read:progress.md",
     "session.children.read",
     "run.steer"
   ],

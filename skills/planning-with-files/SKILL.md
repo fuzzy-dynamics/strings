@@ -217,7 +217,7 @@ Every task's `phase` must exactly match a phase `name`. `subphase` is optional, 
 
 The Evolution panel's data source. It lives in `$PLANE_SESSION_DIR/evolution.json` and is mirrored to `.openscientist/sessions/$SESSION/evolution.json`.
 
-Keep it valid JSON. It is a causal graph over alternatives, not a chronological log. One candidate is one path; `hypothesis` explains why the path exists; `metrics` holds the current evidence; `selected_branch` marks the path taken while siblings remain visible as alternatives.
+Keep it valid JSON. It is a causal graph over alternatives, not a chronological log. One candidate is one path; `hypothesis` explains why the path exists; `metrics` holds the current evidence; `selected_branch` marks the path taken while siblings remain visible as alternatives. Add `worker_session_id` / `worker_session_ids`, ISO timestamps, `state` (`active`, `selected`, `blocked`, `pruned`, `merged`), and `sources` when known so the graph is traceable back to workers and evidence artifacts.
 
 ```json
 {
@@ -232,8 +232,16 @@ Keep it valid JSON. It is a causal graph over alternatives, not a chronological 
           "candidate_branch": "openscientist/session-cebf82/missions/training-datasets/candidates/research",
           "branched_from": "openscientist/session-cebf82-root",
           "hypothesis": "Training methodology and dataset coverage explain the largest VLA capability gaps.",
+          "worker_session_id": "sess_worker_training_datasets",
+          "started_at": "2026-05-31T10:00:00Z",
+          "completed_at": "2026-05-31T10:20:00Z",
           "verdict": "positive",
+          "state": "merged",
           "active": false,
+          "sources": [
+            { "artifact": "findings.md", "label": "Findings" },
+            { "artifact": "report.md", "label": "Report" }
+          ],
           "metrics": [
             {
               "metric_name": "evidence status",
