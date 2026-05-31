@@ -1,9 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Evolution Tab">
-  <rect width="64" height="64" rx="14" fill="#101214"/>
-  <path d="M18 19h12M34 19h12M18 45h12M34 45h12" stroke="#d7dde5" stroke-width="3" stroke-linecap="round"/>
-  <path d="M25 21c0 9 14 13 14 22M39 21c0 9-14 13-14 22" stroke="#66d19e" stroke-width="3" stroke-linecap="round"/>
-  <circle cx="18" cy="19" r="5" fill="#66d19e"/>
-  <circle cx="46" cy="19" r="5" fill="#8fb4ff"/>
-  <circle cx="18" cy="45" r="5" fill="#f2c86b"/>
-  <circle cx="46" cy="45" r="5" fill="#d28cff"/>
-</svg>
