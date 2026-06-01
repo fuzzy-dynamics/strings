@@ -1,0 +1,254 @@
+{
+  "schema_version": "1.0",
+  "run_id": "example_open_distinct_distances",
+  "state": "HANDOFF_READY",
+  "problem_profile": {
+    "object_types": ["geometry", "combinatorics"],
+    "difficulty": "D5",
+    "proof_styles": ["geometric", "algebraic", "computational"],
+    "known_theorem_density": "HIGH",
+    "search_implications": ["map barriers and choose a finite or conditional product"]
+  },
+  "problem_status": "OPEN",
+  "source_citations": [
+    {
+      "id": "src_problem_statement",
+      "source": "standard statement of the Erdos distinct distances problem",
+      "source_type": "survey",
+      "date_checked": "2026-05-31",
+      "claim_supported": "The full historical problem asks for lower bounds on distinct distances determined by n planar points."
+    }
+  ],
+  "solved_problem_map": {
+    "literature_anchor": "not applicable: original target treated as open/frontier-scale",
+    "canonical_proof_landscape": [],
+    "target_domain": "finite point sets in the Euclidean plane",
+    "library_domain": "not applicable",
+    "domain_alignment": "not_applicable",
+    "boundary_checks": {
+      "finiteness": "required and satisfied",
+      "coincident_points": "exclude repeated points",
+      "euclidean_metric": "assumed"
+    },
+    "premise_minimization": {
+      "direct_definition_unfolding": "insufficient for asymptotic lower bound",
+      "weakest_standard_tool": "finite grid computation for a stronger-variant counterexample",
+      "avoided_heavy_machinery": ["full incidence geometry proof"]
+    }
+  },
+  "ontology_map": {
+    "primary_structure": "finite planar point configuration",
+    "features": ["distances", "grid obstruction", "incidence geometry"],
+    "theorem_families": ["Szemeredi-Trotter", "polynomial method", "Elekes-Sharir framework"],
+    "canonical_encodings": ["point set", "distance graph", "incidence relation"],
+    "search_queries": ["grid distinct distances obstruction", "finite point set distance multiplicity"]
+  },
+  "theorem_candidates": [
+    {
+      "theorem": "Szemeredi-Trotter incidence theorem",
+      "canonical_statement": "Point-line incidence bound in the plane.",
+      "similarity": 0.72,
+      "prerequisites_satisfied": 0.55,
+      "formal_availability": "UNKNOWN",
+      "expected_utility": "MEDIUM",
+      "reason": "Incidence bounds are historically relevant to distance problems, but the chosen product is finite computation.",
+      "missing_preconditions": ["exact incidence encoding"],
+      "weakest_usable_form": "not used for this artifact",
+      "source": "standard incidence geometry survey",
+      "source_type": "survey",
+      "date_checked": "2026-05-31",
+      "claim_supported": "Incidence bounds can constrain repeated distances.",
+      "confidence_would_drop_if": ["distance relation cannot be encoded as required incidences"],
+      "rank": 1
+    }
+  ],
+  "rejected_theorem_candidates": [
+    {
+      "theorem": "Full distinct distances theorem",
+      "reason_rejected": "Too broad for the chosen finite-counterexample artifact.",
+      "source": "survey pointer",
+      "source_type": "pointer",
+      "date_checked": "2026-05-31",
+      "blocked_by": ["open-product target is finite counterexample, not universal theorem"]
+    }
+  ],
+  "backward_chaining": [
+    {
+      "goal": "Show a stronger variant is false for grids.",
+      "would_follow_from": [
+        {
+          "subgoal": "Compute the number of distinct squared distances in a 3 by 3 grid.",
+          "justification": "finite exhaustive calculation",
+          "dependencies": [],
+          "risk": "manual arithmetic error"
+        }
+      ]
+    }
+  ],
+  "falsification_pass": [
+    {
+      "layer": "trivial_degenerate",
+      "action": "Check n=1 and n=2 point sets.",
+      "target_defect": "vacuous lower bound",
+      "result": "Small n are not informative for asymptotic claim."
+    },
+    {
+      "layer": "symmetry_parity",
+      "action": "Translate and rotate grid.",
+      "target_defect": "metric invariance error",
+      "result": "Distances unchanged."
+    },
+    {
+      "layer": "asymptotic_extremes",
+      "action": "Consider m by m integer grids.",
+      "target_defect": "grid obstruction to large distinct-distance count",
+      "result": "Grid configurations are the main obstruction family."
+    }
+  ],
+  "obstructions": [
+    {
+      "id": "obstruction_grid",
+      "description": "Integer lattice grids produce many repeated distances.",
+      "threatens": "overstrong lower bounds claiming near quadratic distinct distances",
+      "evidence": "many pairs share the same squared distance",
+      "test": "exhaustively compute small grids",
+      "status": "active"
+    }
+  ],
+  "barrier_map": [
+    {
+      "id": "barrier_grid",
+      "classical_obstruction": "lattice/grid configurations",
+      "applies_to": "naive quadratic lower bound",
+      "local_counter_strategy": "prove a finite stronger-variant counterexample for a small grid",
+      "degeneracy_stress_test": "m by m grids as m grows",
+      "status": "active"
+    }
+  ],
+  "open_product_target": {
+    "kind": "finite_counterexample",
+    "statement": "The 3 by 3 grid has fewer than all pairwise distances distinct.",
+    "why_this_product": "It records a concrete obstruction to a stronger variant.",
+    "boundary": "Does not claim to solve the original distinct distances problem."
+  },
+  "conjectures": [
+    {
+      "id": "conjecture_grid_growth",
+      "statement": "Square grids remain extremal-style obstructions for strong distance lower bounds.",
+      "evidence": ["3 by 3 grid has repeated squared distances"],
+      "scope": "integer square grids",
+      "risk": "not a theorem about all point sets",
+      "rank": 0.6,
+      "next_test": "compute 4 by 4 grid"
+    }
+  ],
+  "proof_objects": [
+    {
+      "id": "proof_object_grid_3",
+      "target": "3 by 3 grid has repeated distances",
+      "dependencies": ["lemma_grid_repeat"],
+      "subgoals": ["define grid", "exhibit two distinct pairs with equal distance"],
+      "confidence": 0.95,
+      "gap_count": 0,
+      "theorem_fidelity": 0.85,
+      "formalization_risk": 0.15
+    }
+  ],
+  "search_budget": {
+    "time_budget": "short",
+    "attempt_budget": 3,
+    "computation_budget": "finite 3 by 3 and 4 by 4 grids only",
+    "stop_conditions": ["arithmetic checked", "finite counterexample artifact generated"]
+  },
+  "proof_compression": {
+    "selected_sketch_id": "sketch_grid_3",
+    "compression_goal": "Use two equal-distance pairs instead of enumerating every distance.",
+    "removed_obligations": ["list all 36 pairwise distances"],
+    "kept_obligations": ["define points", "show pairs are distinct", "compute equal squared distances"],
+    "target_fidelity_preserved": true,
+    "risk": "Artifact only refutes a stronger variant."
+  },
+  "target": {
+    "name": "grid_repeated_distance_obstruction",
+    "kind": "open_problem_progress",
+    "original_problem": "Erdos distinct distances style problem.",
+    "canonical_statement": "The 3 by 3 integer grid contains two distinct point pairs at equal Euclidean distance.",
+    "variables": ["G = {0,1,2} x {0,1,2}"],
+    "hypotheses": ["Euclidean squared distance"],
+    "definitions": ["squared distance between planar points"],
+    "conclusion": "There are two distinct unordered pairs in G with equal squared distance.",
+    "quantifier_order": "exists two distinct unordered pairs"
+  },
+  "artifact_target": {
+    "result_type": "counterexample",
+    "statement": "Finite grid obstruction to the stronger all-distances-distinct variant.",
+    "assumptions": ["3 by 3 integer grid"],
+    "known_gaps": ["Does not solve original asymptotic problem."],
+    "relationship_to_original": "Documents a standard obstruction family.",
+    "status": "PARTIAL"
+  },
+  "sketches": [
+    {
+      "sketch_id": "sketch_grid_3",
+      "parent_sketch_id": null,
+      "target_theorem": "3 by 3 grid has repeated distances",
+      "proof_strategy": "Exhibit equal unit distances between two different adjacent pairs.",
+      "current_artifact": "",
+      "proof_objects": ["proof_object_grid_3"],
+      "lemmas": [
+        {
+          "id": "lemma_grid_repeat",
+          "statement": "In the 3 by 3 grid, distance((0,0),(1,0)) = distance((0,1),(1,1)).",
+          "role": "Finite counterexample certificate",
+          "inputs": ["grid definition", "squared Euclidean distance"],
+          "outputs": ["two distinct equal-distance pairs"],
+          "dependencies": [],
+          "proof_idea": "Both squared distances equal 1.",
+          "risk": "Need to state unordered pairs are distinct.",
+          "automation_candidates": ["linear arithmetic"],
+          "economics": {
+            "goals_unlocked": 2,
+            "proof_complexity": 1,
+            "lemma_value": 2.0
+          }
+        }
+      ],
+      "solved_pieces": ["equal-distance witness"],
+      "remaining_goals": ["write WIT artifact"],
+      "known_gaps": ["original open problem remains open"],
+      "failure_class": "",
+      "next_mutation": "",
+      "status": "PARTIAL",
+      "ev": {
+        "theorem_fidelity": 0.85,
+        "probability_of_completion": 0.95,
+        "verifier_friendliness": 0.9,
+        "expected_value": 0.72675
+      }
+    }
+  ],
+  "selected_sketch_id": "sketch_grid_3",
+  "obligation_graph": [
+    {
+      "id": "obligation_equal_distance",
+      "claim": "Two displayed pairs have equal squared distance.",
+      "depends_on": ["lemma_grid_repeat"],
+      "discharge_method": "finite arithmetic",
+      "status": "UNVERIFIED"
+    }
+  ],
+  "external_facts": [],
+  "external_verifications": [],
+  "mutation_tracker": [],
+  "counterexamples_checked": ["3 by 3 grid"],
+  "target_freeze": {
+    "source_text_sha256": "example",
+    "canonical_target_sha256": "example",
+    "given_block_sha256": "example",
+    "claim_block_sha256": "example",
+    "definitions_sha256": "example"
+  },
+  "status": "PARTIAL",
+  "lean_notes": "Finite arithmetic should be easy if coordinates are encoded.",
+  "wit_notes": "Do not claim full distinct distances theorem."
+}

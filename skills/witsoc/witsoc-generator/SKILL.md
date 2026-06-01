@@ -12,26 +12,25 @@ Witsoc Generator is the artifact engine inside Witsoc. It converts mathematical 
 
 The generator is not a chat-proof mode. If this subskill is used, create or update a `.wit` artifact unless the user only asks to inspect existing WIT files. For nontrivial new proof tasks, require an Explorer handoff before writing the WIT.
 
+Shared protocols live in the parent skill:
+
+- `../references/core/status.md`
+- `../references/core/handoff.md`
+- `../references/core/failure_recovery.md`
+- `../references/core/repair.md`
+- `../references/core/goal_cache.md`
+- `../references/core/safeverify.md`
+- `../references/core/lean_verification.md`
+- `../references/core/tooling.md`
+- `../references/schemas/handoff.schema.json`
+
 If the user explicitly asks for WIT code, `.wit`, or WIT plus Lean, WIT generation is mandatory. Do not return only a plan, prose proof, verifier discussion, or Lean formalization. The generator must either write a `.wit` artifact or report a concrete blocker with status `GAP`, `FAILED_ATTEMPT`, or `REJECTED`.
 
 If generation, structural checking, verifier review, or Lean formalization fails for a serious problem, the generator must not end the run after the first blocked method. Preserve the failure and hand it back to top-level Witsoc/Explorer for alternate-method agents unless worker spawning is unavailable.
 
 ## Non-Negotiable Semantics
 
-- `wit check` validates syntax, labels, scoping, imports, references, and proof structure. It does not verify mathematical truth.
-- `wit verify` builds isolated contexts for a verifier. It does not verify mathematical truth.
-- `wit receipt` records verifier verdicts. It trusts the provided verdict text; do not treat an incomplete or low-quality verifier output as strong evidence.
-- `VERIFIED` requires structural success plus complete accepted verifier verdicts recorded in a receipt.
-- `UNVERIFIED` means structurally valid with contexts generated but no accepted receipt.
-- `OPEN` means the original research problem remains unsolved and the artifact is not claiming a full solution.
-- `PARTIAL` means the artifact captures a subcase, lemma, bound, obstruction, computation, or other limited progress.
-- `CONDITIONAL` means the artifact proves a result only under explicit extra assumptions, conjectures, or external facts.
-- `CONJECTURE` means the artifact records a proposed statement or evidence target, not a proof.
-- `FAILED_ATTEMPT` means the artifact records a failed proof route or rejected bridge as negative information.
-- `GAP` means an explicit unresolved mathematical obligation remains.
-- `REJECTED` means structural failure or semantic verifier rejection.
-
-Never call a WIT proof `VERIFIED` because it “looks right,” because `wit check` passed, or because `wit verify` printed contexts.
+Use `../references/core/status.md`. In short: `wit check` is structural only, `wit verify` builds verifier contexts only, `wit receipt` records external verdicts, and `VERIFIED` requires complete accepted receipt discipline.
 
 For open problems, never let a partial artifact imply that the original problem is solved. The artifact title, status, theorem statement, and report must all distinguish the original open problem from the narrower result being recorded.
 
@@ -56,6 +55,16 @@ Load only as needed:
 
 - `references/wit.md`: full `.wit` syntax and scoping reference.
 - `references/soc.md`: `.soc` persistent memory format.
+- `../references/core/handoff.md`: structured `handoff.json` state-machine contract.
+- `../references/core/tooling.md`: deterministic tool/API discipline.
+- `../references/core/safeverify.md`: target-freezing and anti-cheating checks.
+- `../references/core/lean_verification.md`: Lean LSP/REPL/cache-aware loop.
+- `../references/schemas/handoff.schema.json`: Explorer-to-Generator handoff schema.
+- `../references/schemas/witsoc-handoff-schema.json`: strict Generator blueprint schema.
+- `../references/examples/handoff_solved_problem.json`: solved-problem handoff example.
+- `../references/examples/handoff_open_problem.json`: open-problem handoff example.
+- `../references/examples/handoff_v1_blueprint.json`: strict Generator blueprint example.
+- `../scripts/validate_handoff.py`: deterministic handoff validator.
 - `references/examples/composite_block.wit`: compact theorem example.
 - `references/examples/grover_constant.wit`: nested case-analysis example.
 - `references/examples/sat_reduction.wit`: reduction example.
@@ -64,13 +73,15 @@ If unsure about WIT syntax, read `references/wit.md` before editing.
 
 ## Script Surface
 
+Prefer explicit API tools such as `run_wit_check`, `run_wit_cycle`, and `run_target_freeze_check` when the environment provides them. If no typed tool exists, use deterministic scripts or native `wit` CLI.
+
 Scripts live at:
 
 ```bash
 SCRIPTS=${KIMI_WORK_DIR}/.openscientist/skills/witsoc/witsoc-generator/scripts
 ```
 
-Invoke with `bash <path>` because executable bits may not survive sync.
+Invoke with `bash <path>` because executable bits may not survive sync. Treat these scripts as a compatibility layer; `../references/core/tooling.md` defines the long-term typed CLI/API target.
 
 | Script | Purpose |
 |---|---|
@@ -207,22 +218,18 @@ Use this protocol before returning a final `GAP`, `FAILED_ATTEMPT`, or `REJECTED
 
 Only stop locally without spawning alternates when the failure is purely mechanical and immediately repairable, or when worker spawning is unavailable and at least two materially different local methods have already failed.
 
-For nontrivial problems, start from an Explorer handoff package containing target, definitions, hypotheses, conclusion, strategy, lemma sequence, dependency graph, external facts, theorem preconditions, case split, known gaps, counterexamples checked, and formalization notes. Do not substitute broad theorem search inside Generator for this handoff; return to Explorer when a repair needs new lemmas or premises.
+For nontrivial problems, start from `runs/<task>/handoff.json` conforming to `../references/schemas/handoff.schema.json`. It must contain the problem profile, source citations, solved-problem map if relevant, ontology map, ranked and rejected theorem candidates, search budget, proof compression record, backward chains, falsification results, obstructions, barrier map, open-product target for open problems, conjectures, proof objects, frozen target, artifact target, selected sketch, lemma arrays with economics, obligation graph, external facts with verification records, theorem preconditions, mutation tracker, known gaps, counterexamples checked, target-freeze hashes, and formalization notes. Do not substitute broad theorem search inside Generator for this handoff; return to Explorer when a repair needs new lemmas or premises.
 
-For open-problem handoffs, require a narrower artifact target before writing WIT:
+For WIT generation, execute only `runs/<task>/handoff_v1.json`. Treat `handoff.json` as context, not as executable proof instructions. If local execution is available, run:
 
-```text
-Open problem:
-Current status: OPEN | PARTIAL | CONDITIONAL | CONJECTURE | FAILED_ATTEMPT
-Artifact target:
-Result type: lemma | conditional theorem | counterexample | obstruction | computation | failed attempt
-Statement:
-Assumptions:
-Evidence:
-Proof sketch or computation:
-Known gaps:
-Why this helps the open problem:
+```bash
+python3 ../scripts/validate_handoff.py runs/<task>/handoff.json
+python3 ../scripts/validate_handoff.py runs/<task>/handoff_v1.json
 ```
+
+If validation fails, return to Explorer with the exact validation errors. Do not invent new helper lemmas unless a structural check explicitly fails. Do not cite any theorem outside `external_dependencies`.
+
+For open-problem handoffs, require a narrower artifact target before writing WIT: special case, bound, conditional theorem, reduction, obstruction, counterexample, computation, failed attempt, conjecture, or lemma.
 
 If the handoff asks for a full solution to a known open problem without adversarial exploration and a precise proof path, return to Explorer instead of writing a proof artifact.
 
@@ -242,7 +249,7 @@ Conclusion:
 External facts allowed:
 ```
 
-Do not silently strengthen the theorem. Do not weaken the conclusion to make the proof easy.
+Do not silently strengthen the theorem. Do not weaken the conclusion to make the proof easy. Record target-freeze hashes from `../references/core/safeverify.md` before writing or repairing artifacts.
 
 ### 2. Build An Obligation Graph
 
@@ -397,6 +404,14 @@ For an existing proof:
 
 ## Structural Check And Context Build
 
+Use typed API tools when available. Preferred order:
+
+```text
+run_wit_check -> run_wit_audit -> run_wit_context or run_wit_verify -> run_wit_status -> run_target_freeze_check
+```
+
+When typed tools are unavailable, use scripts:
+
 Preferred cycle:
 
 ```bash
@@ -463,57 +478,7 @@ Current receipt parsing may accept only parsed verdict lines, so do not treat a 
 
 ## Repair Protocol
 
-Before editing after any WIT verifier rejection, structural failure, or Lean/compiler failure, diagnose the failure. Do not jump directly to a rewrite.
-
-For every rejection:
-
-```text
-Rejected label:
-Claim:
-Cited premises:
-Verifier reason:
-Failure class:
-Compiler/build evidence, if any:
-Likely cause:
-Repair:
-Risk:
-New labels introduced:
-```
-
-Failure classes:
-
-- wrong_tactic
-- wrong_theorem
-- missing premise
-- missing_hypothesis
-- unknown_identifier
-- theorem precondition not proved
-- algebra/logic error
-- type_mismatch
-- coercion_issue
-- unsolved_goal
-- quantifier or domain mismatch
-- out-of-scope reference
-- target drift
-- forbidden_escape
-- import_missing
-- vacuous_proof
-- case not closed
-- step too compressed
-- false statement.
-
-Repair choices:
-
-- split into substeps,
-- add a helper lemma,
-- cite a precise external theorem,
-- prove theorem preconditions,
-- weaken a false intermediate claim without weakening the final theorem,
-- add a legitimate hypothesis only if the original task allows it,
-- mark `GAP`,
-- hand back to Explorer for premise search or counterexample hunting.
-
-Do not resubmit cosmetic rewrites. Every repair must reduce a real obligation.
+Use `../references/core/repair.md`. Before editing after WIT verifier rejection, structural failure, Lean/LSP/REPL/compiler failure, or SafeVerify rejection, produce a structured repair diagnosis and preserve it in the run state.
 
 For Lean failures, preserve the frozen theorem target. A repair may change proof terms, tactics, helper lemmas, imports when allowed, or decomposition, but it must not silently change variables, hypotheses, definitions, or conclusion.
 
@@ -521,20 +486,9 @@ For Lean failures, preserve the frozen theorem target. A repair may change proof
 
 Use this mode when the user requests Lean, a formal proof, or repair of a Lean build failure.
 
-Loop:
+Use `../references/core/lean_verification.md`. Prefer Lean LSP, REPL, `repl`, `minictx`, or per-file checking for repair iterations. Run full `lake build` for final confirmation or dependency-sensitive changes, not every minor tactic edit.
 
-```text
-freeze theorem target -> generate/edit proof -> run lake build -> diagnose failure -> repair -> repeat until verified, stopped, or budget exhausted
-```
-
-Rules:
-
-- Freeze the theorem statement before repair begins.
-- Default edit region is the proof body; changing imports or helper lemmas must be justified by the diagnosis.
-- Every retry must cite the exact compiler, checker, or verifier error it addresses.
-- Feed exact build errors and local goal state into the next repair.
-- Do not change variables, hypotheses, definitions, domains, or conclusion to make the proof easier.
-- If the loop exhausts its budget, report `GAP`, `PARTIAL`, or `FAILED_ATTEMPT` with the best current sketch and failure class.
+Before the loop, handle dependency cache setup once when needed, for example `lake exe cache get`. Avoid import changes unless the diagnostic requires them and record why the cache-invalidating change is necessary.
 
 Lean loop report:
 
@@ -551,17 +505,7 @@ Next repair:
 
 ### SafeVerify Rules
 
-Lean compiler success is necessary but not sufficient. Before reporting Lean success, enforce:
-
-- no `sorry`, `admit`, `axiom`, `constant`, `opaque`, `unsafe`, or equivalent escape hatch,
-- theorem target is unchanged from the frozen signature,
-- theorem is not weakened to `True`, `Nonempty`, a toy proposition, or an easier domain,
-- definitions are not changed to make the theorem trivial,
-- no fake bridge lemmas, comments-as-proof, or postulated paper results,
-- every helper theorem used by name is imported, locally proved, or explicitly part of the allowed context,
-- no hidden extra assumptions appear in helper lemmas or theorem binders.
-
-If SafeVerify fails, classify the failure as `forbidden_escape`, `target_drift`, `vacuous_proof`, `unknown_identifier`, or `missing_hypothesis` as appropriate and repair before retrying.
+Use `../references/core/safeverify.md`. Lean compiler success is necessary but not sufficient. Before semantic review or final success, run target-freeze diff/hash checks for the original source text, canonical target, `GIVEN`, `CLAIM`, and definitions. SafeVerify failures are `REJECTED` until repaired.
 
 ### Repair Memory Discipline
 
@@ -589,69 +533,15 @@ Rules:
 
 ### Goal Cache Protocol
 
-Use cached subgoals or proof snippets only when their context matches.
-
-Cache entry:
-
-```text
-Goal:
-Normalized context:
-Successful tactic/proof step:
-Required premises:
-Source sketch:
-Failure count:
-Success count:
-```
-
-Rules:
-
-- Check for a matching cached goal before inventing a new tactic or helper lemma.
-- Verify that hypotheses, domains, coercions, and target shape match before reuse.
-- Record successful tactics, proof snippets, or WIT steps with their required premises.
-- If a cached route fails, record the failure class and do not retry it unchanged.
+Use `../references/core/goal_cache.md`. Reuse cached subgoals or proof snippets only when their context matches.
 
 ### Stop Conditions
 
-Stop the repair loop and report honestly when:
-
-- the same failure class repeats three times without reducing the obligation,
-- every attempted repair requires changing the frozen theorem target,
-- a required external theorem is unavailable or unformalized within budget,
-- all active sketches depend on the same unresolved bridge,
-- SafeVerify repeatedly rejects the only building candidates,
-- the configured iteration or user budget is exhausted.
-
-Blocked output template:
-
-```text
-Status: GAP | FAILED_ATTEMPT | PARTIAL
-Target:
-Best sketch:
-Where it failed:
-Failure class:
-What was tried:
-Why it did not close:
-Reusable lesson:
-Next useful mutation:
-```
+Use `../references/core/failure_recovery.md` for stop conditions and blocked output.
 
 ### Proof Sketch Repair
 
-When repairing a partial proof sketch, keep the sketch lineage explicit:
-
-```text
-Sketch id:
-Parent sketch:
-Target theorem:
-Current artifact:
-Solved pieces:
-Remaining goals:
-Compiler/verifier status:
-Failure class:
-Repair mutation:
-Outcome:
-Status: PARTIAL | CONDITIONAL | GAP | FAILED_ATTEMPT | UNVERIFIED
-```
+When repairing a partial proof sketch, update the matching `sketches[*]` object in `handoff.json`: preserve `sketch_id`, `parent_sketch_id`, target theorem, solved pieces, remaining goals, failure class, repair mutation in `next_mutation`, status, and EV fields.
 
 Rules:
 
@@ -672,14 +562,15 @@ If Lean is requested:
 2. Translate definitions and hypotheses faithfully.
 3. Use actual Mathlib theorem names or prove helpers locally.
 4. Do not introduce `sorry`, `admit`, `axiom`, `constant`, `opaque`, fake bridge lemmas, or comments-as-proof.
-5. Run Lean Compiler Loop Mode.
-6. Apply SafeVerify Rules after every building candidate.
-7. Feed exact build errors into the repair loop.
-8. Return Lean code only after the build succeeds and SafeVerify passes.
+5. Use Lean LSP/REPL/per-file feedback during repair where available.
+6. Run final `lake build`.
+7. Apply SafeVerify target-freeze checks after every building candidate.
+8. Feed exact local goal/checker errors into the repair loop.
+9. Return Lean code only after final build succeeds and SafeVerify passes.
 
 Lean status is separate:
 
-- `Lean VERIFIED`: `lake build` passed and no forbidden placeholders exist.
+- `Lean VERIFIED`: final `lake build` passed, target-freeze checks passed, and no forbidden placeholders exist.
 - `Lean FAILED`: the repair loop could not produce building Lean; say `Lean code generation failed`.
 
 If running from a normal Gecko/local directory where sandbox execution is unavailable, use a deep-run/sandbox-capable environment or report that Lean build could not be run here. Do not claim Lean verification without `lake build`.

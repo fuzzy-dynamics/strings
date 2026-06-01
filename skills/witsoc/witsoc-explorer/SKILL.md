@@ -12,6 +12,23 @@ Witsoc Explorer is the discovery engine inside Witsoc. Its job is to turn an unc
 
 Explorer may solve small problems directly. For serious proof work, it must produce a handoff package for `witsoc-generator` before any final `.wit` is written.
 
+Shared protocols live in the parent skill:
+
+- `../references/core/status.md`
+- `../references/core/handoff.md`
+- `../references/core/failure_recovery.md`
+- `../references/core/open_problem.md`
+- `../references/core/repair.md`
+- `../references/core/goal_cache.md`
+- `../references/core/exploration_strategy.md`
+- `../references/core/safeverify.md`
+- `../references/schemas/handoff.schema.json`
+- `../references/schemas/witsoc-handoff-schema.json`
+- `../references/examples/handoff_solved_problem.json`
+- `../references/examples/handoff_open_problem.json`
+- `../references/examples/handoff_v1_blueprint.json`
+- `../scripts/validate_handoff.py`
+
 ## Operating Principle
 
 Explore under adversarial pressure:
@@ -37,10 +54,22 @@ Use Explorer when a task needs any of:
 - proof strategy comparison,
 - proof automation or tactic planning,
 - repair analysis for rejected WIT/Lean steps,
-- open problem or Erdős-style research where progress may mean partial results, conjectures, obstructions, or failed approaches,
+- open problem or Erdős-style research where progress may mean sourced status, variant control, partial results, conjectures, obstructions, computations, or failed approaches,
 - a general mathematical answer where no `.wit` artifact is required.
 
 ## Core Loop
+
+### 0. Profile The Problem
+
+Before theorem search or proof search, read `../references/core/exploration_strategy.md` and record Phase 0 profiling:
+
+- object type: algebra, combinatorics, geometry, graph theory, number theory, analysis, logic, topology, probability, or algorithms,
+- difficulty: `D1` through `D5`,
+- proof styles: constructive, extremal, induction, contradiction, invariant, probabilistic, algebraic, geometric, analytic, or computational,
+- known theorem density: `LOW`, `MEDIUM`, or `HIGH`,
+- search implications.
+
+Profiling controls the first search move. For example, an extremal graph problem should start with obstruction examples and theorem families around cuts, matchings, colorings, or containers; a number-theory divisibility problem should start with valuations, congruences, and local prime behavior.
 
 ### 1. Normalize The Target
 
@@ -58,20 +87,62 @@ Task kind: proof | disproof | computation | reduction | algorithm correctness | 
 
 Flag ambiguity immediately. Do not silently strengthen, weaken, or change quantifiers.
 
+After normalization, classify status as solved, open, partially solved, ambiguous, or unconfirmed when the task is nontrivial or named.
+
+- If solved: run Solved Problem Reconstruction from `../references/core/exploration_strategy.md` before proof search.
+- If open: run the Open Problem Barrier Engine before strategy selection.
+- If unconfirmed: state that status is unconfirmed and still run falsification plus ontology mapping.
+
 ### 2. Attack Before Proving
 
-Run a falsification pass:
+Run the Falsification Pass Hierarchy from `../references/core/exploration_strategy.md` before generating an approach portfolio:
 
-- boundary cases: empty, zero, one, equality, degenerate geometry, disconnected graph, singular matrix, non-measurable/non-compact cases,
-- parity/modular tests,
-- small exhaustive examples when finite,
-- asymptotic extremes,
-- missing positivity, finiteness, continuity, measurability, independence, or nonzero assumptions,
-- known obstruction families.
+- trivial/degenerate: empty, zero, one, equality, identity, singleton, disconnected graph, singular matrix,
+- symmetry/parity: sign changes, variable swaps, orientation changes, parity, modular classes,
+- asymptotic extremes: sparse/dense, limits, large parameter behavior, singular inputs.
+
+Also test missing positivity, finiteness, continuity, measurability, independence, compactness, smoothness, or nonzero assumptions when relevant.
 
 If a counterexample is found, switch to disproof mode and prepare a minimal counterexample with verification.
 
-### 3. Build A Strategy Portfolio
+### 3. Map The Ontology And Search Backward
+
+Before broad theorem search, map the target to ontology nodes and theorem families using `../references/core/exploration_strategy.md`.
+
+Then run backward chaining from the conclusion:
+
+1. State the conclusion as a goal.
+2. Ask what sufficient conditions would imply it.
+3. Recurse on those sufficient conditions until they match hypotheses, known theorem preconditions, computable checks, or candidate lemmas.
+4. Convert the chain into subgoals, proof objects, and search queries.
+
+Use ontology mappings as retrieval hints, not proof dependencies. Named theorems still require exact statements and preconditions.
+
+Rank theorem candidates before using them. Each candidate should include theorem name, similarity, prerequisite-satisfaction score, formal availability, expected utility, missing preconditions, weakest usable form, and rank. Promote only high-ranked, precondition-audited candidates into `external_facts`.
+
+Also record rejected theorem candidates with the exact reason they were not used. Include source, source type, date checked, claim supported, and confidence-calibration notes for all accepted theorem candidates.
+
+### 4. Discover Obstructions
+
+For open problems and `D4`/`D5` tasks, generate at least three obstruction candidates before trying to prove the statement. For easier tasks, run a lighter obstruction pass.
+
+Obstruction records should include:
+
+- construction or failure mode,
+- what part of the conclusion it threatens,
+- evidence or known examples,
+- a concrete test or counterexample search,
+- current status.
+
+For Erdős-style problems, obstruction discovery is mandatory and should influence the approach portfolio.
+
+For known open problems, also build a barrier map. Each proposed approach must say which barrier it hits and what single mutation tries to bypass it.
+
+### 5. Mine Conjectures
+
+When examples, computations, or small cases show a pattern, record ranked conjectures with evidence, scope, risk, and next test. Conjectures can guide conditional artifacts or experiments, but never upgrade status to theorem.
+
+### 6. Build Proof Objects And Strategy Portfolio
 
 Generate 2-4 credible approaches, each with:
 
@@ -81,6 +152,8 @@ Generate 2-4 credible approaches, each with:
 - expected proof shape,
 - formalization risk,
 - how to falsify the approach.
+
+Represent each promising route as a proof object with target, dependencies, subgoals, confidence, gap count, theorem fidelity, and formalization risk. Proof objects should feed `sketches[*]` in `handoff.json`.
 
 Common strategy families:
 
@@ -99,38 +172,19 @@ Common strategy families:
 - local-to-global patching,
 - canonical form/classification.
 
-Pick the simplest route whose hard steps can be stated as small lemmas.
+Pick the highest expected-value route whose hard steps can be stated as small lemmas and whose theorem fidelity remains high.
 
-### 3.1 Recovery After Failure
+For open problems, pick exactly one open-product target before Generator handoff: finite counterexample, obstruction lemma, or conditional step.
 
-When a WIT proof, verifier review, Lean build, or proof sketch fails, Explorer owns the alternate-method search. Do not simply ask Generator to repair the same route unless the repair changes a real mathematical ingredient.
+Before Generator handoff, run proof compression: remove unused detours and heavyweight theorem branches while preserving target fidelity and explicit gaps.
 
-Recovery protocol:
+### 6.1 Recovery After Failure
 
-1. Read the recorded failure note or `.soc` `FAILED_APPROACHES` entry.
-2. Freeze the original theorem target and identify the failure class:
-   - false statement or missing hypothesis,
-   - bad external theorem bridge,
-   - unverifiable proof step,
-   - Lean encoding mismatch,
-   - automation/tactic failure,
-   - search/literature dead end.
-3. Produce at least two genuinely different routes before recommending final failure:
-   - alternate proof strategy,
-   - counterexample/obstruction search,
-   - external theorem replacement,
-   - stronger lemma or invariant discovery,
-   - different formalization decomposition,
-   - conditional or partial theorem that preserves the original target as unresolved.
-4. If Plane/OpenScientist worker spawning is available, recommend or launch separate agents for the distinct routes. Each agent prompt must include what failed and what not to repeat.
-5. After alternates report back, synthesize:
-   - which route, if any, should replace the current plan,
-   - which blocker is shared by all routes,
-   - whether Generator should write a new WIT artifact, a failed-attempt artifact, or a conditional/partial artifact.
+When a WIT proof, verifier review, Lean check, or proof sketch fails, Explorer owns alternate-method search. Use `../references/core/failure_recovery.md`: read the recorded failure, keep the target frozen, produce distinct routes, and avoid repeating the failed method unless a real mathematical ingredient changes.
 
-Do not count repeated local edits of the same sketch as independent attempts. Independence requires a changed method, theorem source, decomposition, formal representation, or search space.
+Apply the Mutation Tracker from `../references/core/exploration_strategy.md`: mutate exactly one dimension, such as strengthening the induction hypothesis, domain weakening, or duality/transformation shift.
 
-### 4. Discover Lemmas
+### 7. Discover Lemmas
 
 A useful lemma is:
 
@@ -139,23 +193,32 @@ A useful lemma is:
 - checkable: no hidden theorem preconditions,
 - reusable: can be cited by label or theorem name,
 - formalization-aware: likely representable in WIT or Lean.
+- economical: unlocks enough goals to justify proof complexity.
 
 For each lemma, record:
 
-```text
-Lemma:
-Role in proof:
-Inputs:
-Output:
-Dependencies:
-Proof idea:
-Risk:
-Automation candidates:
+```json
+{
+  "id": "lemma_1",
+  "statement": "precise lemma statement",
+  "role": "why this lemma is needed",
+  "inputs": ["hypothesis or definition"],
+  "outputs": ["conclusion supplied"],
+  "dependencies": ["prior lemma or external fact"],
+  "proof_idea": "short proof idea",
+  "risk": "main verification risk",
+  "automation_candidates": ["Lean/WIT/tactic hint"],
+  "economics": {
+    "goals_unlocked": 3,
+    "proof_complexity": 2,
+    "lemma_value": 1.5
+  }
+}
 ```
 
-Prefer proving helper lemmas over using vague citations.
+Prefer high-value helper lemmas over vague citations or low-value detours. A lemma that unlocks five subgoals at proof complexity one should outrank a lemma that unlocks one subgoal at proof complexity twenty, unless the low-value lemma is necessary for target fidelity.
 
-### 5. Select Premises
+### 8. Select Premises
 
 Minimize dependencies:
 
@@ -181,6 +244,8 @@ Never write “by standard theorem” as if it were enough. Name the theorem or 
 
 Use this mode for known open problems, Erdős-style problems, conjectures, and research questions where a complete solution may be unrealistic in one session.
 
+For named open problems, Erdős problems, conjectures, or problem-list items, read `../references/core/open_problem.md` and `references/open_problems.md` before doing deep work. These define source triage, status ledgers, variant discipline, progress targets, and artifact handoff criteria.
+
 Status discipline:
 
 - Default status is `OPEN` unless a complete proof or disproof is independently checkable.
@@ -193,7 +258,7 @@ Status discipline:
 First pass:
 
 1. Pin the exact problem statement, including all parameters, quantifiers, and common variants.
-2. Check whether the problem is known open, solved, partially solved, or ambiguous. If using web, literature, or corpus search, cite primary or authoritative sources; if no source is checked, say the status is unconfirmed.
+2. Check whether the problem is known open, solved, partially solved, or ambiguous. For current status, use authoritative sources where available: original problem lists, maintained problem pages, author notes, survey papers, arXiv/publisher pages, or theorem prover libraries for formal availability. Treat OEIS, MathWorld, Wikipedia, blogs, and forums as pointers unless they cite a primary source. Cite sources used; if no source is checked, say the status is unconfirmed.
 3. Record known equivalent formulations, stronger/weaker variants, and standard obstruction families.
 4. Run the normal falsification pass before attempting a proof.
 5. Decide what would count as useful progress under the current budget.
@@ -202,12 +267,14 @@ Research ledger:
 
 ```text
 Problem state:
+Problem profile:
+Ontology map:
 Known facts:
 Known variants:
 Conjecture ledger:
+Obstruction map:
 Approach log:
 Proof sketches:
-Obstacle map:
 Examples and computations:
 Partial results:
 Failed attempts:
@@ -219,6 +286,7 @@ Use the ledger as auditable research notes. It should expose the mathematical st
 
 Open-problem approach portfolio:
 
+- Explain the main obstruction families.
 - Direct attack on the original statement.
 - Prove a meaningful special case.
 - Prove a conditional result under a named conjecture or extra hypothesis.
@@ -250,18 +318,7 @@ Open-problem search discipline:
 - Mutate one variable at a time when repairing a sketch: theorem route, lemma order, external fact, case split, or tactic/formalization strategy.
 - Never let a partial sketch drift into a weaker theorem unless the status is explicitly `PARTIAL` or `CONDITIONAL` and the original target remains recorded as open.
 
-When progress is found, classify it before handoff:
-
-```text
-Result type: lemma | conditional theorem | counterexample | obstruction | computation | conjecture | failed attempt
-Statement:
-Assumptions:
-Evidence:
-Proof sketch or computation:
-Known gaps:
-Why this helps the open problem:
-Recommended WIT artifact:
-```
+When progress is found, classify it before handoff in `runs/<task>/handoff.json` using `../references/schemas/handoff.schema.json`.
 
 Escalate to Generator only when there is a precise artifact target: a lemma, conditional theorem, counterexample, obstruction, computation certificate, or clearly delimited failed proof attempt. Do not ask Generator to write a WIT proof of the whole open problem unless the proof has already survived adversarial exploration.
 
@@ -271,20 +328,30 @@ A proof sketch is a partial WIT/Lean-ready artifact plus its research state. It 
 
 Use proof sketches when an open problem, hard proof, or failed formalization has multiple plausible routes or partial artifacts.
 
-Sketch template:
+Sketches must be represented as structured JSON inside `handoff.json`:
 
-```text
-Sketch id:
-Parent sketch:
-Target theorem:
-Current artifact:
-Solved pieces:
-Remaining goals:
-Compiler/verifier status:
-Known gaps:
-Failure class, if any:
-Next mutation:
-Status: PARTIAL | CONDITIONAL | CONJECTURE | GAP | FAILED_ATTEMPT
+```json
+{
+  "sketch_id": "sketch_1",
+  "parent_sketch_id": null,
+  "target_theorem": "exact theorem target",
+  "proof_strategy": "method family and plan",
+  "current_artifact": "optional path",
+  "proof_objects": [],
+  "lemmas": [],
+  "solved_pieces": [],
+  "remaining_goals": [],
+  "known_gaps": [],
+  "failure_class": "",
+  "next_mutation": "",
+  "status": "PARTIAL",
+  "ev": {
+    "theorem_fidelity": 0.9,
+    "probability_of_completion": 0.5,
+    "verifier_friendliness": 0.7,
+    "expected_value": 0.315
+  }
+}
 ```
 
 Rules:
@@ -294,62 +361,30 @@ Rules:
 - Record parent sketch and mutation so failed paths are not repeated blindly.
 - Prefer small mutations over rewriting the whole proof plan.
 - Promote a sketch only when it improves theorem fidelity, reduces gaps, proves a subgoal, finds a counterexample, or makes a failure more precise.
-- If two sketches compete, compare them by theorem fidelity, solved pieces, gap clarity, repairability, and dependence on external facts.
+- If two sketches compete, compare them by expected value plus theorem fidelity, solved pieces, gap clarity, repairability, and dependence on external facts.
 
 ### Rater Mode
 
 Use Rater Mode when multiple proof sketches compete and no sketch is yet verified. Raters prioritize search; they do not verify mathematics.
 
-Rater template:
+Rater output should update the `sketches[*].ev` fields in `handoff.json`.
 
-```text
-Sketches compared:
-Ranking:
-Pairwise winners:
-Reason:
-Risks:
-Recommended parent:
-```
+Ranking criteria:
 
-Ranking criteria, in order:
-
-- theorem fidelity,
-- verified or structurally checked progress,
-- solved subgoals,
-- clarity and locality of remaining gaps,
-- repairability,
-- dependence on external facts,
-- strategic value for later sketches.
+- Primary score: `expected_value = theorem_fidelity * probability_of_completion * verifier_friendliness`.
+- Tie breakers: checked progress, solved subgoals, clarity/locality of gaps, repairability, dependence on external facts, strategic value for later sketches.
 
 Rules:
 
 - Theorem fidelity beats elegance.
+- Never let high completion probability compensate for low theorem fidelity unless the artifact is explicitly `PARTIAL` or `CONDITIONAL`.
 - A sketch with a small precise gap is usually better than a broad persuasive sketch.
 - A rater verdict cannot upgrade status to `VERIFIED`.
 - If all sketches share the same missing bridge, mark the bridge as the central blocker instead of repeatedly ranking variants.
 
 ### Goal Cache Protocol
 
-Use this protocol for repeated formal subgoals, tactic failures, or proof steps that look structurally familiar.
-
-Cache entry:
-
-```text
-Goal:
-Normalized context:
-Successful tactic/proof step:
-Required premises:
-Source sketch:
-Failure count:
-Success count:
-```
-
-Rules:
-
-- Search prior solved goals or recorded proof steps before inventing a new tactic or lemma route.
-- Save successful tactics, proof snippets, and WIT steps with their required premises.
-- If a cached tactic or proof route fails in the current context, record why and increment the failure count rather than retrying blindly.
-- Do not use a cached step unless its hypotheses, domains, and target shape match the current goal.
+Use `../references/core/goal_cache.md` for repeated formal subgoals, tactic failures, or proof steps that look structurally familiar.
 
 ### External Theorem Replacement Policy
 
@@ -373,31 +408,11 @@ Policy:
 - If formal availability is unknown, mark it as a search target, not a proof dependency.
 - Prefer a local weaker lemma that is enough for the current proof over an opaque broad theorem.
 - If the external theorem is essential and unavailable, return `CONDITIONAL` or `GAP` rather than pretending it is proved.
+- Complete the External Verification record from `../references/core/exploration_strategy.md` before handoff: source/library availability, exact statement needed, local replacement plan, and downstream risk.
 
 ### Stop Conditions
 
-Stop the current search branch and report `GAP`, `PARTIAL`, or `FAILED_ATTEMPT` when:
-
-- the same failure class repeats three times without reducing the obligation,
-- all active sketches depend on the same unproved bridge,
-- the next step requires an external theorem that is unavailable or unformalized within budget,
-- counterexample pressure shows the current statement is probably false or missing a hypothesis,
-- repairing the sketch would require changing the original theorem target,
-- the user or run budget is exhausted.
-
-Failure report template:
-
-```text
-Status: GAP | FAILED_ATTEMPT | PARTIAL
-Target:
-Best sketch:
-Where it failed:
-Failure class:
-What was tried:
-Why it did not close:
-Reusable lesson:
-Next useful mutation:
-```
+Use stop conditions and failure output from `../references/core/failure_recovery.md`.
 
 ### Supply Search
 
@@ -405,9 +420,13 @@ Goal: find facts that could solve the target.
 
 Output:
 
-- candidate theorem/fact,
+- ranked candidate theorem/fact,
 - exact statement needed,
+- similarity score,
 - hypotheses to verify,
+- percentage of prerequisites satisfied,
+- formal availability,
+- expected utility,
 - why it helps,
 - confidence,
 - fallback if unavailable.
@@ -503,106 +522,57 @@ Do not claim formal success without a checker run.
 
 When generator or a verifier rejects a step:
 
-1. Restate the rejected target.
-2. List exactly cited premises.
-3. Determine whether the inference is:
-   - valid but too compressed,
-   - missing a premise,
-   - using an unstated theorem,
-   - false as stated,
-   - out of scope,
-   - target drift.
-4. Return one of:
-   - split into sublemmas,
-   - add a legitimate missing hypothesis,
-   - cite/prove a missing theorem,
-   - weaken the step,
-   - mark `GAP`,
-   - produce counterexample.
-
-For Lean/compiler failures, use the Repair Diagnosis Protocol before proposing edits:
-
-```text
-Failure class:
-Compiler/verifier evidence:
-Likely cause:
-Minimal repair:
-Risk:
-```
-
-Allowed failure classes:
-
-- wrong_tactic
-- wrong_theorem
-- missing_hypothesis
-- unknown_identifier
-- type_mismatch
-- coercion_issue
-- unsolved_goal
-- target_drift
-- forbidden_escape
-- import_missing
-- vacuous_proof
-- missing premise
-- theorem precondition not proved
-- algebra/logic error
-- quantifier or domain mismatch
-- out-of-scope reference
-- case not closed
-- step too compressed
-- false statement
+Use `../references/core/repair.md`. Return a structured repair diagnosis with rejected target, cited premises, evidence, failure class, minimal repair, risk, and whether Explorer or Generator owns the next step.
 
 ## Handoff To Witsoc Generator
 
-When a `.wit` artifact is needed for a nontrivial problem, hand off:
+When a `.wit` artifact is needed for a nontrivial problem, write both:
 
-```text
-Result type:
-Target:
-Definitions:
-Hypotheses:
-Conclusion:
-Proof strategy:
-Lemma sequence:
-Dependency graph:
-External facts to CITE:
-Theorem preconditions to prove:
-External theorem replacements:
-Recommended case split:
-Known gaps:
-Counterexamples checked:
-Recommended WIT structure:
-Lean/formalization notes:
+- `runs/<task>/handoff.json`: rich research state conforming to `../references/schemas/handoff.schema.json`.
+- `runs/<task>/handoff_v1.json`: strict Generator blueprint conforming to `../references/schemas/witsoc-handoff-schema.json`.
+
+Set the research state to `HANDOFF_READY` only after both validate.
+
+Use `../references/examples/handoff_solved_problem.json`, `../references/examples/handoff_open_problem.json`, and `../references/examples/handoff_v1_blueprint.json` as shape examples. Run these when local execution is available before asking Generator to consume the handoff:
+
+```bash
+python3 ../scripts/validate_handoff.py runs/<task>/handoff.json
+python3 ../scripts/validate_handoff.py runs/<task>/handoff_v1.json
 ```
 
-For open-problem progress, use this expanded handoff:
+The blueprint `lemma_plan` must be a DAG. Every `depends_on` value must reference an earlier `step_id`, and every external theorem used in `method` must appear in `external_dependencies`.
 
-```text
-Open problem:
-Current status: OPEN | PARTIAL | CONDITIONAL | CONJECTURE | FAILED_ATTEMPT
-Sketch id:
-Parent sketch:
-Artifact target:
-Result type: lemma | conditional theorem | counterexample | obstruction | computation | failed attempt
-Statement:
-Assumptions:
-Evidence:
-Proof sketch or computation:
-Known gaps:
-Why this helps the open problem:
-Definitions:
-Hypotheses:
-Conclusion:
-Dependency graph:
-External facts to CITE:
-Theorem preconditions to prove:
-External theorem replacements:
-Counterexamples checked:
-Recommended WIT structure:
-Lean/formalization notes:
-```
+Required handoff contents:
 
-Keep the handoff concise enough that generator can turn it into labeled WIT steps without redoing exploration. If a repair needs broad theorem search, Generator should return here with the rejected label, cited premises, and verifier reason.
+- Phase 0 problem profile,
+- search budget and stop conditions,
+- solved-problem map if the problem is known solved,
+- source citations for solved/open status and theorem claims,
+- ontology map and theorem-family retrieval hints,
+- ranked theorem retrieval candidates,
+- rejected theorem candidates,
+- backward chaining graph,
+- falsification pass results,
+- obstruction candidates,
+- barrier map and selected open-product target for open problems,
+- ranked conjectures,
+- frozen target and target-freeze hashes,
+- artifact target and status,
+- proof objects and proof sketches with EV fields,
+- confidence calibration notes inside theorem candidates and sketch/proof-object scoring,
+- selected sketch id,
+- lemma sequence as structured arrays,
+- lemma economics,
+- obligation graph,
+- external facts with preconditions and fallback plans,
+- external verification records for major theorems,
+- mutation tracker entries after failures,
+- proof compression record,
+- counterexamples checked,
+- recommended WIT structure in `wit_notes`,
+- Lean/formalization notes when relevant.
+
+Keep the handoff concise enough that Generator can turn it into labeled WIT steps without redoing exploration. If a repair needs broad theorem search, Generator should return here with a structured repair diagnosis.
 
 ## Output Templates
 

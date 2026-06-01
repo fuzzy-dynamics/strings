@@ -12,10 +12,28 @@ Witsoc is the top-level mathematics workflow and owns its own internal subsystem
 
 Use this skill for all mathematical tasks. For simple questions, answer directly with a clear derivation. For serious proof work, coordinate the internal subskills:
 
-- `witsoc-explorer/SKILL.md`: search, premise selection, lemma discovery, counterexample hunting, proof automation planning, and general mathematical exploration.
+- `witsoc-explorer/SKILL.md`: search, premise selection, lemma discovery, counterexample hunting, proof automation planning, open-problem research ledgers, and general mathematical exploration.
 - `witsoc-generator/SKILL.md`: `.wit` proof generation, repair, structural checking, verifier-context construction, receipt tracking, and optional Lean formalization.
 
 These subskills live inside this folder. If you need their full instructions, read the relevant nested `SKILL.md`; do not look for sibling top-level skill directories.
+
+Shared protocols live under `references/core/`. Load only the protocol needed for the current task:
+
+- `references/core/status.md`: canonical status labels and verification discipline.
+- `references/core/handoff.md`: state-machine routing and structured `handoff.json`.
+- `references/core/failure_recovery.md`: failure records, diversification, and stop conditions.
+- `references/core/open_problem.md`: common open-problem rules.
+- `references/core/exploration_strategy.md`: Phase 0 profiling, solved-problem reconstruction, ontology mapping, theorem retrieval ranking, backward chaining, falsification hierarchy, barrier analysis, conjecture mining, proof objects, theorem replacement, mutation tracking, and lemma economics.
+- `references/core/repair.md`: failure diagnosis and repair classes.
+- `references/core/goal_cache.md`: reusable subgoal/tactic cache rules.
+- `references/core/safeverify.md`: target freezing and anti-cheating checks.
+- `references/core/lean_verification.md`: Lean LSP/REPL/cache-aware checking loop.
+- `references/core/tooling.md`: deterministic tool/API discipline and CLI consolidation target.
+- `references/schemas/handoff.schema.json`: strict Explorer-to-Generator handoff schema.
+- `references/schemas/witsoc-handoff-schema.json`: strict Generator blueprint schema for `handoff_v1.json`.
+- `references/examples/handoff_solved_problem.json` and `references/examples/handoff_open_problem.json`: concrete valid handoff examples.
+- `references/examples/handoff_v1_blueprint.json`: minimal Generator blueprint example.
+- `scripts/validate_handoff.py`: deterministic handoff validation and arithmetic checks.
 
 ## Routing
 
@@ -24,8 +42,8 @@ Use this WITSOC-specific routing table before choosing a subskill, model, or too
 | Task | WITSOC route |
 |---|---|
 | Simple math answer | Top-level `witsoc`; answer directly with a clear derivation. |
-| Hard proof exploration | `witsoc-explorer`; normalize the target, test obstructions, compare strategies, and produce a lemma plan. |
-| Open problem / Erdős-style research problem | `witsoc-explorer` first in Open Problem Mode; track known status, variants, conjectures, failed attempts, proof sketches, partial results, formal subgoals, and obstruction families. Use `witsoc-generator` only for precise partial results, conditional theorems, counterexamples, or lemmas worth artifacting. |
+| Hard proof exploration | `witsoc-explorer`; Phase 0 profile the problem, triage solved/open status, map ontology, rank theorem candidates, run backward chaining, run falsification hierarchy, test obstructions/barriers, compare proof objects, EV-rank sketches, and produce `runs/<task>/handoff.json` plus strict `runs/<task>/handoff_v1.json` when Generator is needed. |
+| Open problem / Erdős-style research problem | `witsoc-explorer` first in Open Problem Mode; read `references/core/open_problem.md` and, for detailed source triage, `witsoc-explorer/references/open_problems.md`. Track exact status, source trail, variants, conjectures, failed attempts, proof sketches, partial results, formal subgoals, computations, and obstruction families. Use `witsoc-generator` only for precise partial results, conditional theorems, counterexamples, computations, failed-attempt artifacts, or lemmas worth artifacting. |
 | Counterexample search | `witsoc-explorer` plus computation where useful; minimize and verify the counterexample before presenting it. |
 | Premise / lemma discovery | `witsoc-explorer`; supply search and dependency planning. |
 | WIT generation | `witsoc-generator`; create a `.wit` artifact. |
@@ -33,16 +51,16 @@ Use this WITSOC-specific routing table before choosing a subskill, model, or too
 | User asks for WIT code plus Lean proof | Mandatory `witsoc-generator`; first generate/check WIT, then generate Lean from that WIT. The final response must include the WIT artifact path and either Lean build success or `Lean code generation failed`. |
 | Deep run proving a theorem with WIT/Lean requested | Use both subskills, but the run is not complete until Generator has produced a `.wit` artifact, run structural checks/context generation, and attempted Lean if requested. |
 | WIT repair after rejection | `witsoc-generator` for edits; call `witsoc-explorer` when rejected steps need new premises, lemmas, or a different strategy. |
-| Lean build error / failed formal proof | `witsoc-generator` Repair Diagnosis Protocol first; classify the failure, cite compiler/verifier evidence, propose the minimal repair, then retry without changing the frozen theorem target. If the same failure class repeats, invoke the Failure Recovery Ladder instead of reporting final failure. |
-| Multiple partial proof sketches | `witsoc-explorer` Proof Sketch Protocol to compare gaps and choose the next mutation; `witsoc-generator` artifacts only for the selected sketch or precise subresult. |
+| Lean build error / failed formal proof | `witsoc-generator` Repair Diagnosis Protocol first; classify the failure, cite compiler/verifier evidence, propose the minimal repair, then retry without changing the frozen theorem target. If the same failure class repeats, use `references/core/failure_recovery.md` before reporting final failure. |
+| Multiple partial proof sketches | `witsoc-explorer` structured Proof Sketch Protocol with EV ranking in `handoff.json`; `witsoc-generator` artifacts only for the selected sketch or precise subresult. |
 | Repeated subgoal or familiar failure | Use Goal Cache Protocol if available; otherwise record the reusable subgoal/tactic or failure pattern in proof sketch notes. |
 | External theorem blocks progress | `witsoc-explorer` External Theorem Replacement Policy; pin the exact needed statement and preconditions, search for formal availability or a local replacement, then hand a precise obligation to Generator. |
 | Sketch ranking / prioritization | `witsoc-explorer` Rater Mode; rank sketches for search priority only, never for verification. |
 | Structural checking | Deterministic `wit check` or WITSOC `check.sh`; no LLM. |
 | Verifier context building | Deterministic `wit verify` or WITSOC `verify.sh`; context only, not proof. |
 | Semantic verification | Skeptical external verifier output plus `wit receipt`; never treat `wit check` or `wit verify` as semantic proof. |
-| Lean/formalization planning | `witsoc-generator` with Explorer handoff when needed; return Lean only after `lake build` succeeds. |
-| Script execution | Deterministic WITSOC scripts or native `wit` CLI; do not use an LLM for structural checks, context building, status, or receipt parsing. |
+| Lean/formalization planning | `witsoc-generator` with Explorer handoff when needed; prefer Lean LSP/REPL/per-file checks during repair, run final `lake build`, then SafeVerify. |
+| Tool execution | Prefer explicit WITSOC API tools when available; otherwise deterministic WITSOC scripts or native `wit` CLI. Do not use an LLM for structural checks, context building, target-freeze checks, status, or receipt parsing. |
 
 Operating principles:
 
@@ -71,49 +89,27 @@ Use internal `witsoc-generator` when the task needs:
 
 Use both for substantial problems. The Explorer -> Generator handoff is mandatory before writing WIT on nontrivial problems:
 
-1. Explorer pins the exact target, hypotheses, useful facts, examples, likely counterexamples, and lemma plan.
-2. Generator turns the selected plan into a `.wit` artifact.
-3. Generator runs structural check and builds verifier contexts.
-4. Explorer can review rejected steps, search missing premises, or discover replacement lemmas.
-5. Generator repairs the `.wit`, records receipts when verifier verdicts are available, and asks about Lean generation.
+1. Explorer pins the problem profile, solved-problem map when relevant, ontology map, ranked theorem candidates, backward chains, falsification results, obstructions/barriers, selected open-product target, conjectures, exact target, hypotheses, definitions, likely counterexamples, proof objects, lemma plan with economics, external verification records, mutation tracker, proof sketches, EV scores, and target-freeze hashes.
+2. Explorer writes `runs/<task>/handoff.json` conforming to `references/schemas/handoff.schema.json`.
+3. Explorer writes `runs/<task>/handoff_v1.json` conforming to `references/schemas/witsoc-handoff-schema.json`.
+4. The orchestrator validates both files before Generator is invoked.
+5. Generator reads only `handoff_v1.json`, writes the `.wit` artifact, and runs deterministic checks.
+6. Rejections move the state to Repair or Explorer using `references/core/repair.md` and `references/core/failure_recovery.md`.
+7. Generator records receipts when verifier verdicts are available and uses `references/core/lean_verification.md` if Lean is requested.
 
-## Failure Recovery Ladder
+## Shared Protocols
 
-For a serious problem, Witsoc must not give up after one failed approach. A failure is useful research evidence, but it must trigger diversification before the run is declared blocked.
+Do not duplicate common rules in task-local prompts. For serious proof work, load the relevant shared protocols:
 
-Use this ladder whenever `wit check`, verifier review, Lean build, literature search, counterexample search, or proof construction fails in a way that blocks the main target:
-
-1. Record the failed attempt in `.soc` or the session plan with:
-   - approach name,
-   - exact theorem target,
-   - failure class,
-   - rejected step, diagnostic, or missing theorem,
-   - repair already tried,
-   - reusable lesson.
-2. Keep the original theorem target frozen unless the user explicitly changes it.
-3. Launch or request at least two independent alternate-method agents when Plane/OpenScientist worker spawning is available:
-   - one agent should pursue a different proof strategy or external theorem route,
-   - one agent should pursue a different formalization, counterexample, obstruction, or simplification route.
-4. The alternate agents must be told not to repeat the failed method. Their prompts should include the recorded failure and ask for a genuinely different route.
-5. If all alternate agents fail, run a critic/synthesis pass that compares failures, identifies the common blocker, and decides whether to:
-   - spawn a more targeted lemma/premise-search agent,
-   - narrow the artifact to a conditional or partial result,
-   - mark the original target `GAP`, `PARTIAL`, `CONDITIONAL`, `FAILED_ATTEMPT`, or `OPEN`.
-6. Only report final failure after this diversification has happened or after worker spawning is unavailable and the same blocker has repeated under at least two distinct methods.
-
-Do not keep retrying the same proof sketch, same Lean encoding, or same external theorem bridge. A retry must change the mathematical method, decomposition, formalization target, source theorem, or search space.
-
-Suggested worker prompt shape:
-
-```text
-The current Witsoc attempt failed.
-Frozen target: <exact theorem>.
-Failed method: <method>.
-Failure class: <compiler/verifier/math blocker>.
-Do not repeat: <specific route>.
-Try a distinct route: <strategy family>.
-Return: proof sketch or counterexample, WIT/Lean implications, exact gaps, and whether this route should replace the current plan.
-```
+- Status and verification: `references/core/status.md`.
+- Structured state and handoffs: `references/core/handoff.md`.
+- Failure recovery and stop conditions: `references/core/failure_recovery.md`.
+- SafeVerify target freezing: `references/core/safeverify.md`.
+- Repair diagnosis: `references/core/repair.md`.
+- Goal cache: `references/core/goal_cache.md`.
+- Exploration strategy: `references/core/exploration_strategy.md`.
+- Lean checking loop: `references/core/lean_verification.md`.
+- Tooling: `references/core/tooling.md`.
 
 Explicit WIT request contract:
 
@@ -132,53 +128,19 @@ Witsoc plugin activation after `.wit` generation:
 "$PLANE_TOOL_BIN" plugins iframe bash witsoc open path/to/generated.wit
 ```
 
-If structural checking is run, also push the check command to the iframe:
+If structural checking is run, also push the check action to the iframe:
 
 ```bash
 "$PLANE_TOOL_BIN" plugins iframe bash witsoc check
 ```
 
-If the plugin command is unavailable, mention that plugin activation failed, but still return the `.wit` artifact and check status. If structural checking, verifier review, or Lean generation fails, follow the Failure Recovery Ladder before presenting the problem as finally failed.
+If the plugin command is unavailable, mention that plugin activation failed, but still return the `.wit` artifact and check status. If structural checking, verifier review, or Lean generation fails, use `references/core/failure_recovery.md` before presenting the problem as finally failed.
 
 Subskill boundaries:
 
 - Explorer does not write final `.wit` except for very small tasks.
 - Generator avoids broad theorem search unless a repair requires it.
 - Top-level Witsoc coordinates the loop and decides when to return to Explorer.
-
-## Status Discipline
-
-Never call a proof `VERIFIED` from a chat proof, `wit check`, or `wit verify` alone.
-
-- `wit check`: structural validity only.
-- `wit verify`: verifier-context generation only; it does not verify the math.
-- `wit receipt`: records external verifier verdicts.
-- The prover and verifier must be separate agents; the same agent that wrote or repaired the proof must not supply the semantic verifier verdicts.
-- `VERIFIED`: structural check passed and a complete receipt covers accepted verifier verdicts.
-- `UNVERIFIED`: structurally valid and contexts generated, but no accepted receipt.
-- `OPEN`: the problem is known or currently treated as unsolved; no complete proof or disproof is being claimed.
-- `PARTIAL`: a lemma, bound, family of cases, obstruction, computation, or conditional result has been produced, but the original open problem remains unsolved.
-- `CONDITIONAL`: the result depends on an explicit unproved assumption, conjecture, or external theorem whose preconditions are not fully established here.
-- `CONJECTURE`: a proposed statement supported by evidence or analogy, not a theorem.
-- `FAILED_ATTEMPT`: a documented approach did not close the target and should be preserved as negative information.
-- `GAP`: an explicit unresolved obligation remains.
-- `REJECTED`: structural failure or verifier rejection.
-
-For open problems, default to `OPEN`, `PARTIAL`, or `CONDITIONAL`. Do not report that an Erdős-style or otherwise open problem is solved unless there is an externally checkable proof path, adversarial review has not found a blocker, and any generated WIT or formal artifact follows the receipt/checker discipline above.
-
-For failed proof attempts, preserve the failure class, exact rejected step or compiler diagnostic, attempted repair, and reusable lesson. A failed formal sketch is research evidence, not disposable scratch work.
-
-SafeVerify discipline applies to all Lean/formal outputs: do not accept artifacts that use forbidden placeholders, weaken the theorem target, introduce fake bridge lemmas, or change definitions to make the theorem trivial. Lean compiler success is necessary for Lean verification, but target preservation and anti-cheating checks are also required.
-
-Stop rather than thrash when the same failure class repeats without progress, when all active sketches depend on the same unresolved bridge, when a needed external theorem cannot be located or replaced within budget, or when the search budget is exhausted. Report `GAP`, `PARTIAL`, or `FAILED_ATTEMPT` with the best evidence instead of presenting a vague failure.
-
-Before reporting `VERIFIED`, enforce all of:
-
-- all obligations have verdicts,
-- the final `SHOW` is covered,
-- no `GAP` or `REJECTED` labels remain,
-- receipt status matches the `.wit` header,
-- verifier output is not truncated or suspiciously incomplete.
 
 ## Default Output
 
@@ -199,4 +161,4 @@ For a serious proof task, provide:
 - failure output if blocked or stopped,
 - next useful step.
 
-If Lean generation is requested, use internal `witsoc-generator` and return Lean only after `lake build` succeeds. If Lean repair is blocked, say `Lean code generation failed`.
+If Lean generation is requested, use internal `witsoc-generator`, prefer LSP/REPL/per-file checks during repair, and return Lean only after final `lake build` plus SafeVerify succeeds. If Lean repair is blocked, say `Lean code generation failed`.
