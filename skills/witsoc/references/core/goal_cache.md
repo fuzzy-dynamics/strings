@@ -27,4 +27,3 @@ Rules:
 - Reuse only when hypotheses, domains, coercions, definitions, imports, and target shape match.
 - If a cached route fails, record the failure class and do not retry it unchanged.
 - Successful cache entries are evidence for verifier-friendliness, not semantic verification.
-

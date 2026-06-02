@@ -1,0 +1,23 @@
+-- Status: TEMPLATE_UNVERIFIED
+MODULE compactness_disjoint_union_reduction
+
+THEOREM compactness_disjoint_union_reduction:
+  GIVEN:
+    - T is a fixed finite tree.
+    - P(G) means G is triangle-free and contains no induced copy of T.
+    - There are finite graphs G_m satisfying P(G_m) with chromatic number at least m for every positive integer m.
+  CLAIM:
+    There exists an infinite triangle-free graph G with infinite chromatic number and no induced copy of T.
+
+PROOF OF compactness_disjoint_union_reduction:
+  [1] CITE For each positive integer m, choose a finite graph G_m satisfying P(G_m) and chi(G_m) >= m.
+      BY the unbounded finite-family hypothesis.
+  [2] HAVE The disjoint union G = union_m G_m is triangle-free.
+      BY [1], triangle-freeness is preserved by disjoint union because no edges are added between components.
+  [3] HAVE G contains no induced copy of T.
+      BY [1], T is connected and finite, so any induced copy of T in a disjoint union lies inside one component G_m.
+  [4] HAVE G has infinite chromatic number.
+      BY [1], every coloring of G restricts to a coloring of each G_m, and chi(G_m) is unbounded.
+  [5] SHOW There exists an infinite triangle-free graph G with infinite chromatic number and no induced copy of T.
+      BY [2], [3], [4].
+  QED BY [5].

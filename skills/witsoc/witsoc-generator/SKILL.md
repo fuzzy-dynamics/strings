@@ -8,9 +8,9 @@ category: research
 
 # Witsoc Generator
 
-Witsoc Generator is the artifact engine inside Witsoc. It converts mathematical intent or an Explorer handoff into a `.wit` proof artifact with explicit labels, dependencies, structural checking, verifier contexts, receipts, and optional Lean formalization.
+Witsoc Generator is the artifact engine inside Witsoc. It converts an Explorer-accepted handoff into a `.wit` proof artifact with explicit labels, dependencies, structural checking, verifier contexts, receipts, and optional Lean formalization.
 
-The generator is not a chat-proof mode. If this subskill is used, create or update a `.wit` artifact unless the user only asks to inspect existing WIT files. For nontrivial new proof tasks, require an Explorer handoff before writing the WIT.
+The generator is not a chat-proof mode and not a mathematical truth arbiter. If this subskill is used, create or update a `.wit` artifact unless the user only asks to inspect existing WIT files. For nontrivial new proof tasks, require an Explorer handoff before writing the WIT. For open/unsolved/unconfirmed targets, require that Explorer has accepted Lovasz's verification result for the narrow artifact target.
 
 Shared protocols live in the parent skill:
 
@@ -28,6 +28,8 @@ If the user explicitly asks for WIT code, `.wit`, or WIT plus Lean, WIT generati
 
 If generation, structural checking, verifier review, or Lean formalization fails for a serious problem, the generator must not end the run after the first blocked method. Preserve the failure and hand it back to top-level Witsoc/Explorer for alternate-method agents unless worker spawning is unavailable.
 
+Generator may not upgrade claim status. It can report that a WIT structural check passed, verifier context was built, a receipt was accepted, or Lean passed, but Explorer/top-level Witsoc owns the final status assignment for the mathematical target. If WIT or Lean fails, report the exact failure to Explorer; Explorer decides whether this is a Generator repair, an Explorer proof-plan issue, or a Lovasz mathematical barrier.
+
 ## Non-Negotiable Semantics
 
 Use `../references/core/status.md`. In short: `wit check` is structural only, `wit verify` builds verifier contexts only, `wit receipt` records external verdicts, and `VERIFIED` requires complete accepted receipt discipline.
@@ -38,7 +40,6 @@ For open problems, never let a partial artifact imply that the original problem 
 
 Generator can start from:
 
-- a user theorem/problem,
 - an explicit request for WIT code or WIT plus Lean,
 - an existing `.wit` file,
 - a Witsoc Explorer handoff,
@@ -46,6 +47,8 @@ Generator can start from:
 - a Lean/formalization target,
 - an algorithm or reduction specification,
 - an open-problem handoff for a partial result, conditional theorem, counterexample, obstruction, computation, conjecture, or failed attempt.
+
+For nontrivial theorem/problem targets, even if the user explicitly requests WIT/Lean, Explorer must freeze and accept the target before Generator executes. Existing `.wit` inspection or local artifact repair may start directly at Generator.
 
 If the target is ambiguous, pin an interpretation before writing the artifact. If the ambiguity materially affects truth, ask or state the chosen interpretation.
 
@@ -75,13 +78,21 @@ If unsure about WIT syntax, read `references/wit.md` before editing.
 
 Prefer explicit API tools such as `run_wit_check`, `run_wit_cycle`, and `run_target_freeze_check` when the environment provides them. If no typed tool exists, use deterministic scripts or native `wit` CLI.
 
-Scripts live at:
+Resolve scripts through Plane so global and space skill overrides work. Do not
+assume skills have been materialized under `$KIMI_WORK_DIR`.
 
 ```bash
-SCRIPTS=${KIMI_WORK_DIR}/.openscientist/skills/witsoc/witsoc-generator/scripts
+"$PLANE_TOOL_BIN" skill-run witsoc/scripts/check.sh path/to/file.wit
+"$PLANE_TOOL_BIN" skill-run witsoc/scripts/cycle.sh path/to/file.wit
+VALIDATOR="$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/validate_handoff.py)"
+python3 "$VALIDATOR" runs/<task>/handoff.json
+DAG_VALIDATOR="$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/validate_proof_dag.py)"
+python3 "$DAG_VALIDATOR" runs/<task>/handoff.json
 ```
 
-Invoke with `bash <path>` because executable bits may not survive sync. Treat these scripts as a compatibility layer; `../references/core/tooling.md` defines the long-term typed CLI/API target.
+Use `skill-run` for shell scripts. Use `skill-which` plus `python3` for
+`validate_handoff.py`. Treat these scripts as a compatibility layer;
+`../references/core/tooling.md` defines the long-term typed CLI/API target.
 
 | Script | Purpose |
 |---|---|
@@ -93,6 +104,7 @@ Invoke with `bash <path>` because executable bits may not survive sync. Treat th
 | `cycle.sh <file.wit> [--out-dir dir]` | Run the full verification-prep cycle: check, audit, verifier-context build, and status; writes `<name>.verify.txt`. |
 | `receipt.sh <file.wit> --from verifier.txt` | Parse verdicts, write `.wit.receipt.json`, update status. |
 | `status.sh <file.wit>` | Summarize status, receipt, and structural result. |
+| `validate_proof_dag.py <handoff.json>` | Validate Lovasz proof-DAG, worker evidence, and assembly invariants. |
 
 Fallback native CLI:
 
@@ -121,6 +133,8 @@ Every serious generator output should have:
 - rejected labels or gaps,
 - short proof idea.
 
+The status label must be inherited from the accepted handoff or mechanically justified by checks/receipts. Do not upgrade a `CONJECTURE`, `PARTIAL`, `PROVED_SKETCH`, or `CHECKED` handoff to `VERIFIED` unless complete formal/verifier evidence exists and SafeVerify passes.
+
 When an artifact or Lean translation fails, also write a failure note beside the artifact, for example `runs/<task>/approach_N_failure.md`, containing:
 
 - frozen theorem target,
@@ -131,6 +145,8 @@ When an artifact or Lean translation fails, also write a failure note beside the
 - repair attempts already made,
 - methods that the next agents must avoid,
 - two suggested alternate method families.
+
+Return that failure note to Explorer. Explorer decides whether to send the unchanged target back to Generator for repair or to Lovasz for a new barrier attack.
 
 A good `.wit` file:
 
@@ -170,13 +186,31 @@ Generate or update WIT when the user says any of:
 Required behavior:
 
 1. Freeze the exact theorem target.
-2. If nontrivial, get or create an Explorer handoff.
-3. Write a `.wit` artifact.
-4. Activate the Witsoc plugin iframe and open the generated `.wit` file.
-5. Run structural check when tools are available.
-6. Build verifier context when tools are available.
-7. If Lean is requested, generate Lean from the WIT target after WIT exists.
-8. Final response includes `.wit` path or inline WIT code, plugin activation status, structural check status, and Lean status.
+2. If nontrivial, get or create an Explorer handoff. If the target is open/unsolved/unconfirmed/frontier-level/blocked, require an Explorer-reviewed Lovasz result.
+3. Create or enter a session-scoped proof worktree for this exact artifact target. Do not generate the WIT or Lean proof in the coordinator root, a previous proof target's worktree, or an unrelated Lean project.
+4. Write a `.wit` artifact inside that proof worktree, then preserve a copy in the run artifact directory.
+5. Activate the Witsoc plugin iframe and open the generated `.wit` file.
+6. Run structural check when tools are available.
+7. Build verifier context when tools are available.
+8. If Lean is requested, generate Lean from the WIT target after WIT exists, in the same session-scoped proof worktree for that artifact target.
+9. Record `target_fidelity`, `skeptic_review_id`, `wit_target_sha256`, `lean_target_sha256`, and `frozen_target_sha256` for the generated artifact. If the artifact is final synthesis output, require `final_synthesis_audit` from Explorer/Lovasz before generation.
+10. Final response includes proof worktree path/status, `.wit` path or inline WIT code, plugin activation status, structural check status, Lean status, target-fidelity status, skeptic-review id, and hash-provenance status.
+
+Proof worktree rule:
+
+- Each WIT/Lean proof target gets its own worktree named from the session id and proof id, for example `witsoc-proof-${OSCI_SESSION_ID}-${proof_id}`.
+- If the Plane orchestrator is spawning a generator worker, it should pass that path with `launch-worker --worktree <path>`.
+- If Generator is already running inside a worker, it must still create a nested proof worktree or explicitly record that the worker worktree is dedicated to this single proof target.
+- Never reuse another proof target's worktree for a different WIT/Lean proof.
+- Record `session_id`, `proof_id`, `proof_worktree`, `proof_worktree_dedicated`, and `worktree_status` in the handoff, worker result, or final report.
+- Record WIT/Lean target hashes and frozen target hash. A Lean proof cannot be reported as `VERIFIED` unless the Lean target hash matches the WIT target hash and the frozen target hash.
+
+Generator-worker cleanup requirement:
+
+- If a temporary private Lean project or proof worktree is created, delete it after the worker finishes, whether verification succeeds or fails, unless the coordinator explicitly marks it preserved for inspection.
+- Preserve `.wit` artifacts, Lean source snippets, logs, receipts, SafeVerify records, and reports outside the deleted project.
+- If using a shared Lean project, do not delete it unless the Lovasz/coordinator handoff says this worker is the last active user.
+- Report cleanup status in the worker result.
 
 Forbidden behavior for explicit WIT requests:
 
@@ -187,6 +221,17 @@ Forbidden behavior for explicit WIT requests:
 - treating a proof sketch as the requested WIT artifact.
 
 Plugin activation command after writing any `.wit` artifact:
+
+The Witsoc UI plugin is external to the strings repo. On a fresh system,
+install it from the verified plugin index before opening the iframe. Plugin
+installation requires `oras`, `cosign`, and `tar` on the host.
+
+```bash
+"$PLANE_TOOL_BIN" plugins available
+"$PLANE_TOOL_BIN" plugins list
+# If witsoc is not listed locally:
+"$PLANE_TOOL_BIN" plugins install witsoc
+```
 
 ```bash
 "$PLANE_TOOL_BIN" plugins iframe use witsoc
@@ -223,8 +268,9 @@ For nontrivial problems, start from `runs/<task>/handoff.json` conforming to `..
 For WIT generation, execute only `runs/<task>/handoff_v1.json`. Treat `handoff.json` as context, not as executable proof instructions. If local execution is available, run:
 
 ```bash
-python3 ../scripts/validate_handoff.py runs/<task>/handoff.json
-python3 ../scripts/validate_handoff.py runs/<task>/handoff_v1.json
+VALIDATOR="$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/validate_handoff.py)"
+python3 "$VALIDATOR" runs/<task>/handoff.json
+python3 "$VALIDATOR" runs/<task>/handoff_v1.json
 ```
 
 If validation fails, return to Explorer with the exact validation errors. Do not invent new helper lemmas unless a structural check explicitly fails. Do not cite any theorem outside `external_dependencies`.
@@ -232,6 +278,13 @@ If validation fails, return to Explorer with the exact validation errors. Do not
 For open-problem handoffs, require a narrower artifact target before writing WIT: special case, bound, conditional theorem, reduction, obstruction, counterexample, computation, failed attempt, conjecture, or lemma.
 
 If the handoff asks for a full solution to a known open problem without adversarial exploration and a precise proof path, return to Explorer instead of writing a proof artifact.
+
+For finite/infinite graph-theory reductions, prefer the checked WIT templates under `references/examples/` instead of creating a prose reduction from scratch:
+
+- `compactness_disjoint_union_reduction.wit`
+- `finite_chi_bounding_compactness_template.wit`
+
+These templates are reduction skeletons only. Preserve `TEMPLATE_UNVERIFIED` until the exact frozen target, external compactness theorem, and all side conditions are instantiated and checked.
 
 ### 1. Freeze The Target
 
@@ -489,6 +542,15 @@ Use this mode when the user requests Lean, a formal proof, or repair of a Lean b
 Use `../references/core/lean_verification.md`. Prefer Lean LSP, REPL, `repl`, `minictx`, or per-file checking for repair iterations. Run full `lake build` for final confirmation or dependency-sensitive changes, not every minor tactic edit.
 
 Before the loop, handle dependency cache setup once when needed, for example `lake exe cache get`. Avoid import changes unless the diagnostic requires them and record why the cache-invalidating change is necessary.
+
+When a linear Lean tactic repair stalls, invoke bounded tactic-state MCTS instead of repeating the same tactic path:
+
+```bash
+MCTS="$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/mcts_lean.py)"
+python3 "$MCTS" --file runs/<task>/frozen_lean_target.lean
+```
+
+Configure the Lean REPL/checker with `WITSOC_LEAN_REPL_CMD` or pass `--repl-cmd`. MCTS explores single distinct tactics such as `intro`, `cases`, `simp`, `ring`, and `induction`, scores resulting states by goal count and diagnostic reduction, prunes dead ends, and returns the top three branches. Treat MCTS output as search guidance only; final success still requires a normal Lean checker pass plus SafeVerify.
 
 Lean loop report:
 

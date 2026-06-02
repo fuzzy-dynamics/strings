@@ -8,9 +8,11 @@ category: research
 
 # Witsoc Explorer
 
-Witsoc Explorer is the discovery engine inside Witsoc. Its job is to turn an unclear or difficult mathematical task into precise targets, useful premises, candidate lemmas, counterexamples, and a proof plan that can survive skeptical verification.
+Witsoc Explorer is the discovery and arbitration engine inside Witsoc. Its job is to turn an unclear or difficult mathematical task into precise targets, sourced status, useful premises, candidate lemmas, counterexamples, barrier packets for Lovasz, and proof plans that can survive skeptical verification.
 
 Explorer may solve small problems directly. For serious proof work, it must produce a handoff package for `witsoc-generator` before any final `.wit` is written.
+
+Explorer is the first subskill for serious proof work, theorem proving, WIT/Lean generation, open problems, unsolved conjectures, and research-like targets. Lovasz is invoked only after Explorer freezes the problem and writes a barrier packet. Generator is invoked only after Explorer accepts a solved/routine proof plan or an assembled Lovasz-reviewed target.
 
 Shared protocols live in the parent skill:
 
@@ -40,6 +42,14 @@ Explore under adversarial pressure:
 - Optimize for downstream WIT/Lean formalization, not just persuasive prose.
 
 Do not call anything `VERIFIED`; only generator receipts or formal checkers can support that status. Explorer does not write final `.wit` artifacts except for very small tasks.
+
+Explorer owns routing arbitration:
+
+- decide whether the target is solved, open, unsolved, unconfirmed, false, under-specified, or already formalizable,
+- route solved/routine/nontrivial formalization targets to Generator after a structured handoff,
+- route open/unsolved/unconfirmed/frontier/blocked targets to Lovasz with a barrier packet,
+- review every Lovasz return before Generator is allowed,
+- send mathematical blockers from Generator back to Lovasz only after diagnosing that they are genuine barriers rather than artifact repair issues.
 
 ## When To Use
 
@@ -87,11 +97,48 @@ Task kind: proof | disproof | computation | reduction | algorithm correctness | 
 
 Flag ambiguity immediately. Do not silently strengthen, weaken, or change quantifiers.
 
-After normalization, classify status as solved, open, partially solved, ambiguous, or unconfirmed when the task is nontrivial or named.
+After normalization, classify status as solved, open, unsolved, unconfirmed, false, under-specified, partially solved, ambiguous, or already formalizable when the task is nontrivial or named.
 
 - If solved: run Solved Problem Reconstruction from `../references/core/exploration_strategy.md` before proof search.
-- If open: run the Open Problem Barrier Engine before strategy selection.
-- If unconfirmed: state that status is unconfirmed and still run falsification plus ontology mapping.
+- If open, unsolved, unconfirmed, frontier-level, or blocked: run the Open Problem Barrier Engine before strategy selection and prepare a Lovasz barrier packet.
+- If unconfirmed: state that status is unconfirmed and still run falsification plus ontology mapping before Lovasz.
+
+For a user request that asks to prove, disprove, solve, or deep-run an open-style target, Explorer must not end with only "open/unsupported by known results." That classification is the trigger for Lovasz. The only exception is a concrete operational blocker preventing Lovasz dispatch; record the blocker explicitly in the final report.
+
+### 1.1 Lovasz Barrier Packet
+
+Before invoking Lovasz, Explorer must write or include a structured barrier packet:
+
+```json
+{
+  "frozen_target_statement": "exact statement with quantifiers and definitions",
+  "variant_status_ledger": ["variant, status, source/evidence"],
+  "source_trail": ["primary sources, surveys, maintained pages, formal facts"],
+  "best_known_results": ["exact known bounds, cases, reductions, or negative facts"],
+  "known_obstructions_failed_methods": ["obstruction or method and why it blocks"],
+  "theorem_precondition_gaps": ["candidate theorem and missing precondition"],
+  "actual_barrier_lemmas": ["lemma/reduction/obstruction that would directly move the frozen target"],
+  "actual_lemma_queue_seed": ["prioritized exact lemmas with why each unlocks the target"],
+  "counterexample_pressure": ["families, boundary cases, small cases to test"],
+  "formalization_blockers": ["definitions, libraries, theorem availability, target drift risks"],
+  "smallest_tractable_products": ["special case, conditional theorem, obstruction, computation, counterexample"],
+  "lovasz_success_criteria": ["what would count as progress for this loop"]
+}
+```
+
+Explorer must reject a Lovasz return that attacks only convenient weaker products without an actual barrier lemma queue, target-fidelity scores, skeptic review for accepted nodes, retry ledger for repeated methods, and final synthesis audit before Generator.
+
+Explorer must also reject a Lovasz return that only restates "this is equivalent to a known open conjecture" without a campaign ledger. Known-open classification is the beginning of Lovasz work, not the end, unless a concrete operational blocker prevents dispatch. Required campaign evidence is: `actual_lemma_queue`, at least one `actual_barrier_lemma` DAG node, `barrier_attack_records`, worker results when spawning is available, skeptic review for accepted claims, and retry ledger for repeated methods.
+
+Then announce:
+
+```text
+Using witsoc with witsoc-explorer -> witsoc-research-lovasz.
+```
+
+Lovasz receives the packet; Explorer remains responsible for reviewing the result.
+
+The run is not complete after this packet is created. It is complete only after Lovasz returns a barrier attack result and Explorer reviews it into a verified solution, verified partial/special/conditional product, verified obstruction/counterexample/reduction, conjecture with evidence, failed attempt with failure memory, or still-open report after documented barrier attacks.
 
 ### 2. Attack Before Proving
 
@@ -103,7 +150,16 @@ Run the Falsification Pass Hierarchy from `../references/core/exploration_strate
 
 Also test missing positivity, finiteness, continuity, measurability, independence, compactness, smoothness, or nonzero assumptions when relevant.
 
-If a counterexample is found, switch to disproof mode and prepare a minimal counterexample with verification.
+Any proposed `O`, `o`, `Omega`, `Theta`, eventual inequality, or limit claim must be checked through the asymptotic analyzer before it becomes a proof path:
+
+```bash
+ASYM="$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/asymptotic_analyzer.py)"
+python3 "$ASYM" --expr "<asymptotic claim>" --variable n
+```
+
+If the analyzer rejects the bound, mark that approach `REJECTED`. If SymPy is unavailable or the analyzer returns `unknown`, mark the asymptotic step as a theorem-precondition gap rather than using it as evidence.
+
+If a counterexample is found, do not stop at the single witness. Switch to disproof mode, prepare a minimal counterexample with verification, then invoke the inflation path in `../scripts/research_search.py --inflate` when the search backend supports the domain. Explorer must attempt to generalize the witness into an obstruction family and produce an obstruction-theorem target for Generator when the family is precise enough.
 
 ### 3. Map The Ontology And Search Backward
 
@@ -137,6 +193,8 @@ Obstruction records should include:
 For Erdős-style problems, obstruction discovery is mandatory and should influence the approach portfolio.
 
 For known open problems, also build a barrier map. Each proposed approach must say which barrier it hits and what single mutation tries to bypass it.
+
+If the barrier map leaves a non-routine mathematical blocker, hand it to Lovasz rather than pretending Explorer can complete the proof by prose.
 
 ### 5. Mine Conjectures
 
@@ -183,6 +241,31 @@ Before Generator handoff, run proof compression: remove unused detours and heavy
 When a WIT proof, verifier review, Lean check, or proof sketch fails, Explorer owns alternate-method search. Use `../references/core/failure_recovery.md`: read the recorded failure, keep the target frozen, produce distinct routes, and avoid repeating the failed method unless a real mathematical ingredient changes.
 
 Apply the Mutation Tracker from `../references/core/exploration_strategy.md`: mutate exactly one dimension, such as strengthening the induction hypothesis, domain weakening, or duality/transformation shift.
+
+If the failure is a mathematical barrier, construct a new Lovasz barrier packet from the failure. If the failure is artifact syntax, missing labels, Lean library friction, or local proof repair, send it back to Generator with the target unchanged.
+
+### 6.2 Lovasz Return Review
+
+Lovasz must return to Explorer, not directly to Generator, with:
+
+- barriers resolved,
+- barriers still open,
+- claims with status: `REJECTED`, `FAILED_ATTEMPT`, `CONJECTURE`, `PARTIAL`, `PROVED_SKETCH`, `CHECKED`, or `VERIFIED`,
+- evidence and source links,
+- counterexample/search results,
+- proof gaps,
+- next recommended target.
+
+Explorer must review the return and choose exactly one:
+
+- `LOVASZ_AGAIN`: another barrier packet is needed.
+- `DEMOTE`: mark the target `CONJECTURE`, `FAILED_ATTEMPT`, `REJECTED`, `OPEN`, `PARTIAL`, or `CONDITIONAL`.
+- `GENERATOR_READY`: a solved/routine proof plan, verified partial result, checked computation/counterexample, conditional theorem, or formalizable narrow lemma is ready.
+- `HONEST_STOP`: no defensible progress path remains.
+
+Generator may run only from `GENERATOR_READY`.
+
+Do not choose `HONEST_STOP` for a prove/disprove deep run merely because literature review found the target open. `HONEST_STOP` requires Lovasz attempts, recorded barrier attacks, or a concrete inability to run Lovasz.
 
 ### 7. Discover Lemmas
 
@@ -444,6 +527,18 @@ Procedure:
 1. Identify the target claim.
 2. List all available premises.
 3. Remove premises one by one unless the inference breaks.
+
+Mathlib Atlas rule:
+
+- Before adding any external theorem or Lean/Mathlib dependency to `handoff.json`, Explorer must verify formal availability and exact module path with `../scripts/mathlib_atlas.py`.
+- The atlas query must include the semantic theorem description and, where possible, the Lean-ish type signature.
+- Record atlas status, returned module path, symbols, and import list in the external verification record.
+- If the atlas is missing or returns no match, mark formal availability `UNKNOWN` and keep the theorem as a search target, not an accepted proof dependency.
+
+```bash
+ATLAS="$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/mathlib_atlas.py)"
+python3 "$ATLAS" --query "<theorem meaning>" --signature "<Lean type shape>" --limit 5
+```
 4. Add missing bridge lemmas explicitly.
 5. Return a minimal or near-minimal dependency set.
 
@@ -475,7 +570,10 @@ A counterexample report must include:
 - exact object,
 - verification that hypotheses hold,
 - verification that conclusion fails,
-- minimality if relevant.
+- minimality if relevant,
+- inflation attempt command and output,
+- obstruction family candidate, or a reason inflation failed,
+- WIT obstruction-theorem target when the generalized negative space is precise enough.
 
 ### Invariant Mining
 
@@ -495,12 +593,30 @@ Handoff to generator should include `REQUIRES`, `ENSURES`, invariants, terminati
 For complexity or equivalence reductions:
 
 - define source and target problem precisely,
-- specify construction,
+- specify construction as strict SMT-LIB constraints whenever the gadget boundary is finite or finitely parameterized,
 - prove forward direction,
 - prove reverse direction,
 - prove polynomial/resource bound,
 - identify preserved property,
 - test gadget edge cases.
+
+Do not construct finite reduction gadgets by prose alone. Explorer must write strict SMT-LIB constraints for:
+
+- source object variables,
+- target gadget variables,
+- preservation laws,
+- forward/backward correctness boundary,
+- forbidden target drift,
+- size/resource bounds when finite.
+
+Then invoke:
+
+```bash
+SMT="$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/smt_synthesizer.py)"
+python3 "$SMT" --file runs/<task>/reduction_constraints.smt2 --pretty
+```
+
+Use `sat` output only as a candidate gadget requiring proof. Use `unsat` plus unsat core as obstruction evidence. Generator receives a reduction artifact only after Explorer records the SMT input hash, solver status, model/core, and proof obligations.
 
 Handoff to generator should include `REDUCTION`, `FROM`, `TO`, `PRESERVING`, and a lemma plan.
 
@@ -536,8 +652,9 @@ Set the research state to `HANDOFF_READY` only after both validate.
 Use `../references/examples/handoff_solved_problem.json`, `../references/examples/handoff_open_problem.json`, and `../references/examples/handoff_v1_blueprint.json` as shape examples. Run these when local execution is available before asking Generator to consume the handoff:
 
 ```bash
-python3 ../scripts/validate_handoff.py runs/<task>/handoff.json
-python3 ../scripts/validate_handoff.py runs/<task>/handoff_v1.json
+VALIDATOR="$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/validate_handoff.py)"
+python3 "$VALIDATOR" runs/<task>/handoff.json
+python3 "$VALIDATOR" runs/<task>/handoff_v1.json
 ```
 
 The blueprint `lemma_plan` must be a DAG. Every `depends_on` value must reference an earlier `step_id`, and every external theorem used in `method` must appear in `external_dependencies`.

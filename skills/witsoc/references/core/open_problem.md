@@ -22,4 +22,3 @@ special case | bound | conditional theorem | reduction | obstruction | counterex
 Do not ask Generator to write a proof of the whole open problem unless the proof path has already survived adversarial exploration and target-freezing checks.
 
 For detailed source triage and Erdős-style workflow, Explorer should also read `witsoc-explorer/references/open_problems.md`.
-

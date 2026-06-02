@@ -67,7 +67,7 @@ status_code=$?
 set -e
 
 ok=false
-if [[ "$check_code" -eq 0 && "$verify_code" -eq 0 && "$status_code" -eq 0 ]]; then
+if [[ "$check_code" -eq 0 && "$audit_code" -eq 0 && "$verify_code" -eq 0 && "$status_code" -eq 0 ]]; then
   ok=true
 fi
 
@@ -83,5 +83,6 @@ jq -n \
   '{ok:$ok, command:$command, file:$file, verify_out:$verify_out, check:$check, audit:$audit, verify:$verify, status:$status}'
 
 if [[ "$check_code" -ne 0 ]]; then exit "$check_code"; fi
+if [[ "$audit_code" -ne 0 ]]; then exit "$audit_code"; fi
 if [[ "$verify_code" -ne 0 ]]; then exit "$verify_code"; fi
 exit "$status_code"

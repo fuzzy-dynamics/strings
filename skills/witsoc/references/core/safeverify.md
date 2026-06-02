@@ -44,4 +44,3 @@ Reject artifacts that:
 - claim full resolution of an open problem from a partial artifact.
 
 Lean compiler success is necessary but not sufficient. WIT structural success is necessary but not sufficient.
-

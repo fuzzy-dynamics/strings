@@ -23,4 +23,3 @@ Before reporting `VERIFIED`, enforce:
 - verifier output is complete and not suspiciously truncated,
 - target-freezing checks passed,
 - the prover and semantic verifier are separate agents or processes.
-

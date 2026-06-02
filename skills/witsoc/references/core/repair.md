@@ -52,4 +52,3 @@ Allowed repairs:
 - hand back to Explorer for premise search, theorem replacement, or counterexample hunting.
 
 Do not submit cosmetic rewrites. Every repair must reduce a real obligation while preserving the frozen target.
-

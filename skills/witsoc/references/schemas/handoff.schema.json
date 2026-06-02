@@ -38,6 +38,11 @@
   "properties": {
     "schema_version": { "const": "1.0" },
     "run_id": { "type": "string", "minLength": 1 },
+    "task_kind": {
+      "type": "string",
+      "enum": ["answer", "prove", "disprove", "prove_or_disprove", "solve", "deep_research", "wit_generation", "lean_generation", "repair", "audit"]
+    },
+    "user_intent": { "type": "string", "minLength": 1 },
     "state": {
       "type": "string",
       "enum": [
@@ -81,7 +86,7 @@
     },
     "problem_status": {
       "type": "string",
-      "enum": ["SOLVED", "OPEN", "PARTIAL", "AMBIGUOUS", "UNCONFIRMED"]
+      "enum": ["SOLVED", "ROUTINE", "OPEN", "UNSOLVED", "PARTIAL", "AMBIGUOUS", "UNCONFIRMED", "FALSE", "UNDER_SPECIFIED", "ALREADY_FORMALIZABLE"]
     },
     "source_citations": {
       "type": "array",
@@ -234,6 +239,95 @@
       "type": "array",
       "items": { "$ref": "#/$defs/obligation" }
     },
+    "proof_dependency_dag": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/proof_dependency_node" }
+    },
+    "worker_results": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/worker_result" }
+    },
+    "lovasz_barrier_attack": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["barriers_resolved", "barriers_still_open", "claim_statuses", "barrier_attack_records", "next_recommended_target"],
+      "properties": {
+        "barriers_resolved": { "type": "array", "items": { "type": "string" } },
+        "barriers_still_open": { "type": "array", "items": { "type": "string" } },
+        "claim_statuses": { "type": "array", "items": { "type": "string" } },
+        "barrier_attack_records": { "type": "array", "items": { "$ref": "#/$defs/barrier_attack_record" } },
+        "evidence": { "type": "array", "items": { "type": "string" } },
+        "counterexample_search_results": { "type": "array", "items": { "type": "string" } },
+        "proof_gaps": { "type": "array", "items": { "type": "string" } },
+        "next_recommended_target": { "type": "string" }
+      }
+    },
+    "lovasz_dispatch_blocker": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reason", "attempted_actions", "next_unblock_action"],
+      "properties": {
+        "reason": { "type": "string" },
+        "attempted_actions": { "type": "array", "items": { "type": "string" } },
+        "next_unblock_action": { "type": "string" }
+      }
+    },
+    "final_assembly_check": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "dependencies_covered": { "type": "boolean" },
+        "no_cycles": { "type": "boolean" },
+        "no_hidden_assumptions": { "type": "boolean" },
+        "target_hashes_match": { "type": "boolean" },
+        "no_conjecture_used_as_theorem": { "type": "boolean" },
+        "notes": { "type": "string" }
+      }
+    },
+    "proof_worktrees": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/proof_worktree" }
+    },
+    "actual_lemma_queue": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/actual_lemma_queue_item" }
+    },
+    "retry_ledger": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/retry_ledger_entry" }
+    },
+    "skeptic_reviews": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/skeptic_review" }
+    },
+    "final_synthesis_audit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "all_dag_edges_compose",
+        "no_conjecture_used_as_theorem",
+        "no_hidden_assumptions",
+        "no_weaker_theorem_substituted",
+        "external_preconditions_discharged",
+        "target_hashes_match",
+        "wit_lean_hashes_match"
+      ],
+      "properties": {
+        "all_dag_edges_compose": { "type": "boolean" },
+        "no_conjecture_used_as_theorem": { "type": "boolean" },
+        "no_hidden_assumptions": { "type": "boolean" },
+        "no_weaker_theorem_substituted": { "type": "boolean" },
+        "external_preconditions_discharged": { "type": "boolean" },
+        "target_hashes_match": { "type": "boolean" },
+        "wit_lean_hashes_match": { "type": "boolean" },
+        "auditor": { "type": "string" },
+        "notes": { "type": "string" }
+      }
+    },
+    "generator_artifacts": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/generator_artifact" }
+    },
     "external_facts": {
       "type": "array",
       "items": { "$ref": "#/$defs/external_fact" }
@@ -266,10 +360,38 @@
     "lean_notes": { "type": "string" },
     "wit_notes": { "type": "string" }
   },
+  "allOf": [
+    {
+      "if": {
+        "required": ["problem_status", "state", "task_kind"],
+        "properties": {
+          "problem_status": { "enum": ["OPEN", "UNSOLVED", "UNCONFIRMED"] },
+          "state": { "const": "REPORT" },
+          "task_kind": {
+            "enum": ["prove", "disprove", "prove_or_disprove", "solve", "deep_research"]
+          }
+        }
+      },
+      "then": {
+        "anyOf": [
+          {
+            "required": ["proof_dependency_dag"],
+            "properties": { "proof_dependency_dag": { "minItems": 1 } }
+          },
+          {
+            "required": ["worker_results"],
+            "properties": { "worker_results": { "minItems": 1 } }
+          },
+          { "required": ["lovasz_barrier_attack"] },
+          { "required": ["lovasz_dispatch_blocker"] }
+        ]
+      }
+    }
+  ],
   "$defs": {
     "status": {
       "type": "string",
-      "enum": ["VERIFIED", "UNVERIFIED", "OPEN", "PARTIAL", "CONDITIONAL", "CONJECTURE", "FAILED_ATTEMPT", "GAP", "REJECTED"]
+      "enum": ["VERIFIED", "CHECKED", "PROVED_SKETCH", "UNVERIFIED", "OPEN", "PARTIAL", "CONDITIONAL", "CONJECTURE", "FAILED_ATTEMPT", "GAP", "REJECTED"]
     },
     "sketch": {
       "type": "object",
@@ -360,6 +482,165 @@
             }
           }
         }
+      }
+    },
+    "proof_dependency_node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["node_id", "type", "statement", "depends_on", "status"],
+      "properties": {
+        "node_id": { "type": "string" },
+        "type": {
+          "type": "string",
+          "enum": ["actual_barrier_lemma", "lemma", "reduction", "special_case", "obstruction", "counterexample_search", "computational_certificate", "conditional_theorem", "failed_method"]
+        },
+        "statement": { "type": "string" },
+        "depends_on": { "type": "array", "items": { "type": "string" } },
+        "attacks_barrier": { "type": "string" },
+        "actual_barrier_lemma": { "type": "string" },
+        "relation_to_frozen_target": { "type": "string" },
+        "weaker_variant_justification": { "type": "string" },
+        "direct_attack_count": { "type": "integer", "minimum": 0 },
+        "counterexample_pressure": { "type": "string" },
+        "theorem_precondition_gap": { "type": "string" },
+        "next_exact_attempt": { "type": "string" },
+        "target_fidelity": { "type": "number", "minimum": 0, "maximum": 1 },
+        "skeptic_review_id": { "type": "string" },
+        "subproblem_score": { "type": "number" },
+        "status": { "$ref": "#/$defs/status" },
+        "verification_evidence": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "wit_path": { "type": "string" },
+            "lean_path": { "type": "string" },
+            "wit_target_sha256": { "type": "string" },
+            "lean_target_sha256": { "type": "string" },
+            "frozen_target_sha256": { "type": "string" },
+            "lean_status": { "type": "string" },
+            "safeverify_status": { "type": "string" }
+          }
+        }
+      }
+    },
+    "worker_result": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["worker_id", "status", "wit_path", "session_id", "proof_worktree", "proof_worktree_dedicated", "worktree_status"],
+      "properties": {
+        "worker_id": { "type": "string" },
+        "node_id": { "type": "string" },
+        "proof_id": { "type": "string" },
+        "session_id": { "type": "string" },
+        "proof_worktree": { "type": "string" },
+        "proof_worktree_dedicated": { "type": "boolean" },
+        "worktree_status": { "type": "string", "enum": ["created", "reused_dedicated", "preserved", "cleaned", "cleanup_failed"] },
+        "target_fidelity": { "type": "number", "minimum": 0, "maximum": 1 },
+        "skeptic_review_id": { "type": "string" },
+        "wit_target_sha256": { "type": "string" },
+        "lean_target_sha256": { "type": "string" },
+        "frozen_target_sha256": { "type": "string" },
+        "subproblem_statement": { "type": "string" },
+        "wit_path": { "type": "string" },
+        "lean_path": { "type": "string" },
+        "lean_status": { "type": "string" },
+        "safeverify_status": { "type": "string" },
+        "created_lean_project": { "type": "boolean" },
+        "cleanup_status": { "type": "string" },
+        "status": { "$ref": "#/$defs/status" }
+      }
+    },
+    "proof_worktree": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["session_id", "proof_id", "path", "dedicated", "owner_worker", "status"],
+      "properties": {
+        "session_id": { "type": "string" },
+        "proof_id": { "type": "string" },
+        "node_id": { "type": "string" },
+        "path": { "type": "string" },
+        "dedicated": { "type": "boolean" },
+        "owner_worker": { "type": "string" },
+        "status": { "type": "string", "enum": ["created", "reused_dedicated", "preserved", "cleaned", "cleanup_failed"] },
+        "artifact_archive": { "type": "string" }
+      }
+    },
+    "generator_artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifact_id", "session_id", "proof_worktree", "proof_worktree_dedicated", "worktree_status", "wit_path", "status"],
+      "properties": {
+        "artifact_id": { "type": "string" },
+        "proof_id": { "type": "string" },
+        "session_id": { "type": "string" },
+        "proof_worktree": { "type": "string" },
+        "proof_worktree_dedicated": { "type": "boolean" },
+        "worktree_status": { "type": "string", "enum": ["created", "reused_dedicated", "preserved", "cleaned", "cleanup_failed"] },
+        "wit_path": { "type": "string" },
+        "lean_path": { "type": "string" },
+        "target_fidelity": { "type": "number", "minimum": 0, "maximum": 1 },
+        "skeptic_review_id": { "type": "string" },
+        "wit_target_sha256": { "type": "string" },
+        "lean_target_sha256": { "type": "string" },
+        "frozen_target_sha256": { "type": "string" },
+        "wit_check_status": { "type": "string" },
+        "lean_status": { "type": "string" },
+        "safeverify_status": { "type": "string" },
+        "status": { "$ref": "#/$defs/status" }
+      }
+    },
+    "barrier_attack_record": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["barrier_id", "actual_barrier_lemma", "direct_attacks", "counterexample_pressure", "theorem_precondition_gap", "next_exact_attempt"],
+      "properties": {
+        "barrier_id": { "type": "string" },
+        "actual_barrier_lemma": { "type": "string" },
+        "direct_attacks": { "type": "array", "items": { "type": "string" }, "minItems": 2 },
+        "counterexample_pressure": { "type": "string" },
+        "theorem_precondition_gap": { "type": "string" },
+        "next_exact_attempt": { "type": "string" }
+      }
+    },
+    "actual_lemma_queue_item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["lemma_id", "statement", "unlocks", "priority", "status", "next_attempt"],
+      "properties": {
+        "lemma_id": { "type": "string" },
+        "statement": { "type": "string" },
+        "unlocks": { "type": "string" },
+        "priority": { "type": "number", "minimum": 0 },
+        "status": { "$ref": "#/$defs/status" },
+        "next_attempt": { "type": "string" }
+      }
+    },
+    "retry_ledger_entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["attempt_id", "method_family", "target_hash", "result_status", "what_changed"],
+      "properties": {
+        "attempt_id": { "type": "string" },
+        "method_family": { "type": "string" },
+        "target_hash": { "type": "string" },
+        "result_status": { "$ref": "#/$defs/status" },
+        "what_changed": { "type": "string" },
+        "failure_reason": { "type": "string" }
+      }
+    },
+    "skeptic_review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["review_id", "target_id", "target_drift_checked", "hidden_assumptions_checked", "circularity_checked", "weaker_target_checked", "verdict"],
+      "properties": {
+        "review_id": { "type": "string" },
+        "target_id": { "type": "string" },
+        "target_drift_checked": { "type": "boolean" },
+        "hidden_assumptions_checked": { "type": "boolean" },
+        "circularity_checked": { "type": "boolean" },
+        "weaker_target_checked": { "type": "boolean" },
+        "verdict": { "type": "string", "enum": ["pass", "fail", "needs_repair"] },
+        "notes": { "type": "string" }
       }
     },
     "source_citation": {
