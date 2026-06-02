@@ -75,13 +75,19 @@ If unsure about WIT syntax, read `references/wit.md` before editing.
 
 Prefer explicit API tools such as `run_wit_check`, `run_wit_cycle`, and `run_target_freeze_check` when the environment provides them. If no typed tool exists, use deterministic scripts or native `wit` CLI.
 
-Scripts live at:
+Resolve scripts through Plane so global and space skill overrides work. Do not
+assume skills have been materialized under `$KIMI_WORK_DIR`.
 
 ```bash
-SCRIPTS=${KIMI_WORK_DIR}/.openscientist/skills/witsoc/witsoc-generator/scripts
+"$PLANE_TOOL_BIN" skill-run witsoc/scripts/check.sh path/to/file.wit
+"$PLANE_TOOL_BIN" skill-run witsoc/scripts/cycle.sh path/to/file.wit
+VALIDATOR="$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/validate_handoff.py)"
+python3 "$VALIDATOR" runs/<task>/handoff.json
 ```
 
-Invoke with `bash <path>` because executable bits may not survive sync. Treat these scripts as a compatibility layer; `../references/core/tooling.md` defines the long-term typed CLI/API target.
+Use `skill-run` for shell scripts. Use `skill-which` plus `python3` for
+`validate_handoff.py`. Treat these scripts as a compatibility layer;
+`../references/core/tooling.md` defines the long-term typed CLI/API target.
 
 | Script | Purpose |
 |---|---|
@@ -188,6 +194,17 @@ Forbidden behavior for explicit WIT requests:
 
 Plugin activation command after writing any `.wit` artifact:
 
+The Witsoc UI plugin is external to the strings repo. On a fresh system,
+install it from the verified plugin index before opening the iframe. Plugin
+installation requires `oras`, `cosign`, and `tar` on the host.
+
+```bash
+"$PLANE_TOOL_BIN" plugins available
+"$PLANE_TOOL_BIN" plugins list
+# If witsoc is not listed locally:
+"$PLANE_TOOL_BIN" plugins install witsoc
+```
+
 ```bash
 "$PLANE_TOOL_BIN" plugins iframe use witsoc
 "$PLANE_TOOL_BIN" plugins iframe bash witsoc open path/to/generated.wit
@@ -223,8 +240,9 @@ For nontrivial problems, start from `runs/<task>/handoff.json` conforming to `..
 For WIT generation, execute only `runs/<task>/handoff_v1.json`. Treat `handoff.json` as context, not as executable proof instructions. If local execution is available, run:
 
 ```bash
-python3 ../scripts/validate_handoff.py runs/<task>/handoff.json
-python3 ../scripts/validate_handoff.py runs/<task>/handoff_v1.json
+VALIDATOR="$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/validate_handoff.py)"
+python3 "$VALIDATOR" runs/<task>/handoff.json
+python3 "$VALIDATOR" runs/<task>/handoff_v1.json
 ```
 
 If validation fails, return to Explorer with the exact validation errors. Do not invent new helper lemmas unless a structural check explicitly fails. Do not cite any theorem outside `external_dependencies`.

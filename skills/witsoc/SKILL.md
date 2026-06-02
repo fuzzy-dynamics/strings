@@ -123,6 +123,19 @@ Explicit WIT request contract:
 
 Witsoc plugin activation after `.wit` generation:
 
+The Witsoc UI plugin is external to the strings repo. On a fresh system, check
+the verified plugin index and install it before opening the iframe. Plugin
+installation requires `oras`, `cosign`, and `tar` on the host.
+
+```bash
+"$PLANE_TOOL_BIN" plugins available
+"$PLANE_TOOL_BIN" plugins list
+# If witsoc is not listed locally:
+"$PLANE_TOOL_BIN" plugins install witsoc
+```
+
+Then open the generated file in the plugin iframe:
+
 ```bash
 "$PLANE_TOOL_BIN" plugins iframe use witsoc
 "$PLANE_TOOL_BIN" plugins iframe bash witsoc open path/to/generated.wit

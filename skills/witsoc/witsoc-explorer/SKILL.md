@@ -536,8 +536,9 @@ Set the research state to `HANDOFF_READY` only after both validate.
 Use `../references/examples/handoff_solved_problem.json`, `../references/examples/handoff_open_problem.json`, and `../references/examples/handoff_v1_blueprint.json` as shape examples. Run these when local execution is available before asking Generator to consume the handoff:
 
 ```bash
-python3 ../scripts/validate_handoff.py runs/<task>/handoff.json
-python3 ../scripts/validate_handoff.py runs/<task>/handoff_v1.json
+VALIDATOR="$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/validate_handoff.py)"
+python3 "$VALIDATOR" runs/<task>/handoff.json
+python3 "$VALIDATOR" runs/<task>/handoff_v1.json
 ```
 
 The blueprint `lemma_plan` must be a DAG. Every `depends_on` value must reference an earlier `step_id`, and every external theorem used in `method` must appear in `external_dependencies`.

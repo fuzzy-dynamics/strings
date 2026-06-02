@@ -78,8 +78,9 @@ Compute `expected_value = theorem_fidelity * probability_of_completion * verifie
 Validation sequence:
 
 ```bash
-python3 strings/skills/witsoc/scripts/validate_handoff.py runs/<task>/handoff.json
-python3 strings/skills/witsoc/scripts/validate_handoff.py runs/<task>/handoff_v1.json
+VALIDATOR="$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/validate_handoff.py)"
+python3 "$VALIDATOR" runs/<task>/handoff.json
+python3 "$VALIDATOR" runs/<task>/handoff_v1.json
 ```
 
 Generator prompt contract:
