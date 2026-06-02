@@ -1,0 +1,545 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openscientist.local/witsoc/handoff.schema.json",
+  "title": "Witsoc Explorer to Generator Handoff",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "state",
+    "problem_profile",
+    "problem_status",
+    "source_citations",
+    "solved_problem_map",
+    "ontology_map",
+    "theorem_candidates",
+    "rejected_theorem_candidates",
+    "backward_chaining",
+    "falsification_pass",
+    "obstructions",
+    "barrier_map",
+    "open_product_target",
+    "conjectures",
+    "proof_objects",
+    "search_budget",
+    "proof_compression",
+    "target",
+    "artifact_target",
+    "sketches",
+    "selected_sketch_id",
+    "obligation_graph",
+    "external_facts",
+    "external_verifications",
+    "mutation_tracker",
+    "target_freeze",
+    "status"
+  ],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "run_id": { "type": "string", "minLength": 1 },
+    "state": {
+      "type": "string",
+      "enum": [
+        "INTAKE",
+        "EXPLORE",
+        "HANDOFF_READY",
+        "GENERATE_WIT",
+        "CHECK_WIT",
+        "BUILD_CONTEXT",
+        "SEMANTIC_REVIEW",
+        "RECEIPT",
+        "OPTIONAL_LEAN",
+        "REPAIR_WIT",
+        "REPAIR_LEAN",
+        "REPORT"
+      ]
+    },
+    "problem_profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["object_types", "difficulty", "proof_styles", "known_theorem_density", "search_implications"],
+      "properties": {
+        "object_types": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["algebra", "combinatorics", "geometry", "graph_theory", "number_theory", "analysis", "logic", "topology", "probability", "algorithms"]
+          }
+        },
+        "difficulty": { "type": "string", "enum": ["D1", "D2", "D3", "D4", "D5"] },
+        "proof_styles": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["constructive", "extremal", "induction", "contradiction", "invariant", "probabilistic", "algebraic", "geometric", "analytic", "computational"]
+          }
+        },
+        "known_theorem_density": { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH"] },
+        "search_implications": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "problem_status": {
+      "type": "string",
+      "enum": ["SOLVED", "OPEN", "PARTIAL", "AMBIGUOUS", "UNCONFIRMED"]
+    },
+    "source_citations": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/source_citation" }
+    },
+    "solved_problem_map": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["literature_anchor", "canonical_proof_landscape", "target_domain", "library_domain", "domain_alignment", "boundary_checks", "premise_minimization"],
+      "properties": {
+        "literature_anchor": { "type": "string" },
+        "canonical_proof_landscape": { "type": "array", "items": { "type": "string" } },
+        "target_domain": { "type": "string" },
+        "library_domain": { "type": "string" },
+        "domain_alignment": { "type": "string", "enum": ["exact", "narrower", "broader", "mismatch", "unknown", "not_applicable"] },
+        "boundary_checks": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "premise_minimization": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["direct_definition_unfolding", "weakest_standard_tool", "avoided_heavy_machinery"],
+          "properties": {
+            "direct_definition_unfolding": { "type": "string" },
+            "weakest_standard_tool": { "type": "string" },
+            "avoided_heavy_machinery": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      }
+    },
+    "ontology_map": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["primary_structure", "features", "theorem_families", "canonical_encodings", "search_queries"],
+      "properties": {
+        "primary_structure": { "type": "string" },
+        "features": { "type": "array", "items": { "type": "string" } },
+        "theorem_families": { "type": "array", "items": { "type": "string" } },
+        "canonical_encodings": { "type": "array", "items": { "type": "string" } },
+        "search_queries": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "theorem_candidates": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/theorem_candidate" }
+    },
+    "rejected_theorem_candidates": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/rejected_theorem_candidate" }
+    },
+    "backward_chaining": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/backward_goal" }
+    },
+    "falsification_pass": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/falsification_layer" }
+    },
+    "obstructions": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/obstruction" }
+    },
+    "barrier_map": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/barrier" }
+    },
+    "open_product_target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "statement", "why_this_product", "boundary"],
+      "properties": {
+        "kind": { "type": "string", "enum": ["finite_counterexample", "obstruction_lemma", "conditional_step", "not_applicable"] },
+        "statement": { "type": "string" },
+        "why_this_product": { "type": "string" },
+        "boundary": { "type": "string" }
+      }
+    },
+    "conjectures": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/conjecture" }
+    },
+    "proof_objects": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/proof_object" }
+    },
+    "search_budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["time_budget", "attempt_budget", "computation_budget", "stop_conditions"],
+      "properties": {
+        "time_budget": { "type": "string" },
+        "attempt_budget": { "type": "integer", "minimum": 0 },
+        "computation_budget": { "type": "string" },
+        "stop_conditions": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "proof_compression": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["selected_sketch_id", "compression_goal", "removed_obligations", "kept_obligations", "target_fidelity_preserved", "risk"],
+      "properties": {
+        "selected_sketch_id": { "type": "string" },
+        "compression_goal": { "type": "string" },
+        "removed_obligations": { "type": "array", "items": { "type": "string" } },
+        "kept_obligations": { "type": "array", "items": { "type": "string" } },
+        "target_fidelity_preserved": { "type": "boolean" },
+        "risk": { "type": "string" }
+      }
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "kind", "canonical_statement", "variables", "hypotheses", "definitions", "conclusion"],
+      "properties": {
+        "name": { "type": "string" },
+        "kind": { "type": "string", "enum": ["theorem", "lemma", "disproof", "reduction", "algorithm_correctness", "audit", "open_problem_progress"] },
+        "original_problem": { "type": "string" },
+        "canonical_statement": { "type": "string" },
+        "variables": { "type": "array", "items": { "type": "string" } },
+        "hypotheses": { "type": "array", "items": { "type": "string" } },
+        "definitions": { "type": "array", "items": { "type": "string" } },
+        "conclusion": { "type": "string" },
+        "quantifier_order": { "type": "string" }
+      }
+    },
+    "artifact_target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["result_type", "statement", "status"],
+      "properties": {
+        "result_type": {
+          "type": "string",
+          "enum": ["full_theorem", "special_case", "bound", "conditional_theorem", "reduction", "obstruction", "counterexample", "computation", "failed_attempt", "conjecture", "lemma"]
+        },
+        "statement": { "type": "string" },
+        "assumptions": { "type": "array", "items": { "type": "string" } },
+        "known_gaps": { "type": "array", "items": { "type": "string" } },
+        "relationship_to_original": { "type": "string" },
+        "status": { "$ref": "#/$defs/status" }
+      }
+    },
+    "sketches": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/sketch" }
+    },
+    "selected_sketch_id": { "type": "string" },
+    "obligation_graph": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/obligation" }
+    },
+    "external_facts": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/external_fact" }
+    },
+    "external_verifications": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/external_verification" }
+    },
+    "mutation_tracker": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/mutation" }
+    },
+    "counterexamples_checked": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "target_freeze": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_text_sha256", "canonical_target_sha256", "given_block_sha256", "claim_block_sha256", "definitions_sha256"],
+      "properties": {
+        "source_text_sha256": { "type": "string" },
+        "canonical_target_sha256": { "type": "string" },
+        "given_block_sha256": { "type": "string" },
+        "claim_block_sha256": { "type": "string" },
+        "definitions_sha256": { "type": "string" }
+      }
+    },
+    "status": { "$ref": "#/$defs/status" },
+    "lean_notes": { "type": "string" },
+    "wit_notes": { "type": "string" }
+  },
+  "$defs": {
+    "status": {
+      "type": "string",
+      "enum": ["VERIFIED", "UNVERIFIED", "OPEN", "PARTIAL", "CONDITIONAL", "CONJECTURE", "FAILED_ATTEMPT", "GAP", "REJECTED"]
+    },
+    "sketch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sketch_id",
+        "target_theorem",
+        "proof_strategy",
+        "lemmas",
+        "remaining_goals",
+        "known_gaps",
+        "status",
+        "ev"
+      ],
+      "properties": {
+        "sketch_id": { "type": "string" },
+        "parent_sketch_id": { "type": ["string", "null"] },
+        "target_theorem": { "type": "string" },
+        "proof_strategy": { "type": "string" },
+        "current_artifact": { "type": "string" },
+        "proof_objects": { "type": "array", "items": { "type": "string" } },
+        "lemmas": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/lemma" }
+        },
+        "solved_pieces": { "type": "array", "items": { "type": "string" } },
+        "remaining_goals": { "type": "array", "items": { "type": "string" } },
+        "known_gaps": { "type": "array", "items": { "type": "string" } },
+        "failure_class": { "type": "string" },
+        "next_mutation": { "type": "string" },
+        "status": { "$ref": "#/$defs/status" },
+        "ev": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["theorem_fidelity", "probability_of_completion", "verifier_friendliness", "expected_value"],
+          "properties": {
+            "theorem_fidelity": { "type": "number", "minimum": 0, "maximum": 1 },
+            "probability_of_completion": { "type": "number", "minimum": 0, "maximum": 1 },
+            "verifier_friendliness": { "type": "number", "minimum": 0, "maximum": 1 },
+            "expected_value": { "type": "number", "minimum": 0, "maximum": 1 }
+          }
+        }
+      }
+    },
+    "lemma": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "statement", "role", "inputs", "outputs", "dependencies", "proof_idea", "risk", "economics"],
+      "properties": {
+        "id": { "type": "string" },
+        "statement": { "type": "string" },
+        "role": { "type": "string" },
+        "inputs": { "type": "array", "items": { "type": "string" } },
+        "outputs": { "type": "array", "items": { "type": "string" } },
+        "dependencies": { "type": "array", "items": { "type": "string" } },
+        "proof_idea": { "type": "string" },
+        "risk": { "type": "string" },
+        "automation_candidates": { "type": "array", "items": { "type": "string" } },
+        "economics": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["goals_unlocked", "proof_complexity", "lemma_value"],
+          "properties": {
+            "goals_unlocked": { "type": "number", "minimum": 0 },
+            "proof_complexity": { "type": "number", "exclusiveMinimum": 0 },
+            "lemma_value": { "type": "number", "minimum": 0 }
+          }
+        }
+      }
+    },
+    "backward_goal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["goal", "would_follow_from"],
+      "properties": {
+        "goal": { "type": "string" },
+        "would_follow_from": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["subgoal", "justification", "dependencies", "risk"],
+            "properties": {
+              "subgoal": { "type": "string" },
+              "justification": { "type": "string" },
+              "dependencies": { "type": "array", "items": { "type": "string" } },
+              "risk": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "source_citation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "source", "source_type", "date_checked", "claim_supported"],
+      "properties": {
+        "id": { "type": "string" },
+        "source": { "type": "string" },
+        "source_type": { "type": "string", "enum": ["primary", "survey", "preprint", "formal_library", "maintained_page", "pointer", "informal", "none"] },
+        "date_checked": { "type": "string" },
+        "claim_supported": { "type": "string" }
+      }
+    },
+    "theorem_candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "theorem",
+        "canonical_statement",
+        "similarity",
+        "prerequisites_satisfied",
+        "formal_availability",
+        "expected_utility",
+        "reason",
+        "missing_preconditions",
+        "weakest_usable_form",
+        "source",
+        "source_type",
+        "date_checked",
+        "claim_supported",
+        "confidence_would_drop_if",
+        "rank"
+      ],
+      "properties": {
+        "theorem": { "type": "string" },
+        "canonical_statement": { "type": "string" },
+        "similarity": { "type": "number", "minimum": 0, "maximum": 1 },
+        "prerequisites_satisfied": { "type": "number", "minimum": 0, "maximum": 1 },
+        "formal_availability": { "type": "string", "enum": ["YES", "NO", "PARTIAL", "UNKNOWN"] },
+        "expected_utility": { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH"] },
+        "reason": { "type": "string" },
+        "missing_preconditions": { "type": "array", "items": { "type": "string" } },
+        "weakest_usable_form": { "type": "string" },
+        "source": { "type": "string" },
+        "source_type": { "type": "string", "enum": ["primary", "survey", "preprint", "formal_library", "maintained_page", "pointer", "informal", "none"] },
+        "date_checked": { "type": "string" },
+        "claim_supported": { "type": "string" },
+        "confidence_would_drop_if": { "type": "array", "items": { "type": "string" } },
+        "rank": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "rejected_theorem_candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["theorem", "reason_rejected", "source", "source_type", "date_checked", "blocked_by"],
+      "properties": {
+        "theorem": { "type": "string" },
+        "reason_rejected": { "type": "string" },
+        "source": { "type": "string" },
+        "source_type": { "type": "string", "enum": ["primary", "survey", "preprint", "formal_library", "maintained_page", "pointer", "informal", "none"] },
+        "date_checked": { "type": "string" },
+        "blocked_by": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "obstruction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "description", "threatens", "evidence", "test", "status"],
+      "properties": {
+        "id": { "type": "string" },
+        "description": { "type": "string" },
+        "threatens": { "type": "string" },
+        "evidence": { "type": "string" },
+        "test": { "type": "string" },
+        "status": { "type": "string", "enum": ["active", "resolved", "failed", "blocked"] }
+      }
+    },
+    "falsification_layer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["layer", "action", "target_defect", "result"],
+      "properties": {
+        "layer": { "type": "string", "enum": ["trivial_degenerate", "symmetry_parity", "asymptotic_extremes"] },
+        "action": { "type": "string" },
+        "target_defect": { "type": "string" },
+        "result": { "type": "string" }
+      }
+    },
+    "barrier": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "classical_obstruction", "applies_to", "local_counter_strategy", "degeneracy_stress_test", "status"],
+      "properties": {
+        "id": { "type": "string" },
+        "classical_obstruction": { "type": "string" },
+        "applies_to": { "type": "string" },
+        "local_counter_strategy": { "type": "string" },
+        "degeneracy_stress_test": { "type": "string" },
+        "status": { "type": "string", "enum": ["active", "bypassed", "blocked", "not_applicable"] }
+      }
+    },
+    "conjecture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "statement", "evidence", "scope", "risk", "rank", "next_test"],
+      "properties": {
+        "id": { "type": "string" },
+        "statement": { "type": "string" },
+        "evidence": { "type": "array", "items": { "type": "string" } },
+        "scope": { "type": "string" },
+        "risk": { "type": "string" },
+        "rank": { "type": "number", "minimum": 0, "maximum": 1 },
+        "next_test": { "type": "string" }
+      }
+    },
+    "proof_object": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "target", "dependencies", "subgoals", "confidence", "gap_count", "theorem_fidelity", "formalization_risk"],
+      "properties": {
+        "id": { "type": "string" },
+        "target": { "type": "string" },
+        "dependencies": { "type": "array", "items": { "type": "string" } },
+        "subgoals": { "type": "array", "items": { "type": "string" } },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "gap_count": { "type": "integer", "minimum": 0 },
+        "theorem_fidelity": { "type": "number", "minimum": 0, "maximum": 1 },
+        "formalization_risk": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "obligation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "claim", "depends_on", "discharge_method", "status"],
+      "properties": {
+        "id": { "type": "string" },
+        "claim": { "type": "string" },
+        "depends_on": { "type": "array", "items": { "type": "string" } },
+        "discharge_method": { "type": "string" },
+        "status": { "$ref": "#/$defs/status" }
+      }
+    },
+    "external_fact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "statement", "preconditions", "source", "formal_availability", "fallback_plan"],
+      "properties": {
+        "id": { "type": "string" },
+        "statement": { "type": "string" },
+        "preconditions": { "type": "array", "items": { "type": "string" } },
+        "source": { "type": "string" },
+        "formal_availability": { "type": "string" },
+        "fallback_plan": { "type": "string" }
+      }
+    },
+    "external_verification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["theorem_name", "source_library_availability", "exact_statement_needed", "preconditions", "local_replacement_plan", "downstream_risk"],
+      "properties": {
+        "theorem_name": { "type": "string" },
+        "source_library_availability": { "type": "string" },
+        "exact_statement_needed": { "type": "string" },
+        "preconditions": { "type": "array", "items": { "type": "string" } },
+        "local_replacement_plan": { "type": "string" },
+        "downstream_risk": { "type": "string" }
+      }
+    },
+    "mutation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["from_sketch", "mutation", "reason", "changed_dimension", "unchanged_constraints"],
+      "properties": {
+        "from_sketch": { "type": "string" },
+        "mutation": { "type": "string", "enum": ["strengthen_induction_hypothesis", "domain_weakening", "duality_transformation_shift"] },
+        "reason": { "type": "string" },
+        "changed_dimension": { "type": "string" },
+        "unchanged_constraints": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

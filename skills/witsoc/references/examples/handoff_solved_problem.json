@@ -1,0 +1,244 @@
+{
+  "schema_version": "1.0",
+  "run_id": "example_solved_hall_matching",
+  "state": "HANDOFF_READY",
+  "problem_profile": {
+    "object_types": ["graph_theory", "combinatorics"],
+    "difficulty": "D2",
+    "proof_styles": ["constructive"],
+    "known_theorem_density": "HIGH",
+    "search_implications": ["rank matching theorems before building a proof"]
+  },
+  "problem_status": "SOLVED",
+  "source_citations": [
+    {
+      "id": "src_hall_textbook",
+      "source": "standard graph theory textbook statement of Hall's marriage theorem",
+      "source_type": "survey",
+      "date_checked": "2026-05-31",
+      "claim_supported": "Hall's theorem gives a perfect matching criterion for finite bipartite graphs"
+    }
+  ],
+  "solved_problem_map": {
+    "literature_anchor": "Hall's marriage theorem",
+    "canonical_proof_landscape": ["augmenting path proof", "max-flow min-cut proof"],
+    "target_domain": "finite bipartite graph with left part L and right part R",
+    "library_domain": "finite bipartite graph with neighborhood condition for every subset of L",
+    "domain_alignment": "exact",
+    "boundary_checks": {
+      "finiteness": "required and satisfied",
+      "bipartite": "required and satisfied",
+      "empty_left_part": "vacuous case handled"
+    },
+    "premise_minimization": {
+      "direct_definition_unfolding": "insufficient because matching existence is global",
+      "weakest_standard_tool": "left-perfect matching corollary of Hall's theorem",
+      "avoided_heavy_machinery": ["full max-flow min-cut theorem"]
+    }
+  },
+  "ontology_map": {
+    "primary_structure": "finite bipartite graph",
+    "features": ["matching", "neighborhood condition"],
+    "theorem_families": ["Hall", "Konig", "max-flow min-cut"],
+    "canonical_encodings": ["bipartite graph"],
+    "search_queries": ["Hall condition left perfect matching"]
+  },
+  "theorem_candidates": [
+    {
+      "theorem": "Hall's marriage theorem",
+      "canonical_statement": "A finite bipartite graph has a matching saturating L iff every subset S of L has |N(S)| >= |S|.",
+      "similarity": 0.97,
+      "prerequisites_satisfied": 1.0,
+      "formal_availability": "UNKNOWN",
+      "expected_utility": "HIGH",
+      "reason": "The target is exactly the left-perfect matching conclusion under Hall neighborhoods.",
+      "missing_preconditions": [],
+      "weakest_usable_form": "left-perfect matching corollary",
+      "source": "standard graph theory textbook statement",
+      "source_type": "survey",
+      "date_checked": "2026-05-31",
+      "claim_supported": "Hall criterion for finite bipartite matchings",
+      "confidence_would_drop_if": ["graph is not finite", "neighborhood condition is only checked for singletons"],
+      "rank": 1
+    }
+  ],
+  "rejected_theorem_candidates": [
+    {
+      "theorem": "Konig's theorem",
+      "reason_rejected": "Useful duality theorem but stronger machinery than needed.",
+      "source": "standard graph theory textbook statement",
+      "source_type": "survey",
+      "date_checked": "2026-05-31",
+      "blocked_by": ["premise minimization prefers Hall corollary"]
+    }
+  ],
+  "backward_chaining": [
+    {
+      "goal": "There is a matching saturating L.",
+      "would_follow_from": [
+        {
+          "subgoal": "Hall condition holds for every subset of L.",
+          "justification": "Hall's marriage theorem",
+          "dependencies": ["hyp_hall"],
+          "risk": "must verify finiteness and exact bipartite domain"
+        }
+      ]
+    }
+  ],
+  "falsification_pass": [
+    {
+      "layer": "trivial_degenerate",
+      "action": "Check L empty and singleton L.",
+      "target_defect": "vacuous or singleton boundary mismatch",
+      "result": "No defect; theorem handles both."
+    },
+    {
+      "layer": "symmetry_parity",
+      "action": "Swap L and R.",
+      "target_defect": "wrong side saturation",
+      "result": "Target only saturates L; no symmetry assumed."
+    },
+    {
+      "layer": "asymptotic_extremes",
+      "action": "Consider |R| much larger than |L|.",
+      "target_defect": "unneeded right saturation",
+      "result": "No issue; left-perfect matching only."
+    }
+  ],
+  "obstructions": [],
+  "barrier_map": [],
+  "open_product_target": {
+    "kind": "not_applicable",
+    "statement": "Problem is solved.",
+    "why_this_product": "No open-problem product required.",
+    "boundary": "Use solved-problem artifact."
+  },
+  "conjectures": [],
+  "proof_objects": [
+    {
+      "id": "proof_object_hall",
+      "target": "matching saturating L exists",
+      "dependencies": ["external_fact_hall", "hyp_hall"],
+      "subgoals": ["finite bipartite graph", "Hall condition"],
+      "confidence": 0.92,
+      "gap_count": 0,
+      "theorem_fidelity": 1.0,
+      "formalization_risk": 0.35
+    }
+  ],
+  "search_budget": {
+    "time_budget": "short",
+    "attempt_budget": 2,
+    "computation_budget": "none",
+    "stop_conditions": ["domain mismatch", "Hall condition not actually assumed"]
+  },
+  "proof_compression": {
+    "selected_sketch_id": "sketch_hall",
+    "compression_goal": "Use the Hall corollary directly and avoid max-flow machinery.",
+    "removed_obligations": ["prove max-flow min-cut"],
+    "kept_obligations": ["verify finite bipartite graph", "verify Hall condition"],
+    "target_fidelity_preserved": true,
+    "risk": "Formal library may name the Hall corollary differently."
+  },
+  "target": {
+    "name": "hall_left_perfect_matching",
+    "kind": "theorem",
+    "original_problem": "Prove a matching saturating L exists under Hall's condition.",
+    "canonical_statement": "If G is a finite bipartite graph with parts L,R and every S subset L satisfies |N(S)| >= |S|, then G has a matching saturating L.",
+    "variables": ["G", "L", "R"],
+    "hypotheses": ["G finite bipartite with parts L,R", "for every S subset L, |N(S)| >= |S|"],
+    "definitions": ["matching", "saturating L", "neighborhood N(S)"],
+    "conclusion": "G has a matching saturating L",
+    "quantifier_order": "for all finite bipartite G, if Hall condition then exists matching"
+  },
+  "artifact_target": {
+    "result_type": "full_theorem",
+    "statement": "Hall left-perfect matching corollary.",
+    "assumptions": ["finite bipartite graph", "Hall condition"],
+    "known_gaps": [],
+    "relationship_to_original": "Exact target.",
+    "status": "UNVERIFIED"
+  },
+  "sketches": [
+    {
+      "sketch_id": "sketch_hall",
+      "parent_sketch_id": null,
+      "target_theorem": "Hall left-perfect matching corollary",
+      "proof_strategy": "Cite Hall's theorem after checking preconditions.",
+      "current_artifact": "",
+      "proof_objects": ["proof_object_hall"],
+      "lemmas": [
+        {
+          "id": "lemma_preconditions",
+          "statement": "The target hypotheses satisfy Hall theorem preconditions.",
+          "role": "Domain alignment",
+          "inputs": ["G finite bipartite", "Hall neighborhood condition"],
+          "outputs": ["Hall theorem applies"],
+          "dependencies": [],
+          "proof_idea": "Unfold the target hypotheses.",
+          "risk": "None if notation matches.",
+          "automation_candidates": ["simp on definitions"],
+          "economics": {
+            "goals_unlocked": 1,
+            "proof_complexity": 1,
+            "lemma_value": 1.0
+          }
+        }
+      ],
+      "solved_pieces": ["domain alignment"],
+      "remaining_goals": ["write WIT citation and final step"],
+      "known_gaps": [],
+      "failure_class": "",
+      "next_mutation": "",
+      "status": "UNVERIFIED",
+      "ev": {
+        "theorem_fidelity": 1.0,
+        "probability_of_completion": 0.9,
+        "verifier_friendliness": 0.8,
+        "expected_value": 0.7200000000000001
+      }
+    }
+  ],
+  "selected_sketch_id": "sketch_hall",
+  "obligation_graph": [
+    {
+      "id": "obligation_1",
+      "claim": "Hall theorem applies.",
+      "depends_on": ["lemma_preconditions", "external_fact_hall"],
+      "discharge_method": "external theorem with checked preconditions",
+      "status": "UNVERIFIED"
+    }
+  ],
+  "external_facts": [
+    {
+      "id": "external_fact_hall",
+      "statement": "Hall's marriage theorem for finite bipartite graphs.",
+      "preconditions": ["finite bipartite graph", "Hall neighborhood condition"],
+      "source": "standard graph theory textbook statement",
+      "formal_availability": "UNKNOWN",
+      "fallback_plan": "Prove the left-perfect matching corollary locally via augmenting paths."
+    }
+  ],
+  "external_verifications": [
+    {
+      "theorem_name": "Hall's marriage theorem",
+      "source_library_availability": "unknown formal availability",
+      "exact_statement_needed": "left-perfect matching corollary",
+      "preconditions": ["finite bipartite graph", "Hall condition"],
+      "local_replacement_plan": "augmenting path proof",
+      "downstream_risk": "If unavailable, artifact becomes GAP unless local proof is added."
+    }
+  ],
+  "mutation_tracker": [],
+  "counterexamples_checked": ["empty L", "singleton L"],
+  "target_freeze": {
+    "source_text_sha256": "example",
+    "canonical_target_sha256": "example",
+    "given_block_sha256": "example",
+    "claim_block_sha256": "example",
+    "definitions_sha256": "example"
+  },
+  "status": "UNVERIFIED",
+  "lean_notes": "Formal theorem name may require search.",
+  "wit_notes": "Use one CITE for Hall and one precondition step."
+}

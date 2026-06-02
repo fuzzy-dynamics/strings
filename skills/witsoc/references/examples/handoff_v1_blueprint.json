@@ -1,0 +1,65 @@
+{
+  "metadata": {
+    "task_id": "example_hall_blueprint",
+    "problem_class": "SOLVED_RECONSTRUCTION"
+  },
+  "target_formalization": {
+    "domains_and_variables": [
+      "G is a finite bipartite graph with left part L and right part R"
+    ],
+    "definitions": [
+      "A matching saturates L if every vertex of L is incident to exactly one matching edge",
+      "N(S) is the set of neighbors in R of vertices in S"
+    ],
+    "hypotheses": [
+      "For every subset S of L, |N(S)| >= |S|"
+    ],
+    "claim": "G has a matching saturating L"
+  },
+  "epistemic_context": {
+    "known_barriers": [],
+    "degeneracy_checks_passed": [
+      "Empty L is vacuous",
+      "Singleton L follows from Hall condition"
+    ]
+  },
+  "external_dependencies": [
+    {
+      "theorem_name": "Hall's marriage theorem",
+      "exact_statement": "A finite bipartite graph has a matching saturating L iff every subset S of L satisfies |N(S)| >= |S|.",
+      "required_preconditions": [
+        "G is finite",
+        "G is bipartite with parts L and R",
+        "Hall condition holds for every subset S of L"
+      ],
+      "formal_availability_target": "Requires Local Weakening"
+    }
+  ],
+  "lemma_plan": [
+    {
+      "step_id": "s1",
+      "type": "ASSUME",
+      "statement": "G is finite bipartite with parts L and R, and Hall condition holds.",
+      "depends_on": [],
+      "method": "target hypothesis unpacking"
+    },
+    {
+      "step_id": "s2",
+      "type": "HAVE",
+      "statement": "The preconditions of Hall's marriage theorem are satisfied.",
+      "depends_on": ["s1"],
+      "method": "definition unfolding of finite bipartite graph and Hall condition"
+    },
+    {
+      "step_id": "s3",
+      "type": "SHOW",
+      "statement": "G has a matching saturating L.",
+      "depends_on": ["s2"],
+      "method": "external: Hall's marriage theorem"
+    }
+  ],
+  "generator_directive": {
+    "artifact_target": "FULL_PROOF",
+    "status_to_assert": "UNVERIFIED"
+  }
+}
