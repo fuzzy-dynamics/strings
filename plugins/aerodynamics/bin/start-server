@@ -1,8 +1,0 @@
-#!/usr/bin/env bash
-set -euo pipefail
-if [[ -z "${PORT:-}" ]]; then
-  echo "[aerodynamics] PORT env not set" >&2; exit 2
-fi
-PLUGIN_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-"$PLUGIN_DIR/bin/ensure-deps"
-exec node "$PLUGIN_DIR/server/index.js"
