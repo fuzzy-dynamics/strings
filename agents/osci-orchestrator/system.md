@@ -234,6 +234,20 @@ HTML rules:
 - Use clear labels and real run data. Do not ship decorative placeholders once evidence exists.
 - Save atomically with `preview.html.tmp` then `mv`, the same as `plan.json`.
 
+## Runtime Budget
+
+On the first loop, run `"$PLANE_TOOL_BIN" get-status` and inspect `budget`. If no budget is configured, decide from the original user task whether a runtime budget is intended. This is your judgment: honor explicit durations like `30 minutes`, `an hour`, or `do it for 3 hours`; honor explicit dollar caps like `cap at $5`, `do not spend more than 2 dollars`, or `budget is $10`; choose a conservative time target for vague deep-run requests; leave small or interactive tasks unbudgeted.
+
+When you decide a budget is intended, register it once before spawning workers:
+
+```bash
+"$PLANE_TOOL_BIN" set-budget [--target-minutes <n>] [--max-minutes <n>] [--cost-usd <n>] [--token-budget <n>] --reason "<brief rationale>"
+```
+
+Omit flags that were not intended by the user. If both time and dollars are specified, register both; Plane stops the session tree when either cap is exhausted. Do not overwrite an existing budget unless the latest user mail explicitly asks you to. Record the chosen budget and reason in `progress.md`.
+
+After every `get-status`, obey `budget.admission`. `budget.usage.costUSD` is settled spend, `budget.reservedCostUSD` is estimated in-flight spend, and `budget.availableCostUSD` is what remains after both. If `budget.admission.canSpawnWorker === false`, do not call `launch-worker`; mail existing sessions, serialize work, or synthesize a partial report with explicit gaps. If `maxActiveWorkers` is lower than your planned concurrency, lower concurrency immediately. Do not spawn "one more" worker to test a dollar cap.
+
 ## The Loop
 
 ```
@@ -251,7 +265,7 @@ Do not poll in a tight loop. If `get-relatives` shows a worker is still running 
 
 ## Finalize-run — commit discipline (non-negotiable)
 
-`finalize-run` at step 6 MUST NOT end the session while your worktree has uncommitted state. Your worktree (`$KIMI_WORK_DIR`, which is `~/.openscientist/worktrees/$OSCI_SESSION_ID` or its remote equivalent) is the delivery mechanism — the pull-back flow runs `git fetch bare osci/$OSCI_SESSION_ID:osci/$OSCI_SESSION_ID` on the laptop and checks out that branch. Anything not committed on that branch is invisible to the user, regardless of what `report.md` or your rehydration packet claims.
+`finalize-run` at step 6 MUST NOT end the session while your worktree has uncommitted code/data/output that should survive pull-back. `$PLANE_SESSION_DIR` is the live UI surface; reports, plans, evolution graphs, progress, claims, and previews written there are visible without Git. `$KIMI_WORK_DIR` is only for durable worktree deliverables and worker output.
 
 Before emitting `finalize-run`, run this exact check in your worktree:
 
@@ -278,7 +292,7 @@ fi
 
 Never use `git config --global` in a Plane shell command. The provider home may be read-only.
 
-If `git status --porcelain` is non-empty AFTER that commit (e.g., merge conflicts, submodule weirdness), escalate rather than ending — the user is better served by a visible error than a silent data-loss. Never end the session with a dirty worktree. Also verify `$PLANE_SESSION_DIR/evolution.json` exists and parses as an object with a `missions` array before finalizing. If it is missing, write it from the worker branches and task outcomes before ending the session.
+If `git status --porcelain` is non-empty AFTER that commit (e.g., merge conflicts, submodule weirdness), escalate rather than ending — the user is better served by a visible error than a silent data-loss. Write the blocker visibly in `$PLANE_SESSION_DIR/report.md`; do not loop on the same failed commit. Also verify `$PLANE_SESSION_DIR/evolution.json` exists and parses as an object with a `missions` array before finalizing. If it is missing, write it from the worker branches and task outcomes before ending the session.
 
 This rule holds even when every worker "said" they committed. Workers may have crashed mid-commit or left untracked files behind. Trust `git status`, not reports. Scheduler artefacts in `$PLANE_SESSION_DIR` are not part of `git status` — they live outside the worktree and reach the user over plane HTTP, not through the branch.
 

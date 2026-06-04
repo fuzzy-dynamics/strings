@@ -1,6 +1,6 @@
 ---
 name: planning-with-files
-description: Manus-style file-based persistent memory for long-running deep agents. Maintains the deep-run UI files in `$PLANE_SESSION_DIR` (`plan.json`, evolution.json, findings.md, progress.md, report.md, claims.md, preview.html) and mirrors markdown state into `.openscientist/sessions/<run-session-id>/` for git history. Use whenever a task spans many tool calls and you need to survive context compaction or worker handoffs. **Stacks cleanly on top of any other meta-skill** (autoresearch, lit-review, …) — it never owns the work, only the bookkeeping. The frontend deep-run window reads `$PLANE_SESSION_DIR` through the plane files API; updating those files is how the user sees progress. Activated by both orchestrator and workers.
+description: Manus-style file-based persistent memory for long-running deep agents. Maintains the deep-run UI files in `$PLANE_SESSION_DIR` (`plan.json`, evolution.json, findings.md, progress.md, report.md, claims.md, preview.html) and may mirror markdown state into `.openscientist/sessions/<run-session-id>/` for recovery or pull-back when the worktree is part of the deliverable. Use whenever a task spans many tool calls and you need to survive context compaction or worker handoffs. **Stacks cleanly on top of any other meta-skill** (autoresearch, lit-review, …) — it never owns the work, only the bookkeeping. The frontend deep-run window reads `$PLANE_SESSION_DIR` through the plane files API; updating those files is how the user sees progress. Activated by both orchestrator and workers.
 metadata:
   skill-author: OpenScientist
 category: memory
@@ -25,7 +25,7 @@ $PLANE_SESSION_DIR/
   preview.html    # live HTML summary the deep-run window renders
 ```
 
-The orchestrator also keeps a git-backed mirror in the worktree:
+When the worktree is a deliverable, the orchestrator may also keep a git-backed mirror in the worktree:
 
 ```
 .openscientist/sessions/$SESSION/
@@ -41,7 +41,7 @@ The orchestrator also keeps a git-backed mirror in the worktree:
     <session-id>/  # one directory per worker / hypothesizer / scout — their private scratch
 ```
 
-The frontend deep-run window reads `$PLANE_SESSION_DIR` through the plane files API. The worktree mirror exists for commits, pull-back, and worker scratch. Update both; the user sees `$PLANE_SESSION_DIR` on the next poll, including the Evolution graph from `evolution.json`.
+The frontend deep-run window reads `$PLANE_SESSION_DIR` through the plane files API. The worktree mirror exists for recovery, pull-back, and worker scratch when those are relevant. Update `$PLANE_SESSION_DIR` first; mirror only when the worktree is meant to carry deliverables. The user sees `$PLANE_SESSION_DIR` on the next poll, including the Evolution graph from `evolution.json`.
 
 ### Single-writer rule for the canonical files
 
@@ -53,7 +53,7 @@ The **orchestrator** is the only writer of `$PLANE_SESSION_DIR/plan.json`, `evol
 
 When spawning a child, pass the scratch path as a literal path in the prompt. Do not use `$PLANE_SESSION_DIR` in child prompts to mean the orchestrator's directory; each child gets its own `$PLANE_SESSION_DIR`.
 
-The orchestrator wakes on the mail, reads the pointer's target (commit trailers or scratch file), transcribes the relevant facts into the canonical file, and commits. This single-writer discipline keeps the canonical files coherent (no concurrent edits, no merge conflicts on prose, one editorial voice) and makes the audit trail straightforward.
+The orchestrator wakes on the mail, reads the pointer's target (commit trailers or scratch file), and transcribes the relevant facts into the canonical `$PLANE_SESSION_DIR` file. Commit only if the worktree mirror or worker deliverable actually changed. This single-writer discipline keeps the canonical files coherent (no concurrent edits, no merge conflicts on prose, one editorial voice) and makes the audit trail straightforward.
 
 Whether you are the orchestrator or a child, this is the rule:
 
@@ -183,7 +183,7 @@ Three-strike rule: **never** repeat the exact same failing action. Each retry mu
 
 ### 1.5 Commit after update
 
-Every meaningful update to `$PLANE_SESSION_DIR/plan.json` / `evolution.json` / `findings.md` / `progress.md` / `report.md` / `claims.md` is mirrored into `.openscientist/sessions/$SESSION/` and followed by a git commit on the worktree's session branch. The Evolution panel reads `$PLANE_SESSION_DIR/evolution.json`; the mirror commit is for recovery and pull-back.
+Every meaningful update to `$PLANE_SESSION_DIR/plan.json` / `evolution.json` / `findings.md` / `progress.md` / `report.md` / `claims.md` should be saved atomically in `$PLANE_SESSION_DIR`. If the run is producing worktree deliverables, mirror the same state into `.openscientist/sessions/$SESSION/` and commit only when `git status --porcelain` shows real worktree changes. The Evolution panel reads `$PLANE_SESSION_DIR/evolution.json`; the mirror commit is for recovery and pull-back, not for live UI visibility.
 
 ```bash
 git add .openscientist/sessions/$SESSION/
@@ -299,11 +299,11 @@ Reported by: <worker-session-id>
 Notes: <1–3 sentences>
 ```
 
-Workers and scouts write findings to the literal scratch path the orchestrator assigned, usually `.openscientist/sessions/$SESSION/agents/<their-id>/findings.md`, then mail the orchestrator a pointer ("3 new findings at <path>"). The orchestrator opens the scratch, picks the entries worth surfacing to the user, transcribes them here (compressed, deduplicated, attributed), mirrors, and commits.
+Workers and scouts write findings to the literal scratch path the orchestrator assigned, usually `.openscientist/sessions/$SESSION/agents/<their-id>/findings.md`, then mail the orchestrator a pointer ("3 new findings at <path>"). The orchestrator opens the scratch, picks the entries worth surfacing to the user, and transcribes them here (compressed, deduplicated, attributed). Mirror and commit only when the worktree mirror is being maintained for this run.
 
 ### `claims.md`
 
-Distilled claims with confidence. The integrator worker drafts entries in its scratch dir during synthesis; the **orchestrator** transcribes them into `$PLANE_SESSION_DIR/claims.md`, mirrors, and commits.
+Distilled claims with confidence. The integrator worker drafts entries in its scratch dir during synthesis; the **orchestrator** transcribes them into `$PLANE_SESSION_DIR/claims.md`. Mirror and commit only when the worktree mirror is being maintained for this run.
 
 ```markdown
 ## C1 — <claim, one sentence>
@@ -316,7 +316,7 @@ Numbered, monotonic — `C1`, `C2`, ... — so other files can cite by id.
 
 ### `report.md`
 
-The user-facing deliverable. Shape depends on the task: a paper, a technical report, a benchmark write-up, a summary. Driven by the active research/writing meta-skill. The integrator worker writes a draft (`agents/<id>/report.draft.md`) during synthesis; the **orchestrator** transcribes it into `$PLANE_SESSION_DIR/report.md`, mirrors, and commits.
+The user-facing deliverable. Shape depends on the task: a paper, a technical report, a benchmark write-up, a summary. Driven by the active research/writing meta-skill. The integrator worker writes a draft (`agents/<id>/report.draft.md`) during synthesis; the **orchestrator** transcribes it into `$PLANE_SESSION_DIR/report.md`. Mirror and commit only when the worktree mirror is being maintained for this run.
 
 Minimum every report has:
 
@@ -350,7 +350,7 @@ Minimum content:
 - blockers, weak claims, or missing evidence;
 - next action.
 
-The integrator worker may draft richer HTML at `agents/<id>/preview.draft.html`, but the **orchestrator** still owns promotion into `$PLANE_SESSION_DIR/preview.html`, mirroring, and commit. Keep the file standalone: complete HTML, inline CSS, no remote assets, responsive layout. Update it when `report.md`, `claims.md`, `findings.md`, or the selected candidate changes.
+The integrator worker may draft richer HTML at `agents/<id>/preview.draft.html`, but the **orchestrator** still owns promotion into `$PLANE_SESSION_DIR/preview.html`. Mirror and commit only when the worktree mirror is being maintained for this run. Keep the file standalone: complete HTML, inline CSS, no remote assets, responsive layout. Update it when `report.md`, `claims.md`, `findings.md`, or the selected candidate changes.
 
 ## 3. Stacks on top of other meta-skills
 
@@ -403,4 +403,4 @@ The orchestrator never falls into these — deep runs always need the file struc
 - Stuffing tool output into the next prompt — extract the claim, write it to `findings.md`, drop the rest.
 - Starting work before `task_plan.md` exists — non-negotiable.
 - Repeating the same failed action — three-strike rule.
-- Updating files without committing — invisible to the user.
+- Updating only the worktree mirror and not `$PLANE_SESSION_DIR` — invisible to the live UI. `$PLANE_SESSION_DIR` updates are visible without Git commits.
