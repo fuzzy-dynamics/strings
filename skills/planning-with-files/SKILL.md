@@ -94,15 +94,6 @@ Before dispatching workers, `$PLANE_SESSION_DIR/evolution.json` also exists. If 
 { "missions": [] }
 ```
 
-If the installed plugin catalog includes `evolution-tab` with a UI surface, open it after creating `evolution.json`:
-
-```bash
-"$PLANE_TOOL_BIN" plugins use evolution-tab
-"$PLANE_TOOL_BIN" plugins iframe use evolution-tab
-```
-
-Verify `$PLANE_SESSION_DIR/plugins.json` marks `plugins["evolution-tab"].iframe_used === true`; otherwise the user may have valid graph data with no visible Evolution tab.
-
 As soon as missions or workers are chosen, replace it with a graph like:
 
 ```json
