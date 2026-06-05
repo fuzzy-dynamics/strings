@@ -136,6 +136,86 @@ def _as_list(value: object) -> list:
     return value if isinstance(value, list) else []
 
 
+PARTIAL_CLOSURE_STATUSES = {"PARTIAL", "CONDITIONAL"}
+PARTIAL_CLOSURE_FIELDS = (
+    "remaining_gap_statement",
+    "why_not_full_solution",
+    "known_result_comparison",
+    "novelty_status",
+    "next_exact_experiment_or_lemma",
+)
+ALLOWED_NOVELTY_STATUSES = {"new", "known", "variant", "unknown", "not_applicable"}
+ALLOWED_CLAIM_CLASSIFICATIONS = {
+    "target_drift",
+    "known_result_restatement",
+    "hidden_assumption",
+    "finite_evidence_only",
+    "genuine_progress",
+    "needs_repair",
+}
+REJECTED_PARTIAL_CLASSIFICATIONS = {
+    "target_drift",
+    "known_result_restatement",
+    "hidden_assumption",
+    "needs_repair",
+}
+
+
+def check_partial_closure(
+    record: dict,
+    label: str,
+    errors: list[str],
+    skeptic_reviews_by_id: dict[object, dict],
+    *,
+    require_skeptic: bool,
+) -> None:
+    status = record.get("status")
+    if status not in PARTIAL_CLOSURE_STATUSES:
+        return
+
+    for field in PARTIAL_CLOSURE_FIELDS:
+        if not str(record.get(field) or "").strip():
+            errors.append(f"{label} status {status} missing {field}")
+
+    novelty = record.get("novelty_status")
+    if novelty and novelty not in ALLOWED_NOVELTY_STATUSES:
+        errors.append(f"{label} has invalid novelty_status {novelty!r}")
+
+    attempts = _as_list(record.get("closure_attempts"))
+    if len(attempts) < 2:
+        errors.append(f"{label} status {status} must include at least two closure_attempts")
+    method_families: set[str] = set()
+    for index, attempt in enumerate(attempts):
+        if not isinstance(attempt, dict):
+            errors.append(f"{label} closure_attempts[{index}] is not an object")
+            continue
+        for field in ("method_family", "attempt", "result", "remaining_blocker"):
+            if not str(attempt.get(field) or "").strip():
+                errors.append(f"{label} closure_attempts[{index}] missing {field}")
+        method_family = str(attempt.get("method_family") or "").strip()
+        if method_family:
+            method_families.add(method_family)
+    if len(attempts) >= 2 and len(method_families) < 2:
+        errors.append(f"{label} closure_attempts must use at least two distinct method_family values")
+
+    if require_skeptic:
+        review_id = record.get("skeptic_review_id")
+        if not review_id:
+            errors.append(f"{label} status {status} missing skeptic_review_id for partial closure audit")
+            return
+        review = skeptic_reviews_by_id.get(review_id)
+        if not review:
+            errors.append(f"{label} references unknown skeptic_review_id {review_id!r} for partial closure audit")
+            return
+        classification = review.get("claim_classification")
+        if classification not in ALLOWED_CLAIM_CLASSIFICATIONS:
+            errors.append(f"skeptic_reviews {review_id!r} missing or invalid claim_classification for partial closure audit")
+        elif classification in REJECTED_PARTIAL_CLASSIFICATIONS:
+            errors.append(
+                f"{label} cannot be accepted as {status}; skeptic review {review_id!r} classified it as {classification}"
+            )
+
+
 def check_research_machinery(data: dict, errors: list[str]) -> None:
     dag = _as_list(data.get("proof_dependency_dag"))
     workers = _as_list(data.get("worker_results"))
@@ -143,7 +223,22 @@ def check_research_machinery(data: dict, errors: list[str]) -> None:
     actual_lemma_queue = _as_list(data.get("actual_lemma_queue"))
     retry_ledger = _as_list(data.get("retry_ledger"))
     skeptic_reviews = _as_list(data.get("skeptic_reviews"))
-    if not dag and not workers and not generator_artifacts and not actual_lemma_queue and not retry_ledger and not skeptic_reviews:
+    open_problem = data.get("problem_status") in {"OPEN", "UNSOLVED", "UNCONFIRMED"}
+    artifact_target = data.get("artifact_target")
+    has_partial_artifact_target = (
+        open_problem
+        and isinstance(artifact_target, dict)
+        and artifact_target.get("status") in PARTIAL_CLOSURE_STATUSES
+    )
+    if (
+        not dag
+        and not workers
+        and not generator_artifacts
+        and not actual_lemma_queue
+        and not retry_ledger
+        and not skeptic_reviews
+        and not has_partial_artifact_target
+    ):
         return
 
     node_ids: set[str] = set()
@@ -172,9 +267,13 @@ def check_research_machinery(data: dict, errors: list[str]) -> None:
         "OPEN",
     }
     accepted_statuses = {"VERIFIED", "CHECKED", "PROVED_SKETCH"}
-    review_ids = {r.get("review_id") for r in skeptic_reviews if isinstance(r, dict)}
-
-    if data.get("problem_status") in {"OPEN", "UNSOLVED", "UNCONFIRMED"}:
+    skeptic_reviews_by_id = {
+        r.get("review_id"): r
+        for r in skeptic_reviews
+        if isinstance(r, dict) and r.get("review_id")
+    }
+    review_ids = set(skeptic_reviews_by_id)
+    if open_problem:
         if not actual_lemma_queue and not data.get("lovasz_dispatch_blocker"):
             errors.append("OPEN/UNSOLVED/UNCONFIRMED Lovasz handoff must include actual_lemma_queue or lovasz_dispatch_blocker")
 
@@ -211,6 +310,9 @@ def check_research_machinery(data: dict, errors: list[str]) -> None:
         for field in ("target_drift_checked", "hidden_assumptions_checked", "circularity_checked", "weaker_target_checked"):
             if review.get(field) is not True:
                 errors.append(f"skeptic_reviews {review_id!r} must set {field}=true")
+        classification = review.get("claim_classification")
+        if classification is not None and classification not in ALLOWED_CLAIM_CLASSIFICATIONS:
+            errors.append(f"skeptic_reviews {review_id!r} has invalid claim_classification {classification!r}")
         if review.get("verdict") != "pass":
             errors.append(f"skeptic_reviews {review_id!r} verdict must be pass for accepted downstream use")
 
@@ -275,6 +377,14 @@ def check_research_machinery(data: dict, errors: list[str]) -> None:
                     errors.append(f"VERIFIED node {node_id!r} lean_status must be 'passed'")
                 if evidence.get("safeverify_status") != "passed":
                     errors.append(f"VERIFIED node {node_id!r} safeverify_status must be 'passed'")
+        if open_problem:
+            check_partial_closure(
+                node,
+                f"proof_dependency_dag node {node_id!r}",
+                errors,
+                skeptic_reviews_by_id,
+                require_skeptic=True,
+            )
 
     for node_id, deps in graph.items():
         for dep in deps:
@@ -372,6 +482,14 @@ def check_research_machinery(data: dict, errors: list[str]) -> None:
                 errors.append(f"Lean worker {worker_id!r} WIT and Lean target hashes do not match")
         if worker.get("created_lean_project") and not worker.get("cleanup_status"):
             errors.append(f"worker_results {worker_id!r} created Lean project but lacks cleanup_status")
+        if open_problem:
+            check_partial_closure(
+                worker,
+                f"worker_results {worker_id!r}",
+                errors,
+                skeptic_reviews_by_id,
+                require_skeptic=True,
+            )
 
     for index, artifact in enumerate(generator_artifacts):
         if not isinstance(artifact, dict):
@@ -413,6 +531,23 @@ def check_research_machinery(data: dict, errors: list[str]) -> None:
                     errors.append(f"Lean generator_artifacts {artifact_id!r} missing {field}")
             if artifact.get("wit_target_sha256") != artifact.get("lean_target_sha256"):
                 errors.append(f"Lean generator_artifacts {artifact_id!r} WIT and Lean target hashes do not match")
+        if open_problem:
+            check_partial_closure(
+                artifact,
+                f"generator_artifacts {artifact_id!r}",
+                errors,
+                skeptic_reviews_by_id,
+                require_skeptic=True,
+            )
+
+    if open_problem and isinstance(artifact_target, dict):
+        check_partial_closure(
+            artifact_target,
+            "artifact_target",
+            errors,
+            skeptic_reviews_by_id,
+            require_skeptic=False,
+        )
 
     final_assembly = data.get("final_assembly_check")
     if isinstance(final_assembly, dict):

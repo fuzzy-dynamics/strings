@@ -3,19 +3,19 @@
 -- for the Grover problem, for all N >= 2.
 -- Status: UNVERIFIED
 
-MODULE grover_constant
+MODULE [grover_constant]
 
-THEOREM grover_constant:
+THEOREM [grover_constant]:
   GIVEN:
     - $M = 2$, $d_0 = 1$, $d_1 = N-1$, $E_0 = 0$, $E_1 = 1$
-    - $N \geq 2$
+    - [N_lower]: $N \geq 2$
   CLAIM:
     $C_{\mathrm{Grover}} = 1$.
 
-PROOF OF grover_constant:
+PROOF OF [grover_constant]:
 
   [1] HAVE $g(s) = \sqrt{(2s-1)^2 + 4s(1-s)/N}$.
-      BY Grover gap formula (Paper, Proposition 4.2).
+      BY @{Grover gap formula, Paper Proposition 4.2}.
 
   [2] HAVE $g(s)^2 = (2s-1)^2(1-1/N) + 1/N$.
       BY [1], algebra: expand $4s(1-s) = 1 - (2s-1)^2$, collect terms.
@@ -32,7 +32,7 @@ PROOF OF grover_constant:
   [6] CASE $1/\sqrt{N} \leq x \leq 1$:
 
     [6.1] HAVE $g(s) \leq x$ iff $(2s-1)^2 \leq (Nx^2 - 1)/(N-1)$.
-          BY [2], algebra: rearrange $g(s)^2 \leq x^2$.
+          BY [2], algebra: rearrange $g(s)^2 \leq x^2$ under the case condition.
 
     [6.2] HAVE $\mu(\{s : g(s) \leq x\}) = \sqrt{(Nx^2 - 1)/(N-1)}$.
           BY [6.1], the sublevel set is a symmetric interval about $s = 1/2$.
@@ -51,7 +51,7 @@ PROOF OF grover_constant:
   [7] CASE $x > 1$:
 
     [7.1] HAVE $g(s) \leq 1$ for all $s$, so $\mu(\{g \leq x\}) = 1$.
-          BY [4], [2]: $g(0) = g(1) = 1$ and $g(s) \leq 1$ by direct check.
+          BY [4], [2]: $g(0) = g(1) = 1$ and $g(s) \leq 1$ by direct check under the case condition.
 
     [7.2] HAVE $\mu/x = 1/x < 1$.
           BY [7.1], algebra.

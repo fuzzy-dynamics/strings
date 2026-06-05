@@ -96,6 +96,21 @@ Every worker receives target-freeze hashes for the original statement, canonical
 
 Every proof worker also receives a session-scoped dedicated proof worktree path. WIT and Lean files must be generated there, never in the coordinator root or another proof target's worktree. Record the proof worktree in `proof_worktrees.json` and `worker_results.json`, then preserve artifacts/logs/receipts outside the worktree before cleanup.
 
+## Budget-Aware Spawning
+
+Lovasz may spawn as many independent workers as the runtime, budget, and task
+warrant. Use these defaults as lower-bound guidance, not hard caps:
+
+- `quick`: 2-4 agents when worker spawning is useful.
+- `deep`: 8-20 agents by default, expanding when independent DAG nodes justify it.
+- `campaign`: unbounded within runtime and budget; spawn by DAG coverage,
+  falsification need, computation, formalization, and skeptic-review demand.
+
+Every spawned worker must still validate as an exact packet with target hashes,
+forbidden drift, expected artifact, and stop condition. More workers are useful
+only when they cover distinct DAG nodes, method families, counterexample
+pressures, formalization blockers, or skeptic obligations.
+
 ## Skeptic Workers
 
 Every promising nontrivial node needs a skeptic pass before synthesis:
@@ -198,3 +213,15 @@ Before final Generator:
 - target-freeze hashes match across workers,
 - all accepted `VERIFIED` nodes have WIT + Lean + SafeVerify evidence.
 - `final_synthesis_audit` passes before final Generator runs.
+
+For Lovasz run directories, run:
+
+```bash
+VALIDATE="$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/validate_lovasz_run.py)"
+python3 "$VALIDATE" "$PLANE_SESSION_DIR/lovasz-run" --mode deep
+```
+
+Use `--mode quick`, `--mode deep`, or `--mode campaign` to match the route
+classification. The validator is a completion gate: if it rejects missing
+ledgers, empty DAGs, missing worker results, missing skeptic reviews, or partial
+results without remaining barriers, the run is not shippable.

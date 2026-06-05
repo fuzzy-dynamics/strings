@@ -6,17 +6,26 @@ Run:
 
 ```bash
 python3 strings/skills/witsoc/scripts/route.py "<user request>"
+python3 strings/skills/witsoc/scripts/test_route.py
 ```
 
-The returned `announcement` must be shown before work starts. The first route for serious math is Explorer; Lovasz appears only after Explorer freezes the target and creates a barrier packet.
+The returned `announcement` must be shown before work starts. The first route
+for serious math is Explorer. For open-style targets, the canonical route chain
+is Explorer -> Lovasz -> Explorer; Generator appears only after Explorer
+reviews Lovasz output and accepts a narrow artifact target.
+The returned `research_mode` controls default worker spawning:
+
+- `quick`: 2-4 agents when worker spawning is useful.
+- `deep`: 8-20 agents by default; more if independent DAG nodes justify it.
+- `campaign`: unbounded within runtime/budget.
 
 ## Explorer First
 
 | User request | Required announcement | Required route |
 |---|---|---|
-| "do a deep run trying to prove or disprove Call a number k-perfect if sigma(n)=kn, where sigma(n) is the sum of divisors of n. Must k=o(log log n)?" | `Using witsoc with witsoc-explorer.` | Explorer freezes the target and status; if open/unsolved/unconfirmed, Explorer sends a barrier packet to Lovasz. A report that only says known results prove O(log log n) but not little-oh is incomplete without Lovasz barrier attack. |
-| "Prove or disprove Erdős problem 1053" | `Using witsoc with witsoc-explorer.` | Explorer first; Lovasz only after the barrier packet. |
-| "Solve Erdos problem #1053 and give WIT" | `Using witsoc with witsoc-explorer.` | Explorer first despite WIT request; if open/blocked, Explorer -> Lovasz -> Explorer -> Generator. |
+| "do a deep run trying to prove or disprove Call a number k-perfect if sigma(n)=kn, where sigma(n) is the sum of divisors of n. Must k=o(log log n)?" | `Using witsoc with witsoc-explorer -> witsoc-research-lovasz -> witsoc-explorer.` | Explorer freezes the target and status; if open/unsolved/unconfirmed, Explorer sends a barrier packet to Lovasz and then reviews Lovasz output. A report that only says known results prove O(log log n) but not little-oh is incomplete without Lovasz barrier attack. |
+| "Prove or disprove Erdős problem 1053" | `Using witsoc with witsoc-explorer -> witsoc-research-lovasz -> witsoc-explorer.` | Explorer first; Lovasz immediately after Explorer barrier packet; Explorer review after Lovasz. |
+| "Solve Erdos problem #1053 and give WIT" | `Using witsoc with witsoc-explorer -> witsoc-research-lovasz -> witsoc-explorer.` | Explorer first despite WIT request; if open/blocked, Explorer -> Lovasz -> Explorer -> Generator. |
 | "Find a counterexample to this famous conjecture" | `Using witsoc with witsoc-explorer.` | Explorer first; Lovasz if the conjecture is open/unsolved/unconfirmed. |
 | "Work on this open problem from a maintained problem list" | `Using witsoc with witsoc-explorer.` | Explorer status/variant/source triage first. |
 | "Can you prove or disprove this unsolved problem?" | `Using witsoc with witsoc-explorer.` | Explorer first. |
@@ -40,7 +49,7 @@ The returned `announcement` must be shown before work starts. The first route fo
 When Explorer determines the target is open, unsolved, unconfirmed, frontier-level, or blocked, it must announce the chain:
 
 ```text
-Using witsoc with witsoc-explorer -> witsoc-research-lovasz.
+Using witsoc with witsoc-explorer -> witsoc-research-lovasz -> witsoc-explorer.
 ```
 
 Only after Lovasz returns and Explorer accepts the assembled target should the chain become:
@@ -87,6 +96,28 @@ route.py "Formalize this open conjecture in Lean" -> witsoc-explorer
 route.py "Prove Hall's theorem" -> witsoc-explorer
 route.py "Write WIT for this already-stated theorem" -> witsoc-explorer
 route.py "Repair this .wit file" -> witsoc-generator
+```
+
+Expected chain fields:
+
+```text
+route.py --field chain "generate WIT for RH" -> witsoc-explorer -> witsoc-research-lovasz -> witsoc-explorer -> witsoc-generator
+route.py --field chain "skip exploration and use Lovasz" -> witsoc-explorer -> witsoc-research-lovasz -> witsoc-explorer
+route.py --field chain "Write WIT for this already-stated theorem" -> witsoc-explorer -> witsoc-generator
+```
+
+The router also writes `witsoc_route_state.json` when `PLANE_SESSION_DIR`,
+`OSCI_SESSION_DIR`, `KIMI_WORK_DIR`, `WITSOC_ROUTE_STATE`, or `--state-out` is
+available. `generator_authorized: false` means Generator must wait for Explorer
+handoff or Explorer review after Lovasz.
+
+Expected mode fields:
+
+```text
+route.py "Prove or disprove Erdős problem 1053" -> research_mode campaign
+route.py "do a deep run trying to prove or disprove ..." -> research_mode deep
+route.py "Prove Hall's theorem" -> research_mode quick
+route.py "Repair this .wit file" -> research_mode quick
 ```
 
 ## Completion Guard Regression Cases

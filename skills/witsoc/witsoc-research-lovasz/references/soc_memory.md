@@ -70,6 +70,17 @@ Reset `problems_since_last_progress` to `0` only when a new reusable insight, co
 - Before repeating an approach, check `FAILED_APPROACHES` for matching `do_not_repeat`.
 - If three entries share the same blocker, convert the blocker into a named barrier in `barriers.md`.
 
+Use the deterministic helper whenever available:
+
+```bash
+python3 scripts/lovasz_soc_memory.py init runs/<task>
+python3 scripts/lovasz_soc_memory.py query runs/<task> --statement "<exact node>" --method "<method family>"
+python3 scripts/lovasz_soc_memory.py add-failure runs/<task> --method "<method>" --statement "<exact node>" --blocker "<blocker>" --evidence "<path>"
+```
+
+Worker dispatch must consume this memory through `scripts/lovasz_worker_dispatch.py`.
+Packets with high repeat risk require a recorded one-axis mutation before retry.
+
 ## Memory Template
 
 ```text

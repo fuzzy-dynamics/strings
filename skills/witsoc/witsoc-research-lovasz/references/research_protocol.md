@@ -276,7 +276,7 @@ Before a claim is used by Witsoc Explorer or Generator, write a verification rec
 Minimum gate by verdict:
 
 - `CONJECTURE`: examples or computation support it, and no small counterexample was found.
-- `PARTIAL`: exact scope, assumptions, and evidence are recorded.
+- `PARTIAL`: exact scope, assumptions, evidence, remaining gap, novelty comparison, skeptic classification, and at least two closure attempts are recorded.
 - `PROVED_SKETCH`: proof sketch has explicit dependencies, no circular step, and survived boundary/counterexample tests.
 - `CHECKED`: deterministic computation or structural check was run and its input/output path is recorded.
 - `VERIFIED`: formal/verifier receipt or equivalent checked artifact exists.
@@ -304,6 +304,12 @@ Every mathematical statement that matters goes in `claims.md`:
 - Artifact:
 - Source support:
 - Verification gap:
+- Remaining gap statement:
+- Why not full solution:
+- Known result comparison:
+- Novelty status: new | known | variant | unknown | not_applicable
+- Closure attempts:
+- Next exact experiment or lemma:
 ```
 
 Use `VERIFIED` only when Witsoc's verification discipline allows it. Use `CHECKED` for deterministic structural checks or computations that are not semantic proof.

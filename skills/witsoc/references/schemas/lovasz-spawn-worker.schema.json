@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Lovasz Spawn Worker Request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "worker_type",
+    "target_node_id",
+    "exact_statement",
+    "expected_artifact",
+    "forbidden_drift",
+    "stop_condition"
+  ],
+  "properties": {
+    "worker_type": {
+      "type": "string",
+      "enum": [
+        "SKEPTIC",
+        "FORMALIZER",
+        "COMPUTATION",
+        "COUNTEREXAMPLE",
+        "MINER",
+        "PROOF_BUILDER",
+        "LITERATURE_AUDITOR",
+        "SYNTHESIS_CHECKER"
+      ]
+    },
+    "target_node_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "exact_statement": {
+      "type": "string",
+      "minLength": 10
+    },
+    "expected_artifact": {
+      "type": "string",
+      "enum": [
+        "Lean",
+        "WIT",
+        "python_script",
+        "counterexample_certificate",
+        "invariant_report",
+        "source_status_ledger",
+        "skeptic_verdict",
+        "assembly_report",
+        "worker_result_json"
+      ]
+    },
+    "forbidden_drift": {
+      "type": "string",
+      "minLength": 10
+    },
+    "stop_condition": {
+      "type": "string",
+      "minLength": 10
+    },
+    "target_hashes": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "frozen_target_sha256": { "type": "string", "minLength": 8 },
+        "definitions_sha256": { "type": "string", "minLength": 8 },
+        "hypotheses_sha256": { "type": "string", "minLength": 8 },
+        "conclusion_sha256": { "type": "string", "minLength": 8 }
+      }
+    },
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "time_minutes": { "type": "number", "minimum": 0 },
+        "max_tool_calls": { "type": "integer", "minimum": 0 },
+        "max_tokens": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

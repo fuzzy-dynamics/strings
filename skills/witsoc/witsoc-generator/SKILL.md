@@ -133,6 +133,18 @@ Every serious generator output should have:
 - rejected labels or gaps,
 - short proof idea.
 
+Every final response after generator work must include this compact artifact
+block:
+
+```text
+Artifacts:
+- WIT: <path|none>
+- Lean: <path|none>
+- Receipt: <path|none>
+- Status: STRUCTURE_OK=<yes/no/not run>; CONTEXT_BUILT=<yes/no/not run>; RECEIPT_ACCEPTED=<yes/no/not run>; LEAN_VERIFIED=<yes/no/not run>
+- Plugin: <opened/open failed/not attempted>
+```
+
 The status label must be inherited from the accepted handoff or mechanically justified by checks/receipts. Do not upgrade a `CONJECTURE`, `PARTIAL`, `PROVED_SKETCH`, or `CHECKED` handoff to `VERIFIED` unless complete formal/verifier evidence exists and SafeVerify passes.
 
 When an artifact or Lean translation fails, also write a failure note beside the artifact, for example `runs/<task>/approach_N_failure.md`, containing:
@@ -150,7 +162,7 @@ Return that failure note to Explorer. Explorer decides whether to send the uncha
 
 A good `.wit` file:
 
-- starts with `-- Status: UNVERIFIED` for ordinary proof artifacts, or the narrowest applicable open-problem status for research artifacts, unless a receipt says otherwise,
+- starts with a valid proof header status: `-- Status: UNVERIFIED`, `-- Status: GAP`, `-- Status: REJECTED`, or `-- Status: VERIFIED` when a receipt says so,
 - has one `MODULE`,
 - states all domains and hypotheses,
 - has a theorem/reduction/algorithm target aligned with the user request,
@@ -187,14 +199,17 @@ Required behavior:
 
 1. Freeze the exact theorem target.
 2. If nontrivial, get or create an Explorer handoff. If the target is open/unsolved/unconfirmed/frontier-level/blocked, require an Explorer-reviewed Lovasz result.
-3. Create or enter a session-scoped proof worktree for this exact artifact target. Do not generate the WIT or Lean proof in the coordinator root, a previous proof target's worktree, or an unrelated Lean project.
-4. Write a `.wit` artifact inside that proof worktree, then preserve a copy in the run artifact directory.
-5. Activate the Witsoc plugin iframe and open the generated `.wit` file.
-6. Run structural check when tools are available.
-7. Build verifier context when tools are available.
-8. If Lean is requested, generate Lean from the WIT target after WIT exists, in the same session-scoped proof worktree for that artifact target.
-9. Record `target_fidelity`, `skeptic_review_id`, `wit_target_sha256`, `lean_target_sha256`, and `frozen_target_sha256` for the generated artifact. If the artifact is final synthesis output, require `final_synthesis_audit` from Explorer/Lovasz before generation.
-10. Final response includes proof worktree path/status, `.wit` path or inline WIT code, plugin activation status, structural check status, Lean status, target-fidelity status, skeptic-review id, and hash-provenance status.
+3. Run `scripts/validate_generator_handoff.py` on `handoff_v1.json`, with route-state input when available, before writing new artifacts.
+4. Create or enter a session-scoped proof worktree for this exact artifact target. Do not generate the WIT or Lean proof in the coordinator root, a previous proof target's worktree, or an unrelated Lean project.
+5. Write a `.wit` artifact inside that proof worktree, then preserve a copy in the run artifact directory and register it in `witsoc_artifacts.json`.
+6. Activate the Witsoc plugin iframe and open the generated `.wit` file.
+7. Run structural check and `scripts/lint_wit_quality.py` when tools are available.
+8. Build verifier context when tools are available; generated context logs must be registered as artifacts.
+9. If Lean is requested, generate Lean from the WIT target after WIT exists, in the same session-scoped proof worktree for that artifact target, then register `.lean` and Lake logs.
+10. If Lean was not already requested and the WIT structural check passes, ask the user whether to generate a Lean 4 proof from this WIT proof and verify it with `lake build`.
+11. Record `target_fidelity`, `skeptic_review_id`, `wit_target_sha256`, `lean_target_sha256`, and `frozen_target_sha256` for the generated artifact. If the artifact is final synthesis output, require `final_synthesis_audit` from Explorer/Lovasz before generation.
+12. Write or update `generator_artifacts.json` with `scripts/generator_manifest.py`; target-hash drift is a hard failure.
+13. Final response includes proof worktree path/status, `.wit` path or inline WIT code, plugin activation status, structural check status, WIT lint status, Lean status, target-fidelity status, skeptic-review id, artifact registry path, generator manifest path, and hash-provenance status.
 
 Proof worktree rule:
 
@@ -269,11 +284,22 @@ For WIT generation, execute only `runs/<task>/handoff_v1.json`. Treat `handoff.j
 
 ```bash
 VALIDATOR="$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/validate_handoff.py)"
+GENERATOR_VALIDATOR="$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/validate_generator_handoff.py)"
 python3 "$VALIDATOR" runs/<task>/handoff.json
 python3 "$VALIDATOR" runs/<task>/handoff_v1.json
+python3 "$GENERATOR_VALIDATOR" runs/<task>/handoff_v1.json --route-state "$PLANE_SESSION_DIR/witsoc_route_state.json" --manifest-out runs/<task>/generator_handoff_validation.json
 ```
 
 If validation fails, return to Explorer with the exact validation errors. Do not invent new helper lemmas unless a structural check explicitly fails. Do not cite any theorem outside `external_dependencies`.
+
+After writing WIT, run:
+
+```bash
+LINTER="$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/lint_wit_quality.py)"
+MANIFEST="$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/generator_manifest.py)"
+python3 "$LINTER" path/to/artifact.wit --json > path/to/artifact.wit.lint.json
+python3 "$MANIFEST" --manifest runs/<task>/generator_artifacts.json --artifact path/to/artifact.wit --type wit --target-hash "$FROZEN_TARGET_SHA256" --route-state "$PLANE_SESSION_DIR/witsoc_route_state.json" --proof-worktree "$WITSOC_PROOF_WORKTREE"
+```
 
 For open-problem handoffs, require a narrower artifact target before writing WIT: special case, bound, conditional theorem, reduction, obstruction, counterexample, computation, failed attempt, conjecture, or lemma.
 
@@ -284,7 +310,7 @@ For finite/infinite graph-theory reductions, prefer the checked WIT templates un
 - `compactness_disjoint_union_reduction.wit`
 - `finite_chi_bounding_compactness_template.wit`
 
-These templates are reduction skeletons only. Preserve `TEMPLATE_UNVERIFIED` until the exact frozen target, external compactness theorem, and all side conditions are instantiated and checked.
+These templates are reduction skeletons only. Preserve `-- Template: true` and keep the WIT header `UNVERIFIED` until the exact frozen target, external compactness theorem, and all side conditions are instantiated and checked.
 
 ### 1. Freeze The Target
 
@@ -294,7 +320,8 @@ Record:
 Name:
 Kind: theorem | lemma | disproof | reduction | algorithm correctness | audit
 Original open problem, if any:
-Artifact status: UNVERIFIED | OPEN | PARTIAL | CONDITIONAL | CONJECTURE | FAILED_ATTEMPT | GAP
+WIT header status: UNVERIFIED | VERIFIED | GAP | REJECTED
+Research/result status: OPEN | PARTIAL | CONDITIONAL | CONJECTURE | FAILED_ATTEMPT | CHECKED | PROVED_SKETCH | VERIFIED | GAP | REJECTED
 Variables and domains:
 Hypotheses:
 Definitions:
@@ -337,19 +364,19 @@ Canonical theorem skeleton:
 
 ```wit
 -- Status: UNVERIFIED
-MODULE module_name
+MODULE [module_name]
 
-THEOREM module_name:
+THEOREM [module_name]:
   GIVEN:
-    - hypotheses
+    - [hyp_name]: hypotheses
   CLAIM:
     conclusion.
 
-PROOF OF module_name:
+PROOF OF [module_name]:
   [1] ASSUME setup fact.
-      BY hypothesis.
+      BY [hyp_name].
   [2] HAVE intermediate claim.
-      BY [1], named method or theorem.
+      BY [1], @{named method or theorem}.
   [3] SHOW conclusion.
       BY [2], final assembly.
   QED BY [3].
@@ -359,10 +386,13 @@ Rules:
 
 - Labels are sequential inside each scope.
 - No forward, self, or cross-case references.
-- Every nontrivial `BY` names local labels and method/theorem.
-- `CITE` may introduce an external theorem, but downstream use must still be checked.
-- `GAP` is honest and preferable to handwaving.
+- Prefer bracketed structural references for local declarations, imported declarations, named hypotheses, and steps: `[lemma_name]`, `[alias.theorem]`, `[hyp_name]`, `[3]`.
+- Use `@name` or `@{full citation text}` for external citations accepted as given.
+- In a `CASE [n]`, cite the introduced case hypothesis as `[n.0]` inside that case.
+- `CITE` may introduce an external theorem, but downstream use must still be checked through the CITE step's label.
+- `GAP` is honest and preferable to handwaving; use `GAP EXPECTING [subproblem]` when the missing bridge is a named lemma or subproblem.
 - Avoid `BY obvious`, `BY clearly`, `BY standard`, `BY Mathlib`, and bare `BY [n]` for nontrivial inferences.
+- Legacy unbracketed declaration names still parse, but new artifacts should use the bracketed Language v2 target syntax.
 
 ## Specialized Artifact Modes
 
@@ -380,7 +410,8 @@ For Erdős-style and other open-problem work, write artifacts that make the scop
 
 Rules:
 
-- The `.wit` header should use `-- Status: UNVERIFIED`, `-- Status: OPEN`, `-- Status: PARTIAL`, `-- Status: CONDITIONAL`, `-- Status: CONJECTURE`, `-- Status: FAILED_ATTEMPT`, or `-- Status: GAP` as appropriate unless a receipt upgrades a proof artifact.
+- The `.wit` header should use only the proof-status labels from `references/wit.md`: `UNVERIFIED`, `VERIFIED`, `GAP`, or `REJECTED`.
+- Put open-problem classifications such as `OPEN`, `PARTIAL`, `CONDITIONAL`, `CONJECTURE`, or `FAILED_ATTEMPT` in the handoff, report fields, comments, or adjacent notes rather than in the WIT `-- Status:` header.
 - The theorem or claim must state the narrower artifact target, not the full open problem, unless the full proof is actually being artifacted.
 - Record the original open problem in comments or setup context.
 - Use `GAP` for the unresolved bridge from the partial result to the original open problem.
@@ -700,7 +731,7 @@ Vague `BY`:
 
 -- Good
 [4] HAVE x > 0.
-    BY [1] and the hypothesis that x is a positive real.
+    BY [1], [x_positive].
 ```
 
 Missing theorem precondition:
@@ -714,7 +745,7 @@ Missing theorem precondition:
 [6] HAVE K is compact and f is continuous on K.
     BY [2], [5].
 [7] HAVE f attains a maximum on K.
-    BY [6] and the extreme value theorem.
+    BY [6], @extreme_value_theorem.
 ```
 
 Missing citation:
@@ -725,7 +756,8 @@ Missing citation:
     BY standard.
 
 -- Good
-[3] CITE finite-tree leaf theorem: every finite tree with at least two vertices has at least two leaves.
+[3] CITE @{finite-tree leaf theorem}: every finite tree with at least two vertices has at least two leaves.
+    BY @{standard graph theory}.
 [4] HAVE T has a leaf.
     BY [1], [2], [3].
 ```

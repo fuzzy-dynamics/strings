@@ -138,7 +138,7 @@ Finite graph barrier machinery:
 Reduction templates:
 
 - Added WIT templates for compactness/disjoint-union and finite chi-bounding reductions.
-- These templates are marked `TEMPLATE_UNVERIFIED` and only formalize the reduction skeleton; they do not settle a frontier theorem without a verified finite chi-bound or obstruction family.
+- These templates keep a valid WIT header status such as `UNVERIFIED` plus a separate `-- Template: true` marker; they only formalize the reduction skeleton and do not settle a frontier theorem without a verified finite chi-bound or obstruction family.
 
 ## Adversarial Ontology Pivot
 
@@ -168,3 +168,15 @@ Lovasz uses only honest claim statuses:
 - `VERIFIED`
 
 `VERIFIED` requires formal/verifier evidence. A proof sketch, computation, or mined invariant cannot be promoted to verified without WIT/Lean/SafeVerify evidence.
+
+## Partial Closure Audit
+
+- Open-problem `PARTIAL` and `CONDITIONAL` products now require a machine-readable closure audit.
+- Each partial/conditional DAG node, worker result, or generator artifact must record the exact remaining gap, why the result is not a full solution, known-result comparison, novelty status, next exact experiment or lemma, and at least two distinct closure attempts.
+- Accepted partial/conditional DAG nodes, worker results, and generator artifacts require a skeptic review with `claim_classification`.
+- Skeptic classifications of `target_drift`, `known_result_restatement`, `hidden_assumption`, or `needs_repair` block acceptance as usable partial progress.
+
+## Historical Benchmarks
+
+- Added `references/historical_benchmark_suite.md` for solved-but-hidden frontier-style tests.
+- Benchmark scoring now emphasizes key-lemma discovery, theorem-precondition accuracy, closure pressure, partial-result discipline, and final status honesty.

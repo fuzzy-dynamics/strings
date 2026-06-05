@@ -20,6 +20,9 @@ Use this to choose the right computation backend and artifact format.
 - `scripts/experiments/number_theory_search.py`: exact arithmetic for divisor sums, multiplicative ratios, valuations, and bounded searches.
 - `scripts/experiments/finite_model_search.py`: generic finite tuple/model search from a Python predicate module.
 
+Run Python tools with `python3` explicitly. Replay commands and research notes
+must not use bare `python`.
+
 ## Certificate Rules
 
 - Every computation must write machine-readable output.

@@ -114,6 +114,16 @@ Each WIT/Lean proof artifact must be generated in a separate session-scoped proo
 
 Accepted Lovasz nodes and artifacts must also include target fidelity, skeptic review, retry/provenance, and hash evidence. Specifically: `target_fidelity`, `skeptic_review_id`, `wit_target_sha256`, `lean_target_sha256`, and `frozen_target_sha256` where WIT/Lean exists. Final Generator requires `final_synthesis_audit`; repeated Lovasz methods require `retry_ledger`; and open/unsolved/unconfirmed runs require `actual_lemma_queue`.
 
+For open/unsolved/unconfirmed targets, accepted `PARTIAL` and `CONDITIONAL`
+nodes, worker results, and Generator artifacts must include a closure audit:
+`remaining_gap_statement`, `why_not_full_solution`,
+`known_result_comparison`, `novelty_status`,
+`next_exact_experiment_or_lemma`, and at least two `closure_attempts` with
+distinct `method_family` values. They also require a skeptic review whose
+`claim_classification` is not target drift, known-result restatement, hidden
+assumption, or needs-repair. Top-level partial `artifact_target` records must
+include the same closure fields.
+
 Accepted `VERIFIED` worker nodes require WIT artifact existence, Lean verification success from that WIT target, and SafeVerify target-preservation success. WIT structural checks alone are not enough.
 
 Validation sequence:

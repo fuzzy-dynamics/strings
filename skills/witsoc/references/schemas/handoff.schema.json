@@ -226,6 +226,15 @@
         "assumptions": { "type": "array", "items": { "type": "string" } },
         "known_gaps": { "type": "array", "items": { "type": "string" } },
         "relationship_to_original": { "type": "string" },
+        "remaining_gap_statement": { "type": "string" },
+        "why_not_full_solution": { "type": "string" },
+        "known_result_comparison": { "type": "string" },
+        "novelty_status": { "$ref": "#/$defs/novelty_status" },
+        "next_exact_experiment_or_lemma": { "type": "string" },
+        "closure_attempts": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/closure_attempt" }
+        },
         "status": { "$ref": "#/$defs/status" }
       }
     },
@@ -393,6 +402,21 @@
       "type": "string",
       "enum": ["VERIFIED", "CHECKED", "PROVED_SKETCH", "UNVERIFIED", "OPEN", "PARTIAL", "CONDITIONAL", "CONJECTURE", "FAILED_ATTEMPT", "GAP", "REJECTED"]
     },
+    "novelty_status": {
+      "type": "string",
+      "enum": ["new", "known", "variant", "unknown", "not_applicable"]
+    },
+    "closure_attempt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["method_family", "attempt", "result", "remaining_blocker"],
+      "properties": {
+        "method_family": { "type": "string" },
+        "attempt": { "type": "string" },
+        "result": { "type": "string" },
+        "remaining_blocker": { "type": "string" }
+      }
+    },
     "sketch": {
       "type": "object",
       "additionalProperties": false,
@@ -504,6 +528,15 @@
         "counterexample_pressure": { "type": "string" },
         "theorem_precondition_gap": { "type": "string" },
         "next_exact_attempt": { "type": "string" },
+        "remaining_gap_statement": { "type": "string" },
+        "why_not_full_solution": { "type": "string" },
+        "known_result_comparison": { "type": "string" },
+        "novelty_status": { "$ref": "#/$defs/novelty_status" },
+        "next_exact_experiment_or_lemma": { "type": "string" },
+        "closure_attempts": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/closure_attempt" }
+        },
         "target_fidelity": { "type": "number", "minimum": 0, "maximum": 1 },
         "skeptic_review_id": { "type": "string" },
         "subproblem_score": { "type": "number" },
@@ -545,6 +578,15 @@
         "lean_path": { "type": "string" },
         "lean_status": { "type": "string" },
         "safeverify_status": { "type": "string" },
+        "remaining_gap_statement": { "type": "string" },
+        "why_not_full_solution": { "type": "string" },
+        "known_result_comparison": { "type": "string" },
+        "novelty_status": { "$ref": "#/$defs/novelty_status" },
+        "next_exact_experiment_or_lemma": { "type": "string" },
+        "closure_attempts": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/closure_attempt" }
+        },
         "created_lean_project": { "type": "boolean" },
         "cleanup_status": { "type": "string" },
         "status": { "$ref": "#/$defs/status" }
@@ -586,6 +628,15 @@
         "wit_check_status": { "type": "string" },
         "lean_status": { "type": "string" },
         "safeverify_status": { "type": "string" },
+        "remaining_gap_statement": { "type": "string" },
+        "why_not_full_solution": { "type": "string" },
+        "known_result_comparison": { "type": "string" },
+        "novelty_status": { "$ref": "#/$defs/novelty_status" },
+        "next_exact_experiment_or_lemma": { "type": "string" },
+        "closure_attempts": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/closure_attempt" }
+        },
         "status": { "$ref": "#/$defs/status" }
       }
     },
@@ -639,6 +690,10 @@
         "hidden_assumptions_checked": { "type": "boolean" },
         "circularity_checked": { "type": "boolean" },
         "weaker_target_checked": { "type": "boolean" },
+        "claim_classification": {
+          "type": "string",
+          "enum": ["target_drift", "known_result_restatement", "hidden_assumption", "finite_evidence_only", "genuine_progress", "needs_repair"]
+        },
         "verdict": { "type": "string", "enum": ["pass", "fail", "needs_repair"] },
         "notes": { "type": "string" }
       }
