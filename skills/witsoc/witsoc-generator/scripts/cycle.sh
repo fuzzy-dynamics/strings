@@ -66,6 +66,8 @@ verify_code=$?
 status_code=$?
 set -e
 
+[[ -f "$verify_out" ]] && register_witsoc_artifact "$verify_out" "log" "witsoc-generator" "generated"
+
 ok=false
 if [[ "$check_code" -eq 0 && "$audit_code" -eq 0 && "$verify_code" -eq 0 && "$status_code" -eq 0 ]]; then
   ok=true

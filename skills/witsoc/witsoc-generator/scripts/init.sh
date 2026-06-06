@@ -19,7 +19,7 @@ usage: init.sh --name module_name --claim "statement" [options]
 Options:
   --kind THEOREM|LEMMA|PROPOSITION|COROLLARY|CONJECTURE
   --given "hypothesis"       may be repeated
-  --out path.wit             default: <module_name>.wit
+  --out path.wit             default: session proof worktree/<module_name>.wit
 
 Creates a verifier-friendly .wit skeleton with UNVERIFIED status.
 USAGE
@@ -63,7 +63,7 @@ case "$kind" in
   THEOREM|LEMMA|PROPOSITION|COROLLARY|CONJECTURE) ;;
   *) die "unsupported kind: $kind" ;;
 esac
-[[ -n "$out" ]] || out="${name}.wit"
+[[ -n "$out" ]] || out="$(default_artifact_path "$name" wit)"
 [[ "$out" == *.wit ]] || die "--out must end in .wit"
 [[ ! -e "$out" ]] || die "refusing to overwrite existing file: $out"
 
@@ -84,6 +84,8 @@ mkdir -p "$(dirname "$out")"
   printf '%s\n' "  [1] GAP: proof not yet supplied."
   printf '%s\n' "  QED BY [1]."
 } >"$out"
+
+register_witsoc_artifact "$out" "wit" "witsoc-generator" "created"
 
 jq -n \
   --argjson ok true \

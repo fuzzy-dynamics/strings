@@ -16,17 +16,48 @@ runs/<task>/handoff_v1.json
 The top-level Witsoc router treats the run as a state machine:
 
 ```text
-INTAKE -> EXPLORE -> RESEARCH_HANDOFF_READY -> BLUEPRINT_READY -> VALIDATE_BLUEPRINT -> GENERATE_WIT -> CHECK_WIT -> BUILD_CONTEXT -> SEMANTIC_REVIEW -> RECEIPT -> OPTIONAL_LEAN -> REPORT
+INTAKE -> EXPLORER_TRIAGE
+EXPLORER_TRIAGE -> DIRECT_ANSWER | EXPLORER_PROOF_PLAN | LOVASZ_BARRIER_PACKET
+LOVASZ_BARRIER_PACKET -> LOVASZ_ATTACK -> EXPLORER_REVIEW
+EXPLORER_REVIEW -> LOVASZ_BARRIER_PACKET | RESEARCH_HANDOFF_READY | HONEST_STOP
+RESEARCH_HANDOFF_READY -> BLUEPRINT_READY -> VALIDATE_BLUEPRINT -> GENERATE_WIT -> CHECK_WIT -> BUILD_CONTEXT -> SEMANTIC_REVIEW -> RECEIPT -> OPTIONAL_LEAN -> REPORT
 ```
 
 Allowed transitions:
 
-- `CHECK_WIT` failure goes to `REPAIR_WIT` or `EXPLORE`.
-- verifier rejection goes to `REPAIR_WIT` or `EXPLORE`.
-- Lean/LSP/REPL failure goes to `REPAIR_LEAN` or `EXPLORE`.
+- `CHECK_WIT` failure goes to `REPAIR_WIT` or `EXPLORER_REVIEW`.
+- verifier rejection goes to `REPAIR_WIT` or `EXPLORER_REVIEW`.
+- Lean/LSP/REPL failure goes to `REPAIR_LEAN` or `EXPLORER_REVIEW`.
+- mathematical blockers in WIT/Lean repair go to `EXPLORER_REVIEW`; Explorer decides whether to send a new `LOVASZ_BARRIER_PACKET`.
 - target drift or SafeVerify failure goes to `REPAIR_*` after restoring the frozen target.
 - open-problem work may stop at `PARTIAL`, `CONDITIONAL`, `CONJECTURE`, `FAILED_ATTEMPT`, or `OPEN` with artifacts.
 - `VALIDATE_BLUEPRINT` failure returns exact schema/DAG/precondition errors to Explorer before Generator is woken up.
+
+Lovasz is not an intake state. Explorer must first freeze the target, triage status, and create a barrier packet. Generator is not a truth-arbitration state. It executes the accepted blueprint and reports checks, receipts, Lean status, and failures back to Explorer/top-level Witsoc.
+
+## Completion Guard
+
+For tasks asking to prove, disprove, solve, or deep-run an open-style target, a run is not complete when it only classifies the target as open, unsupported, or not proved by known results.
+
+Completion requires one of:
+
+- Explorer solved or disproved the frozen target as routine/known,
+- Lovasz ran a barrier attack and Explorer reviewed the result,
+- Generator produced and checked an accepted formal artifact,
+- a concrete operational blocker prevented Lovasz dispatch and is recorded,
+- Lovasz exhausted meaningful angles and returned a documented `FAILED_ATTEMPT`, `CONJECTURE`, `PARTIAL`, `CONDITIONAL`, or `OPEN` ledger.
+
+For a known-open or conjecture-equivalent classification, a prose barrier artifact is not enough. Critic/review agents must reject proof/disproof deep runs unless the final state includes campaign evidence:
+
+- `actual_lemma_queue` with exact missing lemmas,
+- `proof_dependency_dag` containing an `actual_barrier_lemma` node,
+- `barrier_attack_records` with at least two direct attacks or a concrete operational blocker,
+- worker results for at least one counterexample/computation/miner/skeptic/formalizer path when worker spawning is available,
+- skeptic review for accepted nodes,
+- retry ledger for repeated methods,
+- Explorer review of Lovasz output.
+
+Critic/review agents must reject status-only reports for proof/disproof deep runs when no Lovasz proof-DAG, worker result, or barrier attack is present, and must also reject "known open, complete" reports that contain only a Lovasz barrier note without a campaign ledger or explicit dispatch blocker.
 
 ## Schema
 
@@ -58,6 +89,8 @@ Research-state required top-level fields include:
 - `sketches`
 - `selected_sketch_id`
 - `obligation_graph`
+- `proof_dependency_dag`
+- `worker_results`
 - `external_facts`
 - `target_freeze`
 - `status`
@@ -75,12 +108,32 @@ Each proof sketch includes EV ranking fields:
 
 Compute `expected_value = theorem_fidelity * probability_of_completion * verifier_friendliness`. Prioritize the highest-EV sketch unless a lower-EV sketch has a strategic reason that is recorded explicitly.
 
+For Lovasz-directed open-problem work, `proof_dependency_dag` records the decomposed subproblem nodes and dependency edges. Each node is one of: lemma, reduction, special case, obstruction, counterexample search, computational certificate, conditional theorem, or failed method to rule out. `worker_results` records each worker's subproblem statement, dependencies, WIT target, Lean target, session id, dedicated proof worktree, artifact paths, verification logs, cleanup status, and final status.
+
+Each WIT/Lean proof artifact must be generated in a separate session-scoped proof worktree. Record `session_id`, `proof_id` or `node_id`, `proof_worktree`, `proof_worktree_dedicated`, and `worktree_status` for every worker result and final Generator artifact. Missing proof-worktree metadata is a validation failure for worker-generated WIT/Lean evidence and for final Generator artifacts.
+
+Accepted Lovasz nodes and artifacts must also include target fidelity, skeptic review, retry/provenance, and hash evidence. Specifically: `target_fidelity`, `skeptic_review_id`, `wit_target_sha256`, `lean_target_sha256`, and `frozen_target_sha256` where WIT/Lean exists. Final Generator requires `final_synthesis_audit`; repeated Lovasz methods require `retry_ledger`; and open/unsolved/unconfirmed runs require `actual_lemma_queue`.
+
+For open/unsolved/unconfirmed targets, accepted `PARTIAL` and `CONDITIONAL`
+nodes, worker results, and Generator artifacts must include a closure audit:
+`remaining_gap_statement`, `why_not_full_solution`,
+`known_result_comparison`, `novelty_status`,
+`next_exact_experiment_or_lemma`, and at least two `closure_attempts` with
+distinct `method_family` values. They also require a skeptic review whose
+`claim_classification` is not target drift, known-result restatement, hidden
+assumption, or needs-repair. Top-level partial `artifact_target` records must
+include the same closure fields.
+
+Accepted `VERIFIED` worker nodes require WIT artifact existence, Lean verification success from that WIT target, and SafeVerify target-preservation success. WIT structural checks alone are not enough.
+
 Validation sequence:
 
 ```bash
 VALIDATOR="$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/validate_handoff.py)"
 python3 "$VALIDATOR" runs/<task>/handoff.json
 python3 "$VALIDATOR" runs/<task>/handoff_v1.json
+DAG_VALIDATOR="$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/validate_proof_dag.py)"
+python3 "$DAG_VALIDATOR" runs/<task>/handoff.json
 ```
 
 Generator prompt contract:
