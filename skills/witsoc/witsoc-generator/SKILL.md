@@ -57,7 +57,7 @@ If the target is ambiguous, pin an interpretation before writing the artifact. I
 Load only as needed:
 
 - `../references/wit.md`: full `.wit` syntax and scoping reference.
-- `references/soc.md`: `.soc` persistent memory format.
+- `../references/soc.md`: `.soc` persistent memory format.
 - `../references/core/handoff.md`: structured `handoff.json` state-machine contract.
 - `../references/core/tooling.md`: deterministic tool/API discipline.
 - `../references/core/safeverify.md`: target-freezing and anti-cheating checks.
@@ -197,16 +197,16 @@ Required behavior:
 
 1. Freeze the exact theorem target.
 2. If nontrivial, get or create an Explorer handoff. If the target is open/unsolved/unconfirmed/frontier-level/blocked, require an Explorer-reviewed Lovasz result.
-3. Run `scripts/validate_generator_handoff.py` on `handoff_v1.json`, with route-state input when available, before writing new artifacts.
+3. Run `../scripts/validate_generator_handoff.py` on `handoff_v1.json`, with route-state input when available, before writing new artifacts.
 4. Create or enter a session-scoped proof worktree for this exact artifact target. Do not generate the WIT or Lean proof in the coordinator root, a previous proof target's worktree, or an unrelated Lean project.
 5. Write a `.wit` artifact inside that proof worktree, then preserve a copy in the run artifact directory and register it in `witsoc_artifacts.json`.
 6. Activate the Witsoc plugin iframe and open the generated `.wit` file.
-7. Run structural check and `scripts/lint_wit_quality.py` when tools are available.
+7. Run structural check and `../scripts/lint_wit_quality.py` when tools are available.
 8. Build verifier context when tools are available; generated context logs must be registered as artifacts.
 9. If Lean is requested, generate Lean from the WIT target after WIT exists, in the same session-scoped proof worktree for that artifact target, then register `.lean` and Lake logs.
 10. If Lean was not already requested and the WIT structural check passes, ask the user whether to generate a Lean 4 proof from this WIT proof and verify it with `lake build`.
 11. Record `target_fidelity`, `skeptic_review_id`, `wit_target_sha256`, `lean_target_sha256`, and `frozen_target_sha256` for the generated artifact. If the artifact is final synthesis output, require `final_synthesis_audit` from Explorer/Lovasz before generation.
-12. Write or update `generator_artifacts.json` with `scripts/generator_manifest.py`; target-hash drift is a hard failure.
+12. Write or update `generator_artifacts.json` with `../scripts/generator_manifest.py`; target-hash drift is a hard failure.
 13. Final response includes proof worktree path/status, `.wit` path or inline WIT code, plugin activation status, structural check status, WIT lint status, Lean status, target-fidelity status, skeptic-review id, artifact registry path, generator manifest path, and hash-provenance status.
 
 Proof worktree rule:
