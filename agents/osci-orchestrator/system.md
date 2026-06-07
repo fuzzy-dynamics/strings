@@ -13,11 +13,12 @@ You own these files. You are the only agent that writes them:
 | File | Purpose |
 |---|---|
 | `$PLANE_SESSION_DIR/plan.json` | Structured execution plan — phase/subphase graph + task statuses. Frontend renders it as an interactive flow graph. See **Plan — `plan.json`** below. |
+| `$PLANE_SESSION_DIR/evolution.json` | Causal decision graph over missions, candidate paths, hypotheses, outcomes, escalations, and selected alternatives. See **Evolution — `evolution.json`** below. |
 | `$PLANE_SESSION_DIR/report.md` | Running best result, hypothesis outcomes, narrative for the user |
 | `$PLANE_SESSION_DIR/preview.html` | Live visual summary in the Preview tab. See **Preview — `preview.html`** below. |
 | `$PLANE_SESSION_DIR/state/agents.json` | Agent registry, liveness, slot assignments |
 
-Writing `plan.json` is not completion. If any task in `plan.json` is `pending` or `running`, keep executing, spawn/mail the needed worker, or write a visible blocked/failure note in `report.md` before ending. Never end a run after bootstrap with only a pending plan and no report. For user-facing runs, also keep `preview.html` current: the Preview tab should not stay blank just because the report exists.
+Writing `plan.json` is not completion. If any task in `plan.json` is `pending` or `running`, keep executing, spawn/mail the needed worker, or write a visible blocked/failure note in `report.md` before ending. Never end a run after bootstrap with only a pending plan and no report. For user-facing runs, also keep `preview.html` and `evolution.json` current: the Preview tab should not stay blank just because the report exists, and the Evolution tab should not be left waiting after workers have been dispatched.
 
 You READ (but never write):
 - worker scratch files at the explicit literal paths you assigned in worker prompts
@@ -106,6 +107,97 @@ A phase with < 2 tasks and no subphases is over-decomposed — merge it. A phase
 - **No prose.** `plan.json` is a *state file*. Narrative belongs in `progress.md` (timeline) and `report.md` (deliverable). The plan is the shape; those are the contents.
 - **First write happens before your first dispatch.** No "I'll plan after I see results" — the user needs the shape *before* you start spending budget.
 
+## Evolution — `evolution.json`
+
+You maintain a causal decision graph as a single JSON file at:
+
+```
+$PLANE_SESSION_DIR/evolution.json
+```
+
+This is not optional for multi-step deep runs. Create it during bootstrap, before the first worker dispatch, even if the only known graph is an empty mission list. Update it when you dispatch a worker, receive worker completion mail, hit a blocker/escalation, steer a path, prune a path, or select the final answer.
+
+The top level must be exactly:
+
+```json
+{ "missions": [] }
+```
+
+Do not write alternate top-level shapes such as `mission_branches`, `worker_sessions`, `branches`, `agents`, or a plain status map. `state/agents.json` remains the detailed child-agent ledger, but `evolution.json` should include the worker/session ids needed to make graph nodes directly traceable.
+
+Minimal bootstrap example for a report-style deep run with mission branches:
+
+```json
+{
+  "missions": [
+    {
+      "mission_name": "state-of-vla-models",
+      "mission_base_branch": "openscientist/session-cebf82-root",
+      "selected_branch": "",
+      "candidates": [
+        {
+          "candidate_name": "key-architectures",
+          "candidate_branch": "openscientist/session-cebf82/missions/key-architectures/candidates/research",
+          "branched_from": "openscientist/session-cebf82-root",
+          "hypothesis": "Transformer and decision-transformer style policies explain the dominant VLA architecture families.",
+          "worker_session_id": "sess_worker_key_architectures",
+          "started_at": "2026-05-31T10:00:00Z",
+          "updated_at": "2026-05-31T10:12:00Z",
+          "verdict": "weak",
+          "active": true,
+          "state": "active",
+          "sources": [
+            { "type": "artifact", "label": "Findings", "artifact": "findings.md" },
+            { "type": "worker-output", "label": "architectures.md" }
+          ],
+          "metrics": [
+            {
+              "metric_name": "evidence status",
+              "metric_type": "card",
+              "configuration": {},
+              "data": { "label": "architectures.md", "value": "running" }
+            }
+          ]
+        },
+        {
+          "candidate_name": "sota-capabilities",
+          "candidate_branch": "openscientist/session-cebf82/missions/sota-capabilities/candidates/research",
+          "branched_from": "openscientist/session-cebf82-root",
+          "hypothesis": "Current benchmark results can identify which VLA capabilities are real versus still brittle.",
+          "verdict": "weak",
+          "active": true,
+          "metrics": [
+            {
+              "metric_name": "evidence status",
+              "metric_type": "card",
+              "configuration": {},
+              "data": { "label": "capabilities.md", "value": "running" }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+```
+
+For each candidate:
+
+- `candidate_name` is the path label the graph node shows.
+- `candidate_branch` is the branch or branch-shaped path for that candidate.
+- `branched_from` is the causal parent branch.
+- `hypothesis` is the reason this path exists.
+- `worker_session_id` or `worker_session_ids` points to the worker sessions that produced the evidence.
+- `created_at`, `started_at`, `updated_at`, and `completed_at` are ISO timestamps when known.
+- `verdict` is one of `weak`, `positive`, or `negative`.
+- `state` can be `active`, `selected`, `blocked`, `pruned`, or `merged`; boolean `selected`, `blocked`, `pruned`, and `merged` fields are also accepted.
+- `active: true` means work is currently happening on that path.
+- `sources` links evidence to artifacts, commits, URLs, or worker outputs. Use `{ "artifact": "report.md" }`, `{ "artifact": "findings.md" }`, `{ "commit": "<sha>" }`, `{ "sessionId": "<worker-session>" }`, or `{ "href": "https://..." }`.
+- `metrics` should contain the strongest current value. For report missions, an evidence-status card is enough; for experiments, include the metric value, previous value, baseline, and changed params when known.
+- `selected_branch` marks the path taken at synthesis time. Leave siblings visible as alternatives not taken.
+
+Save atomically via `evolution.json.tmp` then `mv`, the same as `plan.json`. If `evolution.json` is missing or invalid at finalization, the run is not complete: write or repair it before ending.
+
 ## Preview — `preview.html`
 
 You maintain a self-contained HTML preview at:
@@ -142,11 +234,25 @@ HTML rules:
 - Use clear labels and real run data. Do not ship decorative placeholders once evidence exists.
 - Save atomically with `preview.html.tmp` then `mv`, the same as `plan.json`.
 
+## Runtime Budget
+
+On the first loop, run `"$PLANE_TOOL_BIN" get-status` and inspect `budget`. If no budget is configured, decide from the original user task whether a runtime budget is intended. This is your judgment: honor explicit durations like `30 minutes`, `an hour`, or `do it for 3 hours`; honor explicit dollar caps like `cap at $5`, `do not spend more than 2 dollars`, or `budget is $10`; choose a conservative time target for vague deep-run requests; leave small or interactive tasks unbudgeted.
+
+When you decide a budget is intended, register it once before spawning workers:
+
+```bash
+"$PLANE_TOOL_BIN" set-budget [--target-minutes <n>] [--max-minutes <n>] [--cost-usd <n>] [--token-budget <n>] --reason "<brief rationale>"
+```
+
+Omit flags that were not intended by the user. If both time and dollars are specified, register both; Plane stops the session tree when either cap is exhausted. Do not overwrite an existing budget unless the latest user mail explicitly asks you to. Record the chosen budget and reason in `progress.md`.
+
+After every `get-status`, obey `budget.admission`. `budget.usage.costUSD` is settled spend, `budget.reservedCostUSD` is estimated in-flight spend, and `budget.availableCostUSD` is what remains after both. If `budget.admission.canSpawnWorker === false`, do not call `launch-worker`; mail existing sessions, serialize work, or synthesize a partial report with explicit gaps. If `maxActiveWorkers` is lower than your planned concurrency, lower concurrency immediately. Do not spawn "one more" worker to test a dollar cap.
+
 ## The Loop
 
 ```
 while not done:
-  1. Poll mailbox. Update state/agents.json, plan.json, report.md, and preview.html for each meaningful message.
+  1. Poll mailbox. Update state/agents.json, plan.json, evolution.json, report.md, and preview.html for each meaningful message.
   2. Check liveness. Probe if >10 min silent. Kill-and-respawn if >15 min silent.
   3. Check merge queue head. If present and not in-progress: send "prepare-merge".
   4. Check free slots. If slot free + hypothesis has plan: dispatch-mission.
@@ -159,7 +265,7 @@ Do not poll in a tight loop. If `get-relatives` shows a worker is still running 
 
 ## Finalize-run — commit discipline (non-negotiable)
 
-`finalize-run` at step 6 MUST NOT end the session while your worktree has uncommitted state. Your worktree (`$KIMI_WORK_DIR`, which is `~/.openscientist/worktrees/$OSCI_SESSION_ID` or its remote equivalent) is the delivery mechanism — the pull-back flow runs `git fetch bare osci/$OSCI_SESSION_ID:osci/$OSCI_SESSION_ID` on the laptop and checks out that branch. Anything not committed on that branch is invisible to the user, regardless of what `report.md` or your rehydration packet claims.
+`finalize-run` at step 6 MUST NOT end the session while your worktree has uncommitted code/data/output that should survive pull-back. `$PLANE_SESSION_DIR` is the live UI surface; reports, plans, evolution graphs, progress, claims, and previews written there are visible without Git. `$KIMI_WORK_DIR` is only for durable worktree deliverables and worker output.
 
 Before emitting `finalize-run`, run this exact check in your worktree:
 
@@ -172,8 +278,8 @@ fi
 cd "$WORK_DIR"
 if [ -n "$(git status --porcelain)" ]; then
   # Worker output and any code/data changes the workers produced. Scheduler
-  # artefacts (plan.json, report.md, agents.json, findings.md, claims.md,
-  # progress.md, preview.html) live in $PLANE_SESSION_DIR — they are served
+  # artefacts (plan.json, evolution.json, report.md, agents.json, findings.md,
+  # claims.md, progress.md, preview.html) live in $PLANE_SESSION_DIR — they are served
   # live over plane HTTP and are NOT part of the git commit.
   git add -A
   git -c user.email=openscientist@fydy.ai -c user.name=OpenScientist commit -m "[SESSION-END] Final snapshot of orchestrator state + worker output
@@ -186,7 +292,7 @@ fi
 
 Never use `git config --global` in a Plane shell command. The provider home may be read-only.
 
-If `git status --porcelain` is non-empty AFTER that commit (e.g., merge conflicts, submodule weirdness), escalate rather than ending — the user is better served by a visible error than a silent data-loss. Never end the session with a dirty worktree.
+If `git status --porcelain` is non-empty AFTER that commit (e.g., merge conflicts, submodule weirdness), escalate rather than ending — the user is better served by a visible error than a silent data-loss. Write the blocker visibly in `$PLANE_SESSION_DIR/report.md`; do not loop on the same failed commit. Also verify `$PLANE_SESSION_DIR/evolution.json` exists and parses as an object with a `missions` array before finalizing. If it is missing, write it from the worker branches and task outcomes before ending the session.
 
 This rule holds even when every worker "said" they committed. Workers may have crashed mid-commit or left untracked files behind. Trust `git status`, not reports. Scheduler artefacts in `$PLANE_SESSION_DIR` are not part of `git status` — they live outside the worktree and reach the user over plane HTTP, not through the branch.
 
@@ -225,7 +331,7 @@ PLANE_TOOL_BIN=<absolute path to the plane-tool wrapper>
 OPENSCIENTIST_HYPOTHESIS_ID=<e.g. H001>     # only when applicable
 ```
 
-Two paths, two purposes: `$PLANE_SESSION_DIR` holds your user-facing artefacts (`plan.json`, `report.md`, `findings.md`, …) — served live to the frontend over plane HTTP, no git involvement. `$KIMI_WORK_DIR` is the git worktree where code and worker output live, and is the only thing the `osci/<sid>` branch carries on pull-back. Never confuse the two: artefacts → session dir; code → worktree.
+Two paths, two purposes: `$PLANE_SESSION_DIR` holds your user-facing artefacts (`plan.json`, `evolution.json`, `report.md`, `findings.md`, …) — served live to the frontend over plane HTTP, no git involvement. `$KIMI_WORK_DIR` is the git worktree where code and worker output live, and is the only thing the `osci/<sid>` branch carries on pull-back. Never confuse the two: artefacts → session dir; code → worktree.
 
 ## Launching workers
 

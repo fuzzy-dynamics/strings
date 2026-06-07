@@ -1,6 +1,6 @@
 ---
 name: autoresearch
-description: Karpathy-style autoresearch loop for the orchestrator. Hypothesizers draft a small number of paths; one biased worker takes ownership of each path and hill-climbs (every experiment a commit, mail-as-pointer-to-git); the orchestrator watches, prunes diminishing-returns paths, and ends with a single merged branch and a written report. Activate when the task is open-ended research with measurable progress (a metric, a benchmark, a "find the best X"). Pairs with sub-skills `autoresearch-worker` and `autoresearch-hypothesizer`, which the orchestrator activates by naming them in the worker spawn prompts. Stacks cleanly with `planning-with-files`.
+description: Karpathy-style autoresearch loop for the orchestrator. Hypothesizers draft a small number of paths; one biased worker takes ownership of each path and hill-climbs when there is a measurable worktree artifact (every experiment a commit, mail-as-pointer-to-git). For literature/research-only runs, workers may instead mail cited scratch files and the orchestrator publishes the report in `$PLANE_SESSION_DIR`. The orchestrator watches, prunes diminishing-returns paths, and ends with a written report plus committed worktree deliverables only when they exist. Activate when the task is open-ended research with measurable progress (a metric, a benchmark, a "find the best X"). Pairs with sub-skills `autoresearch-worker` and `autoresearch-hypothesizer`, which the orchestrator activates by naming them in the worker spawn prompts. Stacks cleanly with `planning-with-files`.
 metadata:
   skill-author: OpenScientist
 category: research
@@ -22,7 +22,7 @@ Immediately load `planning-with-files` with:
 "$PLANE_TOOL_BIN" skill-view planning-with-files/SKILL.md
 ```
 
-Your UI files live in `$RUN_FILES_DIR` from there on: `plan.json`, `findings.md`, `claims.md`, `progress.md`, `report.md`, and optional `preview.html`. Mirror them into `$WORKTREE_RUN_DIR/` and commit the mirror after each update. **You, the orchestrator, are the only writer of those files** (orchestrator §5). Workers commit to candidate branches and write into their own scratch directories at `.openscientist/sessions/$SESSION/agents/<worker-id>/`; they mail you pointers; you transcribe.
+Your UI files live in `$RUN_FILES_DIR` from there on: `plan.json`, `findings.md`, `claims.md`, `progress.md`, `report.md`, and optional `preview.html`. Update those files first; the frontend reads them live. Mirror them into `$WORKTREE_RUN_DIR/` and commit only when the worktree mirror/deliverable is being maintained for this run. **You, the orchestrator, are the only writer of those files** (orchestrator §5). Workers commit to candidate branches when they are producing worktree artifacts; otherwise they write into their own scratch directories at `.openscientist/sessions/$SESSION/agents/<worker-id>/` and mail you pointers; you transcribe.
 
 ## 1. The five phases
 
@@ -68,17 +68,19 @@ The orchestrator does not research. Spawn at most 2 `osci-scout` workers in para
 - "Read the codebase under `<dir>` and write findings to `.openscientist/sessions/$SESSION/agents/<your-id>/findings.md` about how X is currently done. Cite file:line refs. Mail the orchestrator a one-line pointer when done."
 - "Search the web + arxiv for prior art on <task>. ≤ 8 sources, each with a 1-sentence claim and a URL or DOI. Write to your own scratch findings file. Mail orchestrator when done."
 
+Before spawning scouts, check `get-status.budget.admission`. If `canSpawnWorker` is false, skip parallel scouts and create a narrow self-contained plan/report from already available context; if `maxActiveWorkers` is 1, serialize scouts instead of spawning two. Record the guard decision in `progress.md`.
+
 Pass scratch paths as literal paths. Do not tell scouts to write to `$PLANE_SESSION_DIR/notes` or `$PLANE_SESSION_DIR/agents`, because that variable points at the scout's own session directory, not the orchestrator's UI directory.
 
-Each scout exits after its rehydration packet — the plane mails you `worker_complete` and wakes you. **You** then read each scout's scratch findings file and **transcribe** the relevant entries into `$RUN_FILES_DIR/findings.md`, then mirror to `$WORKTREE_RUN_DIR/findings.md`. Compress, deduplicate, attribute. Commit.
+Each scout exits after its rehydration packet — the plane mails you `worker_complete` and wakes you. **You** then read each scout's scratch findings file and **transcribe** the relevant entries into `$RUN_FILES_DIR/findings.md`. Compress, deduplicate, attribute. Mirror and commit only when the worktree mirror/deliverable is being maintained for this run.
 
-Then spawn ONE `osci-hypothesizer` (with `autoresearch-hypothesizer` skill named in its prompt) and ask it to draft paths. Hand it: the task, the metric, the budget, and the path `$WORKTREE_RUN_DIR/findings.md`. Tell it: **3–5 paths, ranked by information value under the budget**, written into its own scratch file (`agents/<id>/paths.md`). The hypothesizer mails you `hypothesis-complete` and exits.
+Then spawn ONE `osci-hypothesizer` (with `autoresearch-hypothesizer` skill named in its prompt) and ask it to draft paths, but only if `budget.admission.canSpawnWorker !== false`. Hand it: the task, the metric, the budget, and the path `$WORKTREE_RUN_DIR/findings.md`. Tell it: **3–5 paths, ranked by information value under the budget**, written into its own scratch file (`agents/<id>/paths.md`). The hypothesizer mails you `hypothesis-complete` and exits. If admission blocks the hypothesizer, do the ranking yourself from scout findings and mark the limitation in `progress.md`.
 
 You read its scratch `paths.md`, transcribe the path list under `## Paths` in `task_plan.md`. Commit. Move to PHASE 2.
 
 ### PHASE 2 — Path commitment
 
-For each top-K path (K ≤ 5; in practice 2–3 unless the budget is generous), spawn ONE `osci-worker` with the `autoresearch-worker` skill named in its prompt. The worker takes **complete ownership** of that path until it terminates the path itself. You will not split a path across multiple workers.
+For each top-K path (K ≤ 5; in practice 2–3 unless the budget is generous), spawn ONE `osci-worker` with the `autoresearch-worker` skill named in its prompt. Respect `budget.admission.maxActiveWorkers` and `canSpawnWorker`; under a dollar cap, reduce K or serialize rather than launching siblings that the guard says you cannot afford. The worker takes **complete ownership** of that path until it terminates the path itself. You will not split a path across multiple workers.
 
 Worker spawn prompt template:
 
@@ -110,11 +112,11 @@ on each wake-up:
   2. tree    = "$PLANE_TOOL_BIN" get-relatives   # snapshot child state
   3. for each mail in mailbox:
        read what it points at (commit trailers, scratch files)
-       transcribe relevant facts into $RUN_FILES_DIR files, mirror to $WORKTREE_RUN_DIR, and commit
+       transcribe relevant facts into $RUN_FILES_DIR files; mirror/commit only if this run maintains a worktree deliverable
        handle_escalation(mail) if it is one
   4. for each child in tree:
        check liveness (cleanup §10 of orchestrator policy)
-  5. commit
+  5. commit only if git status shows real worktree changes
   6. if any path has hit "diminishing returns" (see below): consult hypothesizer
   7. if termination conditions met (PHASE 4): stop spawning, move to synthesis
   8. end turn — the plane will wake you on the next mail
@@ -129,7 +131,7 @@ Handling escalations (the worker prompt's `escalation:*` subjects):
 | `escalation:anomaly`  | result contradicts expectations                                 | Read the commit. Update `findings.md`. Mail `steer:continue` if it's a real signal, `steer:adjust` to investigate it.    |
 | `escalation:resource` | OOM, timeout, disk full                                         | Most often a ceiling on the path. Mail `steer:adjust` with a concrete shrink (smaller model, smaller batch, shorter run). If the path is GPU-bound and there is one GPU, see §3 below. |
 | `escalation:decision` | multiple equally viable directions                              | Decide yourself if it's tactical (one-line); consult hypothesizer for strategic forks.                                  |
-| `progress:update`     | routine progress, every 5 experiments                           | Update `$RUN_FILES_DIR/progress.md` and `report.md`'s "Best so far" table, mirror, and commit. No reply required.       |
+| `progress:update`     | routine progress, every 5 experiments                           | Update `$RUN_FILES_DIR/progress.md` and `report.md`'s "Best so far" table. Mirror/commit only when the worktree mirror is active. No reply required. |
 
 Diminishing-returns rule for path-pruning: if a path has emitted ≥2 `escalation:plateau` mails without recovering, AND the hypothesizer's adjacent suggestions have all been tried (track this in `task_plan.md`), the path is done. Mail the worker `stop`, mark the path closed in `task_plan.md`, free the slot.
 
