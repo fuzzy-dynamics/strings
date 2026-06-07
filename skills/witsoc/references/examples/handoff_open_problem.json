@@ -185,8 +185,37 @@
     "assumptions": ["3 by 3 integer grid"],
     "known_gaps": ["Does not solve original asymptotic problem."],
     "relationship_to_original": "Documents a standard obstruction family.",
+    "remaining_gap_statement": "Prove the asymptotic lower bound for distinct distances over all n-point planar sets despite grid-type repeated-distance obstructions.",
+    "why_not_full_solution": "The artifact only exhibits repeated distances in one finite grid and refutes a stronger all-distances-distinct variant.",
+    "known_result_comparison": "This is a finite obstruction certificate aligned with the standard grid obstruction, not a new solution to the distinct-distances problem.",
+    "novelty_status": "known",
+    "next_exact_experiment_or_lemma": "Compute and compare distinct squared-distance counts for 4 by 4 and 5 by 5 grids, then formulate the exact grid-growth obstruction lemma.",
+    "closure_attempts": [
+      {
+        "method_family": "finite_computation",
+        "attempt": "Check whether the 3 by 3 witness can imply an asymptotic obstruction by itself.",
+        "result": "It cannot; one finite witness does not establish growth behavior.",
+        "remaining_blocker": "Need a parametric grid-family distance-count estimate."
+      },
+      {
+        "method_family": "theorem_retrieval",
+        "attempt": "Compare the finite witness against incidence-geometry lower-bound routes.",
+        "result": "Incidence theorems address lower bounds but do not follow from this finite obstruction alone.",
+        "remaining_blocker": "Need a sourced asymptotic theorem or a formal grid-family computation."
+      }
+    ],
     "status": "PARTIAL"
   },
+  "actual_lemma_queue": [
+    {
+      "lemma_id": "L_grid_family_obstruction",
+      "statement": "For m by m integer grids, quantify the number of distinct squared distances and compare it with the quadratic all-distances-distinct bound.",
+      "unlocks": "Turns the finite 3 by 3 obstruction into a parameterized obstruction family relevant to the frozen open target.",
+      "priority": 8,
+      "status": "OPEN",
+      "next_attempt": "Compute exact counts for m <= 5 and retrieve the standard grid-distance asymptotic estimate."
+    }
+  ],
   "sketches": [
     {
       "sketch_id": "sketch_grid_3",
