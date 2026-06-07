@@ -11,7 +11,12 @@ from typing import Any
 
 STATUS_WEIGHT = {
     "VERIFIED": 45,
+    "VERIFIED_WIT": 45,
+    "VERIFIED_LEAN": 45,
+    "VERIFIED_EXTERNAL": 45,
     "CHECKED": 35,
+    "CHECKED_SYMBOLIC": 35,
+    "CHECKED_BOUNDED": 30,
     "PROVED_SKETCH": 25,
     "PARTIAL": 22,
     "CONDITIONAL": 20,

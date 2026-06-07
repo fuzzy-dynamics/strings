@@ -8,6 +8,8 @@ import json
 import sys
 from pathlib import Path
 
+from status_vocab import ACCEPTED_STATUSES, VERIFIED_STATUSES, is_verified
+
 
 REQUIRED_LEDGER_FILES = [
     "statement-ledger.md",
@@ -24,8 +26,7 @@ REQUIRED_JSON_FILES = [
     "skeptic_reviews.json",
 ]
 
-ACCEPTED_STATUSES = {"VERIFIED", "CHECKED", "PROVED_SKETCH", "PARTIAL", "CONDITIONAL"}
-FINAL_STATUSES = {"VERIFIED", "PARTIAL", "CONDITIONAL", "CHECKED", "FAILED_ATTEMPT", "REJECTED", "OPEN"}
+FINAL_STATUSES = VERIFIED_STATUSES | {"PARTIAL", "CONDITIONAL", "CHECKED", "FAILED_ATTEMPT", "REJECTED", "OPEN"}
 EVIDENCE_STATUSES = ACCEPTED_STATUSES | {"CONJECTURE", "FAILED_ATTEMPT", "REJECTED"}
 
 
@@ -165,10 +166,10 @@ def main() -> int:
         has_remaining_gap = any(node.get("remaining_gap_statement") for node in dag)
         if not has_remaining_gap:
             errors.append(f"final status {args.final_status} requires at least one remaining_gap_statement in the DAG")
-    if args.final_status == "VERIFIED":
-        verified = [node for node in dag if node.get("status") == "VERIFIED"]
+    if is_verified(args.final_status):
+        verified = [node for node in dag if is_verified(node.get("status"))]
         if not verified:
-            errors.append("final status VERIFIED requires at least one VERIFIED DAG node")
+            errors.append(f"final status {args.final_status} requires at least one verified DAG node")
 
     if errors:
         for error in errors:

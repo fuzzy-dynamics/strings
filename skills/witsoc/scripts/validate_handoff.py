@@ -22,6 +22,8 @@ import math
 import sys
 from pathlib import Path
 
+from status_vocab import CHECKED_STATUSES, VERIFIED_STATUSES
+
 
 def load_json(path: Path) -> object:
     with path.open("r", encoding="utf-8") as f:
@@ -265,8 +267,8 @@ def check_research_machinery(data: dict, errors: list[str]) -> None:
         "REJECTED",
         "GAP",
         "OPEN",
-    }
-    accepted_statuses = {"VERIFIED", "CHECKED", "PROVED_SKETCH"}
+    } | VERIFIED_STATUSES | CHECKED_STATUSES
+    accepted_statuses = VERIFIED_STATUSES | CHECKED_STATUSES | {"PROVED_SKETCH"}
     skeptic_reviews_by_id = {
         r.get("review_id"): r
         for r in skeptic_reviews
@@ -361,7 +363,7 @@ def check_research_machinery(data: dict, errors: list[str]) -> None:
                 errors.append(f"accepted proof_dependency_dag node {node_id!r} has skeptic_review_id but skeptic_reviews is empty")
             elif review_ids and review_id not in review_ids:
                 errors.append(f"accepted proof_dependency_dag node {node_id!r} references unknown skeptic_review_id {review_id!r}")
-        if status == "VERIFIED":
+        if status in {"VERIFIED", "VERIFIED_LEAN", "VERIFIED_EXTERNAL"}:
             evidence = node.get("verification_evidence", {})
             if not isinstance(evidence, dict):
                 errors.append(f"VERIFIED node {node_id!r} missing verification_evidence object")

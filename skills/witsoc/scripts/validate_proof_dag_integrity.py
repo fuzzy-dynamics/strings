@@ -8,8 +8,8 @@ import json
 import sys
 from pathlib import Path
 
+from status_vocab import ACCEPTED_STATUSES, normalize
 
-ACCEPTED = {"VERIFIED", "CHECKED", "PROVED_SKETCH", "PARTIAL", "CONDITIONAL"}
 UNUSABLE = {"CONJECTURE", "REJECTED", "FAILED_ATTEMPT", "GAP", "OPEN"}
 
 
@@ -57,7 +57,7 @@ def main() -> int:
                 errors.append(f"node {nid!r} depends on missing node {dep!r}")
         if node.get("dependency_path_to_target") in (None, "", []):
             errors.append(f"node {nid!r} missing dependency_path_to_target")
-        if node.get("status") in ACCEPTED:
+        if normalize(node.get("status")) in ACCEPTED_STATUSES:
             for field in ("statement", "evidence", "target_hash"):
                 if node.get(field) in (None, "", []):
                     errors.append(f"accepted node {nid!r} missing {field}")
@@ -93,7 +93,7 @@ def main() -> int:
     for nid, node in nodes.items():
         for dep in deps(node):
             dep_status = nodes.get(dep, {}).get("status")
-            if dep_status in UNUSABLE and node.get("status") in ACCEPTED:
+            if normalize(dep_status) in UNUSABLE and normalize(node.get("status")) in ACCEPTED_STATUSES:
                 errors.append(f"accepted node {nid!r} uses unusable dependency {dep!r} with status {dep_status!r}")
 
     if errors:

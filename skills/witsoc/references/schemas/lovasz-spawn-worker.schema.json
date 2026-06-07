@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Lovasz Spawn Worker Request",
   "type": "object",
-  "additionalProperties": false,
+  "additionalProperties": true,
   "required": [
     "worker_type",
     "target_node_id",
@@ -73,6 +73,14 @@
         "max_tool_calls": { "type": "integer", "minimum": 0 },
         "max_tokens": { "type": "integer", "minimum": 0 }
       }
-    }
+    },
+    "method_family": { "type": "string" },
+    "failure_memory_contract": { "type": "object" },
+    "proof_worktree": { "type": "string" },
+    "dependency_path_to_target": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "soc_memory": { "type": ["object", "string"] }
   }
 }

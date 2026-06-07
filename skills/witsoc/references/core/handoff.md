@@ -132,8 +132,6 @@ Validation sequence:
 VALIDATOR="$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/validate_handoff.py)"
 python3 "$VALIDATOR" runs/<task>/handoff.json
 python3 "$VALIDATOR" runs/<task>/handoff_v1.json
-DAG_VALIDATOR="$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/validate_proof_dag.py)"
-python3 "$DAG_VALIDATOR" runs/<task>/handoff.json
 ```
 
 Generator prompt contract:

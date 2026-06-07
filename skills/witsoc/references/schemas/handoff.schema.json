@@ -400,7 +400,7 @@
   "$defs": {
     "status": {
       "type": "string",
-      "enum": ["VERIFIED", "CHECKED", "PROVED_SKETCH", "UNVERIFIED", "OPEN", "PARTIAL", "CONDITIONAL", "CONJECTURE", "FAILED_ATTEMPT", "GAP", "REJECTED"]
+      "enum": ["VERIFIED", "VERIFIED_WIT", "VERIFIED_LEAN", "VERIFIED_EXTERNAL", "CHECKED", "CHECKED_BOUNDED", "CHECKED_SYMBOLIC", "PROVED_SKETCH", "UNVERIFIED", "OPEN", "PARTIAL", "CONDITIONAL", "CONJECTURE", "FAILED_ATTEMPT", "GAP", "REJECTED"]
     },
     "novelty_status": {
       "type": "string",

@@ -7,7 +7,11 @@ import argparse
 import sys
 from pathlib import Path
 
+from status_vocab import CHECKED_STATUSES, VERIFIED_STATUSES, is_verified
 from validate_handoff import load_json
+
+_ACCEPTED_RESULT = VERIFIED_STATUSES | CHECKED_STATUSES | {"PROVED_SKETCH"}
+_FIDELITY_REQUIRED = _ACCEPTED_RESULT | {"PARTIAL", "CONDITIONAL"}
 
 
 def validate_schema(data: object, schema_path: Path, errors: list[str]) -> None:
@@ -38,17 +42,17 @@ def validate_spawn(data: dict, errors: list[str]) -> None:
 def validate_result(data: dict, errors: list[str]) -> None:
     status = data.get("status")
     failure_class = data.get("failure_class")
-    if status in {"VERIFIED", "CHECKED", "PROVED_SKETCH"} and failure_class != "none":
+    if status in _ACCEPTED_RESULT and failure_class != "none":
         errors.append(f"accepted status {status} must use failure_class 'none'")
     if status in {"FAILED_ATTEMPT", "REJECTED", "GAP", "OPEN"} and failure_class == "none":
         errors.append(f"status {status} must use a concrete failure_class")
-    if status in {"VERIFIED", "CHECKED", "PROVED_SKETCH", "PARTIAL", "CONDITIONAL"}:
+    if status in _FIDELITY_REQUIRED:
         fidelity = data.get("target_fidelity")
         if not isinstance(fidelity, (int, float)):
             errors.append(f"status {status} requires target_fidelity")
         elif fidelity < 0.8 and status not in {"PARTIAL", "CONDITIONAL"}:
             errors.append(f"status {status} requires target_fidelity >= 0.8")
-    if status == "VERIFIED":
+    if is_verified(status):
         for field in ("wit_path", "lean_path", "session_id", "proof_worktree"):
             if not data.get(field):
                 errors.append(f"VERIFIED result missing {field}")

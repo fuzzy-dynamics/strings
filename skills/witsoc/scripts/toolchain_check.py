@@ -68,7 +68,7 @@ def main() -> int:
             "receipt.sh",
             "cycle.sh",
             "validate_handoff.py",
-            "validate_proof_dag.py",
+            "validate_proof_dag_integrity.py",
             "route.py",
             "research_search.py",
         )

@@ -37,7 +37,12 @@
       "type": "string",
       "enum": [
         "VERIFIED",
+        "VERIFIED_WIT",
+        "VERIFIED_LEAN",
+        "VERIFIED_EXTERNAL",
         "CHECKED",
+        "CHECKED_BOUNDED",
+        "CHECKED_SYMBOLIC",
         "PROVED_SKETCH",
         "PARTIAL",
         "CONDITIONAL",

@@ -9,51 +9,19 @@ import sys
 from pathlib import Path
 from typing import Any
 
-
-STATUSES = {
-    "DRAFT",
-    "OPEN",
-    "CONJECTURE",
-    "CHECKED_BOUNDED",
-    "CHECKED_SYMBOLIC",
-    "PROVED_SKETCH",
-    "VERIFIED_WIT",
-    "VERIFIED_LEAN",
-    "VERIFIED_EXTERNAL",
-    "PARTIAL",
-    "CONDITIONAL",
-    "FAILED_ATTEMPT",
-    "REJECTED",
-    "DEMOTED",
-    "GAP",
-    "PLANNED",
-    "SELECTED",
-    "READY",
-}
-
-LEGACY_ALIASES = {
-    "CHECKED": "CHECKED_SYMBOLIC",
-    "VERIFIED": "VERIFIED_LEAN",
-}
-
-ACCEPTED = {
-    "CHECKED_BOUNDED",
-    "CHECKED_SYMBOLIC",
-    "PROVED_SKETCH",
-    "VERIFIED_WIT",
-    "VERIFIED_LEAN",
-    "VERIFIED_EXTERNAL",
-    "PARTIAL",
-    "CONDITIONAL",
-}
+from status_vocab import (
+    ACCEPTED_STATUSES as ACCEPTED,
+    ALL_STATUSES as STATUSES,
+    alias as normalize,
+)
 
 TRANSITIONS = {
     "DRAFT": {"OPEN", "CONJECTURE", "FAILED_ATTEMPT", "REJECTED"},
     "OPEN": {"CONJECTURE", "CHECKED_BOUNDED", "FAILED_ATTEMPT", "REJECTED", "GAP"},
     "CONJECTURE": {"CHECKED_BOUNDED", "CHECKED_SYMBOLIC", "PROVED_SKETCH", "FAILED_ATTEMPT", "REJECTED", "DEMOTED", "GAP"},
     "CHECKED_BOUNDED": {"CHECKED_SYMBOLIC", "PROVED_SKETCH", "PARTIAL", "CONDITIONAL", "FAILED_ATTEMPT", "DEMOTED"},
-    "CHECKED_SYMBOLIC": {"PROVED_SKETCH", "VERIFIED_WIT", "PARTIAL", "CONDITIONAL", "DEMOTED"},
-    "PROVED_SKETCH": {"VERIFIED_WIT", "VERIFIED_EXTERNAL", "PARTIAL", "CONDITIONAL", "DEMOTED"},
+    "CHECKED_SYMBOLIC": {"PROVED_SKETCH", "VERIFIED_WIT", "VERIFIED_LEAN", "VERIFIED_EXTERNAL", "PARTIAL", "CONDITIONAL", "DEMOTED"},
+    "PROVED_SKETCH": {"VERIFIED_WIT", "VERIFIED_LEAN", "VERIFIED_EXTERNAL", "PARTIAL", "CONDITIONAL", "DEMOTED"},
     "VERIFIED_WIT": {"VERIFIED_LEAN", "VERIFIED_EXTERNAL", "DEMOTED"},
     "VERIFIED_LEAN": {"DEMOTED"},
     "VERIFIED_EXTERNAL": {"DEMOTED"},
@@ -79,11 +47,6 @@ def load(path: Path, default: Any) -> Any:
 def records(path: Path) -> list[dict]:
     data = load(path, [])
     return [x for x in data if isinstance(x, dict)] if isinstance(data, list) else []
-
-
-def normalize(status: Any) -> str:
-    text = str(status or "").strip().upper()
-    return LEGACY_ALIASES.get(text, text)
 
 
 def evidence_present(record: dict) -> bool:

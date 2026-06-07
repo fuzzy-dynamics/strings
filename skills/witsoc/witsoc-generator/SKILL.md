@@ -86,8 +86,6 @@ assume skills have been materialized under `$KIMI_WORK_DIR`.
 "$PLANE_TOOL_BIN" skill-run witsoc/scripts/cycle.sh path/to/file.wit
 VALIDATOR="$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/validate_handoff.py)"
 python3 "$VALIDATOR" runs/<task>/handoff.json
-DAG_VALIDATOR="$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/validate_proof_dag.py)"
-python3 "$DAG_VALIDATOR" runs/<task>/handoff.json
 ```
 
 Use `skill-run` for shell scripts. Use `skill-which` plus `python3` for
@@ -104,7 +102,7 @@ Use `skill-run` for shell scripts. Use `skill-which` plus `python3` for
 | `cycle.sh <file.wit> [--out-dir dir]` | Run the full verification-prep cycle: check, audit, verifier-context build, and status; writes `<name>.verify.txt`. |
 | `receipt.sh <file.wit> --from verifier.txt` | Parse verdicts, write `.wit.receipt.json`, update status. |
 | `status.sh <file.wit>` | Summarize status, receipt, and structural result. |
-| `validate_proof_dag.py <handoff.json>` | Validate Lovasz proof-DAG, worker evidence, and assembly invariants. |
+| `validate_handoff.py <handoff.json>` | Validate the handoff, including Lovasz proof-DAG, worker evidence, and assembly invariants. |
 
 Fallback native CLI:
 

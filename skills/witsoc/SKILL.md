@@ -27,6 +27,7 @@ Using witsoc with witsoc-explorer -> witsoc-research-lovasz -> witsoc-explorer.
 Shared protocols live under `references/core/`. Load only the protocol needed for the current task:
 
 - `references/core/routing.md`: fast path, subskill responsibility boundaries, and recovery routing.
+- `references/core/routing_tests.md`: worked routing examples and the `test_route.py` regression cases.
 - `references/core/target_freeze.md`: canonical target records, target hashes, and explicit target mutation records.
 - `references/core/claim_acceptance.md`: evidence requirements and legal acceptance of mathematical claims.
 - `references/core/artifact_policy.md`: artifact registry, proof worktrees, stale artifact rules, and metadata requirements.
@@ -48,8 +49,7 @@ Shared protocols live under `references/core/`. Load only the protocol needed fo
 - `references/schemas/witsoc-handoff-schema.json`: strict Generator blueprint schema for `handoff_v1.json`.
 - `references/examples/handoff_solved_problem.json` and `references/examples/handoff_open_problem.json`: concrete valid handoff examples.
 - `references/examples/handoff_v1_blueprint.json`: minimal Generator blueprint example.
-- `scripts/validate_handoff.py`: deterministic handoff validation and arithmetic checks.
-- `scripts/validate_proof_dag.py`: deterministic Lovasz proof-DAG and worker-result validation.
+- `scripts/validate_handoff.py`: deterministic handoff validation and arithmetic checks, including the Lovasz proof-DAG and worker-result invariants.
 - `scripts/init_lovasz_run.py`: create the standard Lovasz run ledger skeleton before worker dispatch.
 - `scripts/validate_lovasz_run.py`: reject incomplete Lovasz runs missing required ledgers, DAG, worker results, skeptic reviews, or partial-result closure fields.
 - `scripts/validate_spawn_packet.py`: validate Lovasz spawn requests and worker result packets.
@@ -259,14 +259,12 @@ if [ -n "$ROUTER" ]; then
   python3 "$ROUTER" --field json --state-out "$WITSOC_PREFLIGHT_DIR/witsoc_route_state.json" "${ORIGINAL_USER_TASK:-}" > "$WITSOC_PREFLIGHT_DIR/witsoc_route.json"
 fi
 VALIDATOR="$(resolve_witsoc_script validate_handoff.py || true)"
-DAG_VALIDATOR="$(resolve_witsoc_script validate_proof_dag.py || true)"
 LOVASZ_RUN_VALIDATOR="$(resolve_witsoc_script validate_lovasz_run.py || true)"
 ROUTE_STATE_VALIDATOR="$(resolve_witsoc_script validate_route_state.py || true)"
 [ -z "$ROUTE_STATE_VALIDATOR" ] || [ ! -f "$WITSOC_PREFLIGHT_DIR/witsoc_route_state.json" ] || python3 "$ROUTE_STATE_VALIDATOR" "$WITSOC_PREFLIGHT_DIR/witsoc_route_state.json" --for-final-report > "$WITSOC_PREFLIGHT_DIR/witsoc_route_state.validate.log"
 for HANDOFF in "$WITSOC_PREFLIGHT_DIR"/handoff*.json "${KIMI_WORK_DIR:-}"/runs/*/handoff*.json; do
   [ -f "$HANDOFF" ] || continue
   [ -z "$VALIDATOR" ] || python3 "$VALIDATOR" "$HANDOFF" > "$HANDOFF.validate.log"
-  [ -z "$DAG_VALIDATOR" ] || python3 "$DAG_VALIDATOR" "$HANDOFF" > "$HANDOFF.proof_dag.log"
 done
 for LOVASZ_RUN in "$WITSOC_PREFLIGHT_DIR"/lovasz-run "${KIMI_WORK_DIR:-}"/runs/*/lovasz-run; do
   [ -d "$LOVASZ_RUN" ] || continue
@@ -388,7 +386,7 @@ Use both Explorer and Generator for substantial formalization problems. The Expl
 2. Explorer writes `runs/<task>/handoff.json` conforming to `references/schemas/handoff.schema.json`.
 3. Explorer writes `runs/<task>/handoff_v1.json` conforming to `references/schemas/witsoc-handoff-schema.json`.
 4. The orchestrator validates both files before Generator is invoked.
-5. For Lovasz-directed work, the orchestrator also runs `scripts/validate_proof_dag.py` on `handoff.json`.
+5. For Lovasz-directed work, `scripts/validate_handoff.py` also enforces the Lovasz proof-DAG and worker-result invariants on `handoff.json`.
 6. Generator reads only `handoff_v1.json`, writes the `.wit` artifact, and runs deterministic checks. Generator must not invent mathematical truth beyond the accepted handoff.
 7. Rejections move the state to Repair or Explorer using `references/core/repair.md` and `references/core/failure_recovery.md`.
 8. Generator records receipts when verifier verdicts are available and uses `references/core/lean_verification.md` if Lean is requested.
