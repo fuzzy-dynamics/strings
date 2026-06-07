@@ -116,7 +116,7 @@ Use `finite_graph_backend.py` before claiming a finite answer for a small tree. 
 
 For the finite/infinite equivalence route, hand Generator one of these WIT templates instead of free-form prose:
 
-- `references/examples/compactness_disjoint_union_reduction.wit`
-- `references/examples/finite_chi_bounding_compactness_template.wit`
+- `../references/examples/compactness_disjoint_union_reduction.wit`
+- `../references/examples/finite_chi_bounding_compactness_template.wit`
 
 These templates formalize only the reduction skeleton. They do not settle the triangle-free Gyarfas-Sumner frontier without a verified finite chi-bound or verified obstruction family.

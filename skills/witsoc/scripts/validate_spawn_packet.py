@@ -4,14 +4,10 @@
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from pathlib import Path
 
-
-def load_json(path: Path) -> object:
-    with path.open("r", encoding="utf-8") as f:
-        return json.load(f)
+from validate_handoff import load_json
 
 
 def validate_schema(data: object, schema_path: Path, errors: list[str]) -> None:
