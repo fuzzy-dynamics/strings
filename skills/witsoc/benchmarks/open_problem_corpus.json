@@ -1,0 +1,75 @@
+{
+  "version": "0.1",
+  "schema": "witsoc.open_problem_corpus.v1",
+  "description": "Phase 0 open-problem corpus WITH HEADROOM. Tiers: reachable_hard (provable, beyond current reach -> Phase 1/2 targets), partial_progress (frontier products, rung-graded), frozen_calibration (must stay unsolved, content-frozen by freeze_hash), autoformalization (faithfulness, Phase 5). Each item declares its achievable_rung (the max HONEST rung); headroom = items not yet at their ceiling. See OPEN_PROBLEM_PROGRAM.md.",
+  "rung_legend": {
+    "L0": "literature/status only (not a result)",
+    "L1": "verified bounded counterexample / disproof",
+    "L2": "verified special case / bound / reduction",
+    "L3": "verified conditional theorem",
+    "L4": "verified novel lemma that unlocks a known barrier",
+    "L5": "verified partial solution of the frozen open target",
+    "L6": "full kernel-verified solution of the frozen target",
+    "L6_STAR": "L6 + faithfulness-gated to the informal statement (the real 'solve')"
+  },
+  "problems": [
+    {"id": "rh-ring-square", "tier": "reachable_hard", "bucket": "solved", "kind": "lean",
+     "statement": "∀ a b : Nat, (a + b) * (a + b) = a * a + 2 * (a * b) + b * b",
+     "oracle": "provable", "achievable_rung": "L6", "headroom_for": "Phase 2 (ring/Mathlib) or a richer nonlinear search",
+     "note": "A polynomial identity. omega/linarith are linear and `ring`/`nlinarith` are absent on this host, so the current search cannot close it. Provable in principle; currently headroom."},
+
+    {"id": "rh-acc-generalize", "tier": "reachable_hard", "bucket": "solved", "kind": "lean",
+     "preamble": "def fa : Nat → Nat → Nat\n  | 0, acc => acc\n  | (n+1), acc => fa n (acc + 1)",
+     "statement": "∀ n : Nat, fa n 0 = n",
+     "oracle": "provable", "achievable_rung": "L6", "headroom_for": "Phase 1 (auto-generalizing deep search)",
+     "note": "Induction-generalization barrier: direct induction on the goal gives too weak an IH (fa k 0 = k, but the succ case needs fa k 1 = k+1). The generalized lemma ∀ n acc, fa n acc = acc+n is reachable; proving the corollary needs auto-generalization the current search lacks."},
+
+    {"id": "rh-list-len-rev", "tier": "reachable_hard", "bucket": "solved", "kind": "lean",
+     "statement": "∀ (l : List Nat), l.reverse.length = l.length",
+     "oracle": "provable", "achievable_rung": "L6", "headroom_for": "Phase 1 (structural induction over List) / Phase 2 (Mathlib List.length_reverse)",
+     "note": "The current induction route is Nat-only; this needs List induction or the Mathlib lemma List.length_reverse. Provable; currently headroom."},
+
+    {"id": "rh-list-custom-len", "tier": "reachable_hard", "bucket": "solved", "kind": "lean",
+     "preamble": "def llen : List Nat → Nat\n  | [] => 0\n  | (_ :: xs) => llen xs + 1",
+     "statement": "∀ (l : List Nat), llen l = l.length",
+     "oracle": "provable", "achievable_rung": "L6", "closed_by": "Phase 1 structural (List) induction",
+     "note": "A custom recursive List def: `simp` alone makes no progress (verified); needs structural induction `induction l with | nil | cons hd tl ih`. Closed by the Phase-1 structural-induction route."},
+
+    {"id": "pp-erdos-straus-n4", "tier": "partial_progress", "bucket": "solved", "kind": "lean",
+     "statement": "4 * (2 * 3 * 6) = 4 * (3 * 6) + 4 * (2 * 6) + 4 * (2 * 3)",
+     "oracle": "provable", "achievable_rung": "L2", "of_open_problem": "Erdős–Straus",
+     "note": "A kernel-verifiable special-case witness (x=2,y=3,z=6, cleared form at n=4). A genuine L2 product; the GENERAL conjecture stays in frozen_calibration. Baseline showing the system reaches L2."},
+
+    {"id": "pp-cubic-sum", "tier": "partial_progress", "bucket": "solved", "kind": "lean",
+     "preamble": "def sumSq : Nat → Nat\n  | 0 => 0\n  | (n+1) => (n+1) * (n+1) + sumSq n",
+     "statement": "∀ n : Nat, 6 * sumSq n = n * (n + 1) * (2 * n + 1)",
+     "oracle": "provable", "achievable_rung": "L6", "headroom_for": "Phase 1 (deeper cubic induction)",
+     "note": "Sum of squares over a custom recursive def: cubic-residual induction, harder than the quadratic Gauss sum the current search closes. Provable by induction; may be headroom for a deeper search."},
+
+    {"id": "fc-odd-perfect", "tier": "frozen_calibration", "bucket": "calibration", "kind": "conjecture",
+     "range": [2, 10000], "falsify": 25000, "expect_form": "perfect(n) -> even(n)",
+     "honest_statuses": ["OPEN_UNFALSIFIED"], "achievable_rung": "L0_HONEST_OPEN",
+     "freeze_hash": "f6666dd9cb9348d3fd0c4c1fa4613af49f90092ef155518ce7103b7aa4a10ed5",
+     "note": "The odd perfect number problem. Honest success = surfaced as an unfalsified conjecture, NEVER proved. A discharge here would fail the whole run."},
+
+    {"id": "fc-erdos-straus-general", "tier": "frozen_calibration", "bucket": "calibration", "kind": "lean_open",
+     "statement": "∀ n : Nat, 2 ≤ n → ∃ x y z : Nat, 0 < x ∧ 0 < y ∧ 0 < z ∧ 4 * (x * y * z) = n * (y * z) + n * (x * z) + n * (x * y)",
+     "honest_statuses": ["OBLIGATION_OPEN", "BUDGET_EXHAUSTED", "UNCHECKED_NO_TOOLCHAIN"], "achievable_rung": "L0_HONEST_OPEN",
+     "freeze_hash": "87b031e2866917aafa0962abea35d80faaa273ce38b3d49ca7ea6bbef157b532",
+     "note": "Erdős–Straus, general n. Honest success = the prover does NOT discharge it (no fake solve)."},
+
+    {"id": "af-even-divisible", "tier": "autoformalization", "bucket": "autoformalization", "kind": "autoformalize",
+     "informal": "A natural number n is even if and only if there exists a natural number k with n = 2k.",
+     "statement": "∀ n : Nat, (n % 2 = 0) ↔ (∃ k : Nat, n = 2 * k)",
+     "distractor": "∀ n : Nat, (n % 2 = 0) → (∃ k : Nat, n = 2 * k)",
+     "achievable_rung": "L6_STAR", "headroom_for": "Phase 5 (autoformalization + faithfulness gate)",
+     "note": "Faithfulness item: the distractor drops the reverse implication and must be rejected. No autoformalization pipeline exists yet -> FAITHFULNESS_GAP (headroom)."},
+
+    {"id": "af-prime-divisors", "tier": "autoformalization", "bucket": "autoformalization", "kind": "autoformalize",
+     "informal": "A natural number p is prime iff p is at least 2 and the only natural numbers dividing p are 1 and p.",
+     "statement": "∀ p : Nat, Nat.Prime p ↔ (2 ≤ p ∧ ∀ d : Nat, d ∣ p → d = 1 ∨ d = p)",
+     "distractor": "∀ p : Nat, Nat.Prime p ↔ (∀ d : Nat, d ∣ p → d = 1 ∨ d = p)",
+     "achievable_rung": "L6_STAR", "headroom_for": "Phase 5 (autoformalization + faithfulness gate)",
+     "note": "Faithfulness item: the distractor drops p ≥ 2 (so 1 would count as prime) and must be rejected. No pipeline yet -> FAITHFULNESS_GAP (headroom)."}
+  ]
+}

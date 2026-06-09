@@ -1,0 +1,25 @@
+-- Status: UNVERIFIED
+-- Template: true
+MODULE [finite_chi_bounding_compactness_template]
+
+THEOREM [finite_chi_bounding_compactness_template]:
+  GIVEN:
+    - [T_fixed]: T is a fixed finite tree.
+    - [c_nat]: c is a natural number.
+    - [finite_chi_bound]: Every finite triangle-free graph with no induced copy of T has chromatic number at most c.
+    - [G_props]: G is a triangle-free graph with no induced copy of T.
+  CLAIM:
+    G has chromatic number at most c.
+
+PROOF OF [finite_chi_bounding_compactness_template]:
+  [1] HAVE Every finite induced subgraph H of G is triangle-free and contains no induced copy of T.
+      BY [G_props], induced subgraphs preserve triangle-freeness and induced-T-freeness.
+  [2] HAVE Every finite induced subgraph H of G has chromatic number at most c.
+      BY [1], [finite_chi_bound].
+  [3] CITE @{de Bruijn-Erdos compactness theorem for graph coloring}: If every finite subgraph of a graph is c-colorable, then the whole graph is c-colorable.
+      BY @{de Bruijn-Erdos compactness theorem for graph coloring}.
+  [4] HAVE G is c-colorable.
+      BY [2], [3].
+  [5] SHOW G has chromatic number at most c.
+      BY [4], definition of chromatic number.
+  QED BY [5].
