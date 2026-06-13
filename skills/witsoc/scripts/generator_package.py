@@ -135,7 +135,7 @@ def main() -> int:
         bridge = {"status": "error", "reason": str(exc)}
     record = bridge.get("record", {}) if isinstance(bridge, dict) else {}
     label = record.get("label", "UNCHECKED_NO_TOOLCHAIN")
-    lean_path = record.get("lean_path", str(emit))
+    lean_path = record.get("lean_path")
 
     # SafeVerify / target-freeze provenance.
     wit_target_sha256 = sha(normalize(wit_claim)) if wit_claim else None
@@ -156,7 +156,7 @@ def main() -> int:
         reason = "supplied Lean statement does not type-check"
     elif label != "PROOF_DISCHARGED":
         witsoc_status, lean_verified = "OPEN", False
-        reason = f"Lean obligation not discharged ({label}); proof missing or uses sorry/axiom"
+        reason = f"Lean obligation not discharged ({label}); proof missing, blocked, or forbidden"
     elif not target_freeze_ok:
         witsoc_status, lean_verified = "REJECTED", False
         reason = freeze_reason
@@ -185,7 +185,7 @@ def main() -> int:
         },
         "artifact_block": {
             "WIT": str(args.wit),
-            "Lean": lean_path if lean_verified else (lean_path if label not in {"UNCHECKED_NO_TOOLCHAIN"} else "none"),
+            "Lean": lean_path if lean_verified else (lean_path or "none"),
             "Status": f"LEAN_VERIFIED={'yes' if lean_verified else 'no'}",
         },
     }

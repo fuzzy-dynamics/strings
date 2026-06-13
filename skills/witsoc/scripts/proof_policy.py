@@ -33,7 +33,10 @@ import witcore  # noqa: E402
 # Default priors so the policy is useful with zero training. Core-Lean tactics
 # first (cheap, no mathlib), then mathlib tactics.
 DEFAULT_ORDER = ["by rfl", "by decide", "by omega", "by simp", "by trivial",
-                 "by norm_num", "by linarith", "by ring", "by aesop", "by constructor"]
+                 "by norm_num", "by linarith", "by ring", "by ring_nf",
+                 "by aesop", "by constructor",
+                 "by intros; ring_nf", "by intros; ring", "by intros; omega",
+                 "by intros; norm_num", "by intros; nlinarith"]
 
 
 def features(statement: str) -> list[str]:
@@ -51,6 +54,14 @@ def features(statement: str) -> list[str]:
         feats.append("logic")
     if "Nat" in s or "ℕ" in s:
         feats.append("nat")
+    if "%" in s or "mod" in s or "∣" in s or "dvd" in s:
+        feats.append("modular")
+    if "*" in s or "^" in s:
+        feats.append("multiplicative")
+    if "List" in s or "Finset" in s or "Set" in s:
+        feats.append("finite_combinatorics")
+    if "Function" in s or "f " in s or "f(" in s:
+        feats.append("functional")
     if any(c.isdigit() for c in s):
         feats.append("arith")
     return sorted(feats) or ["plain"]

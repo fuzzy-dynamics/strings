@@ -16,10 +16,7 @@ def load(path: Path, default: Any) -> Any:
         return default
 
 
-def records(path: Path) -> list[dict]:
-    data = load(path, [])
-    return [x for x in data if isinstance(x, dict)] if isinstance(data, list) else []
-
+from witcore import records  # noqa: E402  -- shared substrate, was a local copy
 
 def bullet(lines: list[str], text: str) -> None:
     lines.append(f"- {text}")
@@ -42,6 +39,10 @@ def main() -> int:
     artifacts = load(run / "witsoc_artifacts.json", {}).get("artifacts", [])
     if not artifacts:
         artifacts = load(Path.cwd() / "witsoc_artifacts.json", {}).get("artifacts", [])
+    handoff = load(run / "handoff.json", {})
+    if not handoff:
+        handoff = load(run.parent / "handoff.json", {})
+    citations = [c for c in handoff.get("source_citations", []) if isinstance(c, dict)]
 
     lines: list[str] = []
     lines.append("# Witsoc Open-Problem Report")
@@ -53,6 +54,18 @@ def main() -> int:
         bullet(lines, f"DAG nodes: {summary.get('dag_nodes', 0)}")
         bullet(lines, f"Worker results: {summary.get('worker_results', 0)}")
         bullet(lines, f"Status counts: `{summary.get('status_counts', {})}`")
+    lines.append("")
+
+    lines.append("## Key Sources")
+    lines.append("")
+    # Load-bearing sources only: pointer/informal entries stay in the handoff ledger.
+    key_sources = [c for c in citations if c.get("source_type") in ("primary", "survey", "preprint", "formal_library", "maintained_page")]
+    if not key_sources:
+        bullet(lines, "No checked sources recorded; status claims are unconfirmed." if not citations else "Only pointer/informal sources recorded; status claims are unconfirmed.")
+    for citation in key_sources[:8]:
+        bullet(lines, f"{citation.get('source', '(missing source)')} ({citation.get('source_type', 'unknown')}): {citation.get('claim_supported', '(claim not recorded)')}")
+    if len(key_sources) > 8:
+        bullet(lines, f"{len(key_sources) - 8} further sources recorded in `handoff.json`.")
     lines.append("")
 
     lines.append("## Actual Barrier Lemmas")

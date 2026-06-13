@@ -36,7 +36,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import math
 import re
 import sqlite3
 import sys
@@ -46,6 +45,7 @@ from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import witcore  # noqa: E402  -- global (live) library path resolution
 from lean_check import lean_verify  # noqa: E402  -- shared kernel check + soundness scan
 
 TIER_RANK = {"WIT_STRUCTURE": 1, "WIT_RECEIPT": 2, "LEAN_VERIFIED": 3}
@@ -56,14 +56,7 @@ def tokens(text: str) -> list[str]:
     return [t for t in re.findall(r"[A-Za-z0-9_]+", text.lower()) if len(t) > 1]
 
 
-def cosine(a: Counter, b: Counter) -> float:
-    if not a or not b:
-        return 0.0
-    dot = sum(a[k] * b.get(k, 0) for k in a)
-    na = math.sqrt(sum(v * v for v in a.values()))
-    nb = math.sqrt(sum(v * v for v in b.values()))
-    return dot / (na * nb) if na and nb else 0.0
-
+from witcore import cosine  # noqa: E402  -- shared substrate, was a local copy
 
 def connect(library: Path) -> sqlite3.Connection:
     library.mkdir(parents=True, exist_ok=True)
@@ -198,8 +191,10 @@ def cmd_export_training(args: argparse.Namespace) -> dict[str, Any]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--library", type=Path, default=Path(".witsoc/lemma_library"),
-                        help="Directory holding lemmas.db.")
+    parser.add_argument("--library", type=Path, default=None,
+                        help="Directory holding lemmas.db. Default: the GLOBAL live library "
+                             "(witcore.global_library(), ~/.witsoc/global_library) so every "
+                             "agent and deep run shares one DB regardless of cwd.")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     p_add = sub.add_parser("add")
@@ -230,6 +225,8 @@ def main() -> int:
     p_exp.add_argument("--out", type=Path, required=True)
 
     args = parser.parse_args()
+    if args.library is None:
+        args.library = witcore.global_library()
     handlers = {
         "add": cmd_add, "search": cmd_search, "get": cmd_get,
         "verify-lean": cmd_verify_lean, "stats": cmd_stats, "export-training": cmd_export_training,

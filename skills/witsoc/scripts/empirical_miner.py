@@ -187,9 +187,125 @@ def load_external(generator_bin: str, args: list[str]) -> list[dict[str, Any]]:
     return rows
 
 
+# --- Sequence fingerprint families (creativity program K3) --------------------
+# Matching a computed sequence against a known family is the "this is secretly
+# the Catalan numbers" moment — a classic source of conjectured closed forms.
+def _fib(n: int) -> int:
+    a, b = 0, 1
+    for _ in range(n):
+        a, b = b, a + b
+    return a
+
+
+def _catalan(n: int) -> int:
+    return math.comb(2 * n, n) // (n + 1) if n >= 0 else 0
+
+
+SEQUENCE_FAMILIES: dict[str, Any] = {
+    "squares": lambda n: n * n,
+    "cubes": lambda n: n ** 3,
+    "triangular": lambda n: n * (n + 1) // 2,
+    "fibonacci": _fib,
+    "catalan": _catalan,
+    "powers_of_2": lambda n: 2 ** n if n <= 62 else None,
+    "factorial": lambda n: math.factorial(n) if n <= 20 else None,
+    "double": lambda n: 2 * n,
+}
+
+
+def _stable_props(rows: list[dict[str, Any]], keys: list[str]) -> list[dict[str, Any]]:
+    stable = []
+    for key in keys:
+        values = [row.get(key) for row in rows if key in row]
+        if values and all(value == values[0] for value in values):
+            stable.append({"property": key, "value": values[0], "support": len(values)})
+    return stable
+
+
+def mine_inequalities(rows: list[dict[str, Any]], numeric_keys: list[str],
+                      max_constant: int = 64, min_support: int = 3) -> list[dict[str, Any]]:
+    """Best-constant bound conjectures: a ≤ c·b with the minimal observed integer c.
+    Bounds are the bread of combinatorics; the tight rows feed extremal mining."""
+    out = []
+    # 0/1-indicator columns make meaningless right-hand sides (`a <= c*indicator`
+    # is a conditional constant, not a bound) — exclude them from the right.
+    binary = {k for k in numeric_keys
+              if {r[k] for r in rows if k in r} <= {0, 1}}
+    for a, b in itertools.permutations(numeric_keys, 2):
+        if b in binary:
+            continue
+        support_rows = [r for r in rows if a in r and b in r and r[b] > 0 and r[a] >= 0]
+        if len(support_rows) < min_support:
+            continue
+        c = max(-(-r[a] // r[b]) for r in support_rows)  # ceil division, minimal valid c
+        if c < 1 or c > max_constant:
+            continue
+        tight = [r for r in support_rows if r[a] == c * r[b]]
+        if c == 1 and len(tight) == len(support_rows):
+            continue  # plain equality — already reported by numeric_equalities
+        out.append({"left": a, "right": b, "constant": c, "support": len(support_rows),
+                    "tight_count": len(tight),
+                    "tight_everywhere": len(tight) == len(support_rows)})
+    out.sort(key=lambda x: (-x["tight_count"] / max(1, x["support"]), x["constant"]))
+    return out
+
+
+def mine_equality_cases(rows: list[dict[str, Any]], inequalities: list[dict[str, Any]],
+                        keys: list[str], top: int = 8) -> list[dict[str, Any]]:
+    """Tightness/extremal mining: where a bound is tight, what structure is forced?
+    Properties stable on the tight rows but NOT stable globally are conjectured
+    extremal-structure characterizations — historically the richest lemma source."""
+    globally_stable = {s["property"] for s in _stable_props(rows, keys)}
+    out = []
+    for ineq in inequalities[:top]:
+        if ineq["tight_everywhere"] or ineq["tight_count"] < 2:
+            continue
+        a, b, c = ineq["left"], ineq["right"], ineq["constant"]
+        tight_rows = [r for r in rows if a in r and b in r and r[b] > 0 and r[a] == c * r[b]]
+        forced = [s for s in _stable_props(tight_rows, keys)
+                  if s["property"] not in globally_stable and s["property"] not in (a, b)]
+        for s in forced:
+            out.append({"bound": f"{a} <= {c}*{b}", "tight_rows": len(tight_rows),
+                        "forced_property": s["property"], "forced_value": s["value"]})
+    return out
+
+
+def mine_sequence_fingerprints(rows: list[dict[str, Any]], numeric_keys: list[str],
+                               min_support: int = 4) -> list[dict[str, Any]]:
+    """Match computed integer sequences (indexed by an `n` column) against known
+    families, allowing an index shift of -1/0/+1."""
+    indexed = sorted((r for r in rows if isinstance(r.get("n"), int)), key=lambda r: r["n"])
+    if len(indexed) < min_support:
+        return []
+    out = []
+    for key in numeric_keys:
+        if key == "n":
+            continue
+        pts = [(r["n"], r[key]) for r in indexed if isinstance(r.get(key), int)]
+        if len(pts) < min_support or len({v for _, v in pts}) <= 1:
+            continue
+        for fam, fn in SEQUENCE_FAMILIES.items():
+            for shift in (-1, 0, 1):
+                try:
+                    expected = [fn(n + shift) for n, _ in pts]
+                except Exception:
+                    continue
+                if None in expected:
+                    continue
+                if all(v == e for (_, v), e in zip(pts, expected)):
+                    out.append({"property": key, "family": fam, "shift": shift,
+                                "support": len(pts)})
+                    break
+            else:
+                continue
+            break
+    return out
+
+
 def mine(rows: list[dict[str, Any]]) -> dict[str, Any]:
     if not rows:
-        return {"stable_properties": [], "implications": [], "numeric_equalities": []}
+        return {"stable_properties": [], "implications": [], "numeric_equalities": [],
+                "inequalities": [], "equality_cases": [], "sequence_fingerprints": []}
     keys = sorted({key for row in rows for key in row if isinstance(row.get(key), (bool, int, float))})
     stable = []
     for key in keys:
@@ -210,10 +326,14 @@ def mine(rows: list[dict[str, Any]]) -> dict[str, Any]:
         support = [row for row in rows if a in row and b in row]
         if support and all(row[a] == row[b] for row in support):
             numeric_equalities.append({"left": a, "right": b, "support": len(support)})
+    inequalities = mine_inequalities(rows, numeric_keys)
     return {
         "stable_properties": stable,
         "implications": implications,
         "numeric_equalities": numeric_equalities,
+        "inequalities": inequalities,
+        "equality_cases": mine_equality_cases(rows, inequalities, keys),
+        "sequence_fingerprints": mine_sequence_fingerprints(rows, numeric_keys),
     }
 
 
@@ -255,6 +375,34 @@ def main() -> int:
             "status": "CONJECTURE",
             "support": item["support"],
             "next_attempt": "falsify on larger bounds, then formalize exact scoped lemma",
+        })
+    for item in result["invariants"]["inequalities"][:10]:
+        tight = "tight everywhere (scaled equality)" if item["tight_everywhere"] else \
+            f"tight on {item['tight_count']}/{item['support']} samples"
+        result["actual_lemma_queue_candidates"].append({
+            "statement": f"{item['left']} <= {item['constant']}*{item['right']} on sampled "
+                         f"{args.domain} objects ({tight})",
+            "status": "CONJECTURE",
+            "support": item["support"],
+            "next_attempt": "falsify on larger bounds; if it holds, characterize the equality cases",
+        })
+    for item in result["invariants"]["equality_cases"][:10]:
+        result["actual_lemma_queue_candidates"].append({
+            "statement": f"extremal structure: objects with {item['bound']} tight all satisfy "
+                         f"{item['forced_property']} == {item['forced_value']}",
+            "status": "CONJECTURE",
+            "support": item["tight_rows"],
+            "next_attempt": "verify the forced structure on larger extremal samples, then prove "
+                            "the characterization as a stability lemma",
+        })
+    for item in result["invariants"]["sequence_fingerprints"][:10]:
+        shift = f"(n{item['shift']:+d})" if item["shift"] else "(n)"
+        result["actual_lemma_queue_candidates"].append({
+            "statement": f"{item['property']}(n) == {item['family']}{shift} on sampled "
+                         f"{args.domain} objects",
+            "status": "CONJECTURE",
+            "support": item["support"],
+            "next_attempt": "extend the index range; if the closed form survives, prove it by induction",
         })
     print(json.dumps(result, indent=2, sort_keys=True))
     return 0

@@ -25,9 +25,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -392,6 +394,11 @@ def candidates(statement: str, preamble: str, policy: dict | None, library: Path
             for fin in have_fins(hint):
                 parts = [p for p in (prefix, hv, fin) if p]
                 have_bodies.append("by " + "; ".join(parts))
+    # Value-function coverage extension: the model used to re-rank ONLY the
+    # compound cross-product; the library-have recombination family stayed
+    # hand-ordered. A stable sort by learned score (0 with no model -> order
+    # unchanged) lets the flywheel's training reach this family too.
+    have_bodies.sort(key=lambda b: -value_function.score(gfeats, b, vmodel))
     # Try cheap atomic finishers, then real induction proofs, then the compound
     # cross-product. Induction is early so a ∀-Nat goal that needs it is reached
     # within the node budget instead of being crowded out.
@@ -402,6 +409,7 @@ def candidates(statement: str, preamble: str, policy: dict | None, library: Path
     # within the node budget (this is the Layer-3.2 reach fix for the deep search).
     lib_bodies = [p if p.startswith(("by ", "fun ")) else f"by exact {p}" for p in (lib_proofs or [])]
     prem_direct = [f"by exact {p}" for p in premises] + [f"by simp [{p}]" for p in premises]
+    prem_direct.sort(key=lambda b: -value_function.score(gfeats, b, vmodel))
     # Order: verbatim library reuse + cheap atomics + direct atlas premises, then the
     # cheap-and-high-value induction route, then library-have RECOMBINATION, then the
     # large compound cross-product. have_bodies sit AFTER induction (so a recursive
@@ -411,6 +419,46 @@ def candidates(statement: str, preamble: str, policy: dict | None, library: Path
     # route — they cross the generalization barrier the one-level route cannot, and
     # are bounded so they fit the node budget.
     gen_cands = generalization_candidates(statement, preamble)
+
+    # MATHLIB MODE (WITSOC_LAKE_ENV): each kernel check runs `lake env lean`
+    # against the project's Mathlib (~seconds each, it loads Mathlib), so the
+    # full cross-product is unaffordable — brute force at 300 nodes would take
+    # tens of minutes per goal. Narrow to retrieval-guided premises plus the
+    # Mathlib-strength finisher family (`ring`/`nlinarith`/... unavailable in
+    # core Lean) under a few intro patterns, hard-capped. The kernel still
+    # gates everything; this only changes which candidates get a chance.
+    if os.environ.get("WITSOC_LAKE_ENV"):
+        mathlib_fins = ["ring", "ring_nf", "nlinarith", "positivity", "norm_num",
+                        "omega", "simp", "simp_all", "aesop", "decide"]
+        narrowed = list(lib_bodies) + cheap + prem_direct
+        # Mathlib-strength induction FIRST (before the blind finisher
+        # cross-product, which alone fills the 48-candidate cap): core
+        # induction finishers are linear (omega), so cubic+ residuals over
+        # recursive defs (6*sumSq n = n(n+1)(2n+1)) need `ring`/`nlinarith`
+        # closers in the succ branch. Only generated when the preamble has a
+        # recursive def, so plain goals pay nothing.
+        mfa = _FORALL_NAT_RE.match(statement.strip())
+        if mfa:
+            v = mfa.group(1)
+            for d in recursive_defs(preamble):
+                dn = d["name"]
+                for succ in (f"rw [{dn}, Nat.mul_add, ih]; ring",
+                             f"rw [{dn}]; nlinarith [ih]",
+                             f"simp [{dn}, ih]; ring",
+                             f"simp [{dn}]; nlinarith [ih]"):
+                    narrowed.append(f"by intro {v}; induction {v} with"
+                                    f" | zero => simp [{dn}] | succ k ih => {succ}")
+        for pre in ("", "intro a b", "intro n", "intro a b c", "intros"):
+            for fin in mathlib_fins:
+                narrowed.append("by " + "; ".join(p for p in (pre, fin) if p))
+        for prem in premises[:4]:
+            narrowed.append(f"by apply {prem}")
+            narrowed.append(f"by intros; exact {prem}")
+            narrowed.append(f"by simp [{prem}]")
+        narrowed += induction_candidates(statement, preamble)[:6] + gen_cands[:4] + have_bodies[:6]
+        seen_n: set[str] = set()
+        return [s for s in narrowed if not (s in seen_n or seen_n.add(s))][:48]
+
     ordered = (lib_bodies + cheap + prem_direct
                + induction_candidates(statement, preamble)
                + structural_induction_candidates(statement, preamble)
@@ -434,13 +482,255 @@ def _error_class(reason: str | None) -> str | None:
     return "other"
 
 
+_UNKNOWN_ID_RE = re.compile(r"unknown (?:identifier|constant) '?([A-Za-z0-9_.]+)'?")
+# Error-class rank for picking repair seeds: an `unsolved goals` failure is a
+# NEAR-MISS (the tactic ran and left a residual goal — one more closer often
+# finishes), a type mismatch is a wrong-shaped term (cheap local fixes exist),
+# an unknown symbol is a bad citation (drop/qualify it). Timeouts and other
+# errors are poor seeds.
+_REPAIR_RANK = {"unsolved_goals": 0, "type_mismatch": 1, "unknown_symbol": 2}
+
+
+def repair_mutations(proof: str, diagnostics: str | None) -> list[str]:
+    """Error-guided mutations of a FAILED candidate (1-ply -> 2-ply search).
+
+    The old search threw the compiler's message away and moved to the next
+    template; but `unsolved goals ⊢ a + b = b + a` after `simp` is gold — the
+    right move is to mutate THAT candidate (append a closer, drop the unknown
+    citation, flip exact->apply), not to start over. Every mutation is a whole
+    proof, kernel-gated like any candidate, so a wrong repair just fails."""
+    diag = diagnostics or ""
+    cls = _error_class(diag)
+    body = proof[3:].strip() if proof.startswith("by ") else proof.strip()
+    muts: list[str] = []
+    if cls == "unsolved_goals":
+        for suf in ("; omega", " <;> omega", "; simp_all", " <;> simp_all",
+                    "; decide", "; trivial", "; assumption", "; congr 1 <;> omega"):
+            muts.append(f"by {body}{suf}")
+        if "⊢ ∀" in diag:  # residual goal still has binders: intro then close
+            for suf in ("; intro x; omega", "; intro x; simp_all", "; intros; omega"):
+                muts.append(f"by {body}{suf}")
+    elif cls == "unknown_symbol":
+        m = _UNKNOWN_ID_RE.search(diag)
+        if m:
+            sym = m.group(1)
+            for pat, rep in ((f", {sym}", ""), (f"{sym}, ", ""), (f" [{sym}]", "")):
+                if pat in body:
+                    muts.append("by " + body.replace(pat, rep))
+            if "." not in sym:  # a bare name that may live in the Nat namespace
+                muts.append("by " + body.replace(sym, f"Nat.{sym}"))
+    elif cls == "type_mismatch":
+        if "exact " in body:
+            muts.append("by " + body.replace("exact ", "apply ", 1) + " <;> assumption")
+            muts.append("by " + body.replace("exact ", "apply ", 1))
+            tm = re.search(r"exact ([A-Za-z0-9_.]+)\s*$", body)
+            if tm:  # equality proved in the other direction
+                muts.append(f"by {body[:tm.start()]}exact ({tm.group(1)}).symm")
+    seen: set[str] = set()
+    return [m for m in muts if m != proof and not (m in seen or seen.add(m))]
+
+
+def repair_candidates(failures: list[dict], already_tried: set[str],
+                      budget: int = 48, max_seeds: int = 12) -> tuple[list[str], int]:
+    """Pick the most repairable failures and synthesize their mutations.
+
+    Seeds are ranked by error class (near-misses first) and, within
+    `unsolved_goals`, by how few residual goals the message shows (`⊢` count).
+    Returns (mutations, seeds_used) with mutations deduped against everything
+    already tried, capped at `budget`."""
+    def key(f: dict):
+        diag = f.get("diagnostics") or ""
+        cls = _error_class(diag)
+        return (_REPAIR_RANK.get(cls, 9), diag.count("⊢") or 9)
+
+    seeds = [f for f in failures
+             if _error_class(f.get("diagnostics") or "") in _REPAIR_RANK]
+    seeds.sort(key=key)
+    out: list[str] = []
+    used = 0
+    for f in seeds[:max_seeds]:
+        muts = [m for m in repair_mutations(f["proof"], f.get("diagnostics"))
+                if m not in already_tried and m not in out]
+        if muts:
+            used += 1
+            out.extend(muts)
+        if len(out) >= budget:
+            break
+    return out[:budget], used
+
+
+# --- P1 hypothesis specialization -------------------------------------------------
+# Goals of shape `∀ ..., (∀ vars, H) → C` often fall to SPECIALIZING the
+# universal hypothesis at small constants and normalizing (e.g. additive maps:
+# h 0 0 gives f(0+0) = f 0 + f 0; `simp only [Nat.add_zero]` collapses the
+# argument; omega finishes). A standard human move no other generator produced.
+_HYP_FORALL_RE = re.compile(r"\(\s*∀[^()]*?,")
+
+_SPEC_NORMALIZERS = "Nat.add_zero, Nat.zero_add, Nat.mul_zero, Nat.zero_mul, Nat.mul_one, Nat.one_mul"
+
+
+# f applied to a small numeral in the goal (Cauchy-equation-at-points shape).
+_F_AT_NUM_RE = re.compile(r"([a-zA-Z][A-Za-z0-9_]*)\s+([2-9])\b")
+
+
+def _typed_have_candidates(statement: str) -> list[str]:
+    """For goals like `f 2 = 2 * f 1` under an additive hypothesis: the winning
+    move is a TYPE-ANNOTATED have `f 2 = f 1 + f 1 := h 1 1` — the annotation
+    forces `f (1+1)` to elaborate as `f 2` (plain `have := h 1 1` leaves
+    `f (1+1)`, which omega cannot bridge to `f 2`)."""
+    out: list[str] = []
+    seen: set[tuple[str, int]] = set()
+    for m in _F_AT_NUM_RE.finditer(statement):
+        fn, k = m.group(1), int(m.group(2))
+        if (fn, k) in seen or k > 6:
+            continue
+        seen.add((fn, k))
+        # split k = i + j with small i,j; annotate the additive decomposition
+        haves = "; ".join(
+            f"have hcauchy{i} : {fn} {k} = {fn} {i} + {fn} {k - i} := h {i} {k - i}"
+            for i in range(1, k))
+        out.append(f"by\n  intro {fn} h\n  {haves}\n  omega")
+        out.append(f"by\n  intros\n  rename_i h\n  {haves}\n  omega")
+    return out
+
+
+def hypothesis_specialization_candidates(statement: str) -> list[str]:
+    if not _HYP_FORALL_RE.search(statement) or "→" not in statement:
+        return []
+    out: list[str] = _typed_have_candidates(statement)
+    for args in ("0 0", "0", "0 1", "1 0", "1", "1 1", "2 1", "1 2"):
+        for closer in ("omega", "simp_all", "norm_num", "simp_all <;> ring"):
+            out.append("by\n  intros\n  rename_i h\n"
+                       f"  have h0 := h {args}\n"
+                       f"  simp only [{_SPEC_NORMALIZERS}] at h0\n"
+                       f"  {closer}")
+    # combine several small instantiations and throw arithmetic at the lot —
+    # closes goals like `f 2 = 2 * f 1` (h 1 1 gives f 2 = f 1 + f 1) where one
+    # instantiation is not enough.
+    for closer in ("omega", "norm_num", "simp_all <;> omega"):
+        out.append("by\n  intros\n  rename_i h\n"
+                   "  have h00 := h 0 0\n  have h11 := h 1 1\n  have h10 := h 1 0\n  have h21 := h 2 1\n"
+                   f"  simp only [{_SPEC_NORMALIZERS}] at *\n  {closer}")
+    return out
+
+
+# --- P-stride inequality finishers (sq-nonneg-hinted nlinarith) -------------------
+# The workhorse of olympiad inequalities and polynomial-zero goals: a sum of
+# squares is nonneg, so `nlinarith [sq_nonneg (x-y), ...]` closes x²+y²≥2xy,
+# a²+b²=0→a=b=0, AM-GM-shaped goals, etc. The bare `nlinarith` in the portfolio
+# has no hints and fails these; supplying the standard square hints is the
+# single highest-yield deterministic addition for inequalities.
+_INEQ_RE = re.compile(r"[≥≤><]|=\s*0\b")
+_VAR_RE = re.compile(r"∀\s*\(?\s*([a-zA-Z][a-zA-Z0-9_]*(?:\s+[a-zA-Z][a-zA-Z0-9_]*)*)\s*:")
+
+
+def inequality_candidates(statement: str) -> list[str]:
+    if not _INEQ_RE.search(statement) or not any(t in statement for t in ("^", "*", "sqrt")):
+        return []
+    m = _VAR_RE.search(statement)
+    vs = m.group(1).split() if m else []
+    vs = [v for v in vs if len(v) <= 3][:3]
+    hints: list[str] = []
+    for v in vs:
+        hints.append(f"sq_nonneg {v}")
+    for i in range(len(vs)):
+        for j in range(i + 1, len(vs)):
+            hints += [f"sq_nonneg ({vs[i]} - {vs[j]})", f"sq_nonneg ({vs[i]} + {vs[j]})",
+                      f"mul_nonneg (sq_nonneg {vs[i]}) (sq_nonneg {vs[j]})"]
+    if not hints:
+        hints = ["sq_nonneg _"]
+    intro = "intro " + " ".join(vs) if vs else "intro"
+    hintset = "[" + ", ".join(hints) + "]"
+    return [
+        f"by {intro}; nlinarith {hintset}",
+        f"by {intro} h; nlinarith {hintset}",
+        f"by {intro}; constructor <;> nlinarith {hintset}",
+        f"by {intro} h; constructor <;> nlinarith {hintset}",
+        f"by {intro}; positivity",
+        f"by {intro}; nlinarith [{', '.join(hints)}, sq_nonneg (" +
+        " + ".join(vs) + ")]" if vs else f"by {intro}; nlinarith {hintset}",
+    ]
+
+
+# --- P-stride divisibility combinators -------------------------------------------
+# `d ∣ x + y` from `d ∣ x` and `d ∣ y` (and the gcd special case) is a standard
+# closed-form move the bare portfolio misses. Gated on `∣` with a `+`/`-` on the
+# right (a combination goal); the kernel rejects mis-applied combinators.
+_DVD_RE = re.compile(r"∣")
+_VARS2_RE = re.compile(r"∀\s*\(?\s*([a-zA-Z])\s+([a-zA-Z])\s*:")
+
+
+def divisibility_candidates(statement: str) -> list[str]:
+    if not _DVD_RE.search(statement) or not ("+" in statement or "-" in statement):
+        return []
+    out = ["by intro a b; exact Nat.dvd_add (Nat.gcd_dvd_left a b) (Nat.gcd_dvd_right a b)",
+           "by intro a b; exact dvd_add (Nat.gcd_dvd_left a b) (Nat.gcd_dvd_right a b)",
+           "by intros; exact Nat.dvd_add (Nat.gcd_dvd_left _ _) (Nat.gcd_dvd_right _ _)",
+           "by intros; apply Nat.dvd_add <;> assumption",
+           "by intros; apply dvd_add <;> assumption",
+           "by intros; apply Nat.dvd_sub' <;> assumption",
+           "by intros; omega"]
+    return out
+
+
+# --- P1 best-first frontier helpers ---------------------------------------------
+_GOAL_LINE_RE = re.compile(r"⊢\s+([^\n]+)")
+
+
+def _extract_subgoals(diagnostics: str | None, limit: int = 2) -> list[str]:
+    """Residual goals from REAL compiler diagnostics ('unsolved goals ... ⊢ G').
+    Conservative: single-line goals only, deduped, bounded — a goal that
+    references case-local hypotheses simply fails its standalone attempt."""
+    if not diagnostics:
+        return []
+    out: list[str] = []
+    for m in _GOAL_LINE_RE.finditer(str(diagnostics)):
+        goal = m.group(1).strip().rstrip(",")
+        if 3 < len(goal) <= 200 and "sorry" not in goal and goal not in out:
+            out.append(goal)
+        if len(out) >= limit:
+            break
+    return out
+
+
+def _frontier_value(failure: dict) -> tuple:
+    """Best-first ranking of failed candidates: error class first (unsolved
+    goals = closest to done), then shorter diagnostics (smaller residue)."""
+    diag = str(failure.get("diagnostics") or "")
+    return (_REPAIR_RANK.get(_error_class(diag), 9), len(diag))
+
+
+def _inject_have(proof: str, subgoal: str, subproof: str, idx: int) -> str:
+    """Splice a standalone-proved residual goal back into a tactic candidate as
+    a `have` premise — the AND-node composition (kernel re-checks the whole)."""
+    body = proof[2:].lstrip() if proof.startswith("by") else proof
+    return f"by\n  have hsub{idx} : {subgoal} := {subproof}\n  {body}"
+
+
 def search(statement: str, preamble: str, lake_dir: Path | None, policy: dict | None,
-           library: Path | None, max_nodes: int, workers: int, name: str = "obligation") -> dict[str, Any]:
+           library: Path | None, max_nodes: int, workers: int, name: str = "obligation",
+           repair: bool = True, repair_budget: int = 48, rounds: int = 3,
+           time_budget: float | None = None) -> dict[str, Any]:
+    import time as _time
+    # P-economics (data-justified): a deterministic goal that closes, closes
+    # FAST (battery: every closure ≤20s); one still grinding past the budget
+    # will not close — so cap the WHOLE search wall-clock and let the bus take
+    # the rest. `time_budget` seconds -> a monotonic deadline checked between
+    # candidate races and frontier rounds. None = unlimited (unchanged).
+    deadline = (_time.monotonic() + time_budget) if time_budget else None
     premises, lib_proofs = premise_pool(statement, library)
     base_cands = candidates(statement, preamble, policy, library, premises, lib_proofs)
+    # Shape-gated families go FIRST when they apply: hypothesis specialization
+    # (universal hypothesis present) and sq-nonneg-hinted nlinarith (polynomial
+    # inequality / zero goal) are the canonical human moves for their shapes.
+    spec_cands = hypothesis_specialization_candidates(statement)
+    ineq_cands = inequality_candidates(statement)
+    dvd_cands = divisibility_candidates(statement)
+    priority_cands = spec_cands + [c for c in (ineq_cands + dvd_cands) if c not in spec_cands]
     # Self-contained helper-lemma induction route (fallback), appended within budget.
     hcands = helper_induction_candidates(statement, preamble)
-    cands = (base_cands + [h for h in hcands if h not in base_cands])[:max_nodes]
+    cands = (priority_cands + [c for c in base_cands if c not in priority_cands]
+             + [h for h in hcands if h not in base_cands])[:max_nodes]
     recdefs = recursive_defs(preamble)
     helpers = helper_lemmas(preamble)
     trace: dict[str, Any] = {
@@ -453,15 +743,24 @@ def search(statement: str, preamble: str, lake_dir: Path | None, policy: dict | 
         "atlas_premises": premises,
         "library_proofs_reused": len(lib_proofs),
         "candidates_tried": len(cands),
+        "time_budget": time_budget,
         "last_error_class": None,
         "strategy": None,
     }
+
+    # Failed candidates are collected WITH the compiler's message so a no-win
+    # round can seed error-guided repair instead of discarding the evidence.
+    failures: list[dict] = []
+    fail_lock = threading.Lock()
 
     def make(proof: str):
         def run():
             src = (f"{preamble}\n" if preamble else "") + (
                 f"namespace WitsocObligation\ntheorem {name} : {statement} := {proof}\nend WitsocObligation\n")
             v = witcore.lean_verify_cached(src, lake_dir)
+            if v.get("checked") and not v.get("verified"):
+                with fail_lock:
+                    failures.append({"proof": proof, "diagnostics": v.get("diagnostics") or v.get("reason")})
             return {"proof": proof, **v}
         return run
 
@@ -490,7 +789,8 @@ def search(statement: str, preamble: str, lake_dir: Path | None, policy: dict | 
 
     # Race ALL candidates through one pipelined pool with early-exit (see witcore).
     first = witcore.parallel_first([make(p) for p in cands[1:]],
-                                   accept=lambda r: bool(r.get("verified")), max_workers=workers)
+                                   accept=lambda r: bool(r.get("verified")), max_workers=workers,
+                                   deadline=deadline)
     if first and first.get("verified"):
         # Report the ORDINAL DEPTH of the winning candidate in the priority order,
         # not the pool size: a meaningful efficiency signal (how far down the ranked
@@ -501,7 +801,103 @@ def search(statement: str, preamble: str, lake_dir: Path | None, policy: dict | 
         except ValueError:
             depth = len(cands)
         return discharged_result(first["proof"], depth)
-    return {"discharged": False, "label": "OBLIGATION_OPEN", "nodes": len(cands), "trace": trace}
+
+    # BEST-FIRST REPAIR FRONTIER (P1): instead of one repair ply, iterate a
+    # value-ranked frontier of failed candidates. Each round: (a) AND-step —
+    # extract residual ⊢ goals from the best failures' REAL diagnostics, prove
+    # them STANDALONE with the cheap portfolio, and splice successes back into
+    # parent candidates as kernel-rechecked `have` premises (within-attempt
+    # lemma reuse — proved fragments are also memoized by the Lean cache);
+    # (b) OR-step — error-guided mutations of the closest failures. Every
+    # build counts against max_nodes; the kernel gates everything.
+    if failures:
+        ranked = sorted(failures, key=_frontier_value)
+        trace["last_error_class"] = _error_class(ranked[0].get("diagnostics"))
+    if not (repair and failures):
+        return {"discharged": False, "label": "OBLIGATION_OPEN", "nodes": len(cands), "trace": trace}
+
+    cheap_portfolio = ["by omega", "by simp", "by ring_nf", "by decide", "by simp_arith"]
+    proved_subgoals: dict[str, str] = {}  # within-attempt lemma cache
+    tried: set[str] = set(cands)
+    total_nodes = len(cands)
+    frontier: list[dict] = failures
+    rounds_trace: list[dict] = []
+
+    for round_no in range(1, max(1, rounds) + 1):
+        # Round 1 always runs (the historical repair ply ran even when the
+        # flat portfolio consumed the whole node budget); later rounds are
+        # budget-gated.
+        if not frontier or (round_no > 1 and total_nodes >= max_nodes):
+            break
+        if deadline is not None and __import__("time").monotonic() >= deadline:
+            trace["stopped"] = "time_budget exhausted"
+            break
+        ranked = sorted(frontier, key=_frontier_value)
+        trace["last_error_class"] = _error_class(ranked[0].get("diagnostics"))
+        round_info: dict[str, Any] = {"round": round_no}
+
+        # Round 1 is entitled to at least the repair budget even at the cap.
+        round_cap = max_nodes - total_nodes
+        if round_no == 1:
+            round_cap = max(round_cap, repair_budget)
+
+        # (a) AND-step: standalone subgoal proving + have-splice.
+        spliced: list[str] = []
+        sub_builds = 0
+        for f in ranked[:3]:
+            for goal in _extract_subgoals(f.get("diagnostics")):
+                if goal == statement.strip():
+                    continue  # restating the target is not a decomposition
+                if goal not in proved_subgoals and sub_builds + len(cheap_portfolio) <= round_cap:
+                    def make_sub(g: str, p: str):
+                        def run():
+                            src = (f"{preamble}\n" if preamble else "") + (
+                                f"namespace WitsocSub\ntheorem sub : {g} := {p}\nend WitsocSub\n")
+                            return {"proof": p, **witcore.lean_verify_cached(src, lake_dir)}
+                        return run
+                    win = witcore.parallel_first([make_sub(goal, p) for p in cheap_portfolio],
+                                                 accept=lambda r: bool(r.get("verified")),
+                                                 max_workers=workers, deadline=deadline)
+                    total_nodes += len(cheap_portfolio)
+                    sub_builds += len(cheap_portfolio)
+                    if win and win.get("verified"):
+                        proved_subgoals[goal] = win["proof"]
+                if goal in proved_subgoals:
+                    cand = _inject_have(str(f["proof"]), goal, proved_subgoals[goal],
+                                        len(proved_subgoals))
+                    if cand not in tried:
+                        spliced.append(cand)
+        round_info["subgoals_proved"] = len(proved_subgoals)
+        round_info["have_spliced"] = len(spliced)
+
+        # (b) OR-step: error-guided mutations of the closest failures.
+        repairs, seeds = repair_candidates(ranked, tried, budget=repair_budget)
+        round_info["seeds"] = seeds
+        attempts = (spliced + [r for r in repairs if r not in spliced])[:max(0, round_cap - sub_builds)]
+        round_info["mutations"] = len(attempts)
+        if round_no == 1:
+            trace["repair_round"] = {"seeds": seeds, "mutations": len(repairs)}
+        rounds_trace.append(round_info)
+        if not attempts:
+            break
+        tried.update(attempts)
+
+        before = len(failures)
+        rfirst = witcore.parallel_first([make(p) for p in attempts],
+                                        accept=lambda r: bool(r.get("verified")), max_workers=workers,
+                                        deadline=deadline)
+        total_nodes += len(attempts)
+        if rfirst and rfirst.get("verified"):
+            trace["search_rounds"] = rounds_trace
+            result = discharged_result(rfirst["proof"], total_nodes)
+            trace["strategy"] = ("subgoal_decomposition" if "have hsub" in rfirst["proof"]
+                                 else "error_guided_repair")
+            return result
+        # the new failures (collected by make() into `failures`) are next round's frontier
+        frontier = failures[before:]
+
+    trace["search_rounds"] = rounds_trace
+    return {"discharged": False, "label": "OBLIGATION_OPEN", "nodes": total_nodes, "trace": trace}
 
 
 def main() -> int:

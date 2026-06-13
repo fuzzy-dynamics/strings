@@ -34,10 +34,7 @@ ARENA = "SPECULATIVE"
 FORBIDDEN_LEAN = ("sorry", "admit", "axiom", "native_decide")
 
 
-def slug(text: str) -> str:
-    s = re.sub(r"[^a-zA-Z0-9_+-]+", "-", text.strip()).strip("-").lower()
-    return s or "node"
-
+from witcore import slug  # noqa: E402  -- shared substrate, was a local copy
 
 def falsification_test(domain: str, lean_statement: str | None = None) -> dict:
     """A bounded, dispatchable refutation descriptor. A witness REFUTES; no witness
@@ -255,6 +252,29 @@ def generate_barrier_lemmas(
         parts += nat_formal_family(lean_target)           # dispatchable formal family
     parts += general_family(target)                       # always-present fallback
 
+    # Formalization-blocker REPAIR: a blocked (prose-only) part used to be a
+    # dead end forever — `formalization_blocker` set, lean_statement null, OPEN
+    # for eternity. When the frozen target itself is a formal ∀-Nat goal, attach
+    # a bounded DISPATCHABLE fallback per blocked family (cap 2): weaker than
+    # the blocked lemma but kernel-attackable now, keeping the research
+    # direction alive while the full lemma awaits formalization.
+    if lean_target:
+        f_t = cg.parse_forall(lean_target)
+        if f_t and f_t["type"] in ("Nat", "ℕ"):
+            v_t, body_t = f_t["var"], f_t["body"]
+            blocked = [p for p in parts
+                       if p.get("formalization_blocker") and not p.get("lean_statement")][:2]
+            for bp in blocked:
+                fb = _bt(
+                    f"{bp['barrier_type']}_bounded_fallback",
+                    f"Bounded fallback for blocked `{bp['barrier_type']}`: the target for "
+                    f"{v_t} ≤ 32 — weaker but dispatchable now; the full lemma still awaits formalization.",
+                    lean=f"∀ {v_t} : Nat, {v_t} ≤ 32 → ({body_t})",
+                    priority=max(60, int(bp.get("priority", 80)) - 10),
+                    domain="formal_nat")
+                fb["fallback_for"] = bp["barrier_type"]
+                parts.append(fb)
+
     failed = {(str(f.get("target_hash")), str(f.get("barrier_type") or f.get("method_family")))
               for f in (failure_memory or [])}
 
@@ -323,6 +343,8 @@ def generate_barrier_lemmas(
             lemma["formalization_blocker"] = p["formalization_blocker"]
         if p.get("mutated_from_failure"):
             lemma["mutated_from_failure"] = p["mutated_from_failure"]
+        if p.get("fallback_for"):
+            lemma["fallback_for"] = p["fallback_for"]
         if p.get("source") == "llm":
             lemma["source"] = "llm"
         if p.get("formalized_by"):

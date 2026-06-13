@@ -6,7 +6,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import re
 from pathlib import Path
 
 
@@ -29,13 +28,21 @@ def load(path: Path, default):
         return default
 
 
-def slug(text: str) -> str:
-    s = re.sub(r"[^a-zA-Z0-9_+-]+", "-", text.strip()).strip("-").lower()
-    return s or "node"
-
+from witcore import slug  # noqa: E402  -- shared substrate, was a local copy
+from lovasz_run_manifest import default_campaign  # noqa: E402
 
 def sha(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def worker_budget(run: Path) -> dict:
+    """Per-worker budget comes from the campaign block in lovasz_run.json
+    (campaign_budget_gate owns it); packets never carry their own numbers."""
+    manifest = load(run / "lovasz_run.json", {})
+    campaign = manifest.get("campaign") if isinstance(manifest, dict) else None
+    if isinstance(campaign, dict) and isinstance(campaign.get("budget", {}).get("worker"), dict):
+        return dict(campaign["budget"]["worker"])
+    return dict(default_campaign()["budget"]["worker"])
 
 
 def main() -> int:
@@ -52,6 +59,7 @@ def main() -> int:
     dag = load(run / "proof_dependency_dag.json", [])
     lemmas = load(run / "actual_lemma_queue.json", [])
     lemma_by_statement = {str(l.get("statement")): l for l in lemmas if isinstance(l, dict)}
+    budget = worker_budget(run)
     packets = []
 
     for node in [n for n in dag if isinstance(n, dict)][: args.limit]:
@@ -83,14 +91,12 @@ def main() -> int:
                 "hypotheses_sha256": str(node.get("hypotheses_sha256") or target_hash),
                 "conclusion_sha256": str(node.get("conclusion_sha256") or target_hash),
             },
-            "budget": {
-                "time_minutes": 30,
-                "max_tool_calls": 20,
-                "max_tokens": 12000,
-            },
+            "budget": budget,
             "proof_worktree": proof_worktree,
             "dependency_path_to_target": node.get("dependency_path_to_target") or [],
         }
+        if node.get("mutation_applied"):
+            packet["mutation_applied"] = str(node["mutation_applied"])
         path = out_dir / f"{slug(node_id)}.spawn.json"
         path.write_text(json.dumps(packet, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
         packets.append(str(path))

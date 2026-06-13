@@ -6,22 +6,21 @@ informal mathematics into a Lean statement (that is the genuinely hard, unsolved
 part) and it does NOT auto-prove. What it does:
 
   1. Parse a .wit THEOREM/LEMMA: module, name, informal CLAIM, hypotheses.
-  2. Emit a compilable Lean obligation file:
+  2. Emit a Lean file only when it can be honest:
        - the informal claim preserved as a docstring,
-       - a `theorem <name> : <STATEMENT> := <PROOF>` where STATEMENT is the formal
-         Lean proposition you supply with --lean-statement (else a clearly-marked
-         `True` placeholder), and PROOF is what you supply with --proof (else
-         `sorry`).
+       - with --proof: a `theorem <name> : <STATEMENT> := <PROOF>`;
+       - without --proof: a statement-syntax check, not a theorem with `sorry`;
+       - without --lean-statement: no Lean file is emitted.
   3. Build it with the real Lean toolchain and run the soundness scan
      (shared lean_check), so the obligation file separates three honest states:
        STATEMENT_NOT_FORMALIZED  no Lean statement was supplied yet
-       OBLIGATION_OPEN           statement type-checks; proof is still `sorry`
+       OBLIGATION_OPEN           statement type-checks; no proof was supplied
        PROOF_DISCHARGED          statement type-checks AND proof is sorry/axiom-free
   4. Record the result in formalization_obligations.json (a list, appended).
 
-By construction a `sorry` obligation can never be recorded as PROOF_DISCHARGED —
-that ties directly to the Lean soundness guard so the bridge cannot launder an
-unproved claim into a "done" one.
+By construction this bridge does not emit `sorry` drafts by default. A legacy
+`--allow-sorry-draft` flag exists only for manual debugging; it can never record
+PROOF_DISCHARGED.
 
 Usage:
   wit_to_lean_obligation.py <file.wit> [--name NAME]
@@ -40,7 +39,7 @@ from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from lean_check import lean_verify  # noqa: E402
+from lean_check import lean_verify, scan_forbidden  # noqa: E402
 
 CLAIM_KEYWORDS = ("THEOREM", "LEMMA", "PROPOSITION", "COROLLARY")
 _BLOCK_RE = re.compile(
@@ -116,29 +115,38 @@ def sanitize_ident(name: str) -> str:
     return s
 
 
-def build_lean(parsed: dict, statement: str | None, proof: str | None, wit_path: Path) -> str:
+def build_lean(parsed: dict, statement: str, proof: str | None, wit_path: Path,
+               *, allow_sorry_draft: bool = False) -> str:
     ident = sanitize_ident(parsed["name"])
     claim = parsed["claim"] or "(no CLAIM block found in source)"
     given = parsed["given"]
-    stmt = statement if statement else "True"
-    prf = proof if proof else "sorry"
-    placeholder_note = "" if statement else (
-        "-- WARNING: no --lean-statement supplied; the statement below is the\n"
-        "-- placeholder `True`, NOT a formalization of the claim. This obligation\n"
-        "-- only demonstrates the scaffold compiles; it proves nothing.\n"
-    )
     docstring = claim.replace("/-", "(-").replace("-/", "-)")
     given_comment = ""
     if given:
         given_comment = "-- Hypotheses (informal):\n" + "".join(
             f"--   {ln}\n" for ln in given.splitlines() if ln.strip())
-    return (
+    header = (
         f"-- Auto-generated Witsoc obligation from {wit_path}\n"
         f"-- Module: {parsed['module']}   {parsed['kind']} {parsed['name']}\n"
-        f"{given_comment}{placeholder_note}"
+        f"{given_comment}"
         f"namespace WitsocObligation\n\n"
+    )
+    if proof is None and not allow_sorry_draft:
+        claim_comment = "-- Claim (informal):\n" + "".join(
+            f"--   {ln}\n" for ln in claim.splitlines() if ln.strip())
+        return (
+            header +
+            claim_comment +
+            f"-- Statement syntax check only. No proof was supplied, so no theorem\n"
+            f"-- declaration is emitted.\n"
+            f"#check ({statement})\n\n"
+            f"end WitsocObligation\n"
+        )
+    prf = proof if proof is not None else "sorry"
+    return (
+        header +
         f"/-- {docstring} -/\n"
-        f"theorem {ident} : {stmt} := {prf}\n\n"
+        f"theorem {ident} : {statement} := {prf}\n\n"
         f"end WitsocObligation\n"
     )
 
@@ -152,7 +160,7 @@ def classify(statement_provided: bool, proof_provided: bool,
     if not build_ok:
         return "STATEMENT_DOES_NOT_TYPECHECK"
     if not proof_provided:
-        return "OBLIGATION_OPEN"          # statement type-checks; proof is `sorry`
+        return "OBLIGATION_OPEN"          # statement type-checks; no proof supplied
     if not verified:
         return "OBLIGATION_OPEN"          # proof present but uses sorry/axiom -> still open
     return "PROOF_DISCHARGED"
@@ -163,13 +171,15 @@ def main() -> int:
     ap.add_argument("wit", type=Path)
     ap.add_argument("--name", default=None, help="which claim (default: first in file)")
     ap.add_argument("--lean-statement", default=None, help="formal Lean proposition for the theorem type")
-    ap.add_argument("--proof", default=None, help="Lean proof term/tactic (default: sorry)")
+    ap.add_argument("--proof", default=None, help="Lean proof term/tactic")
     ap.add_argument("--proof-file", type=Path, default=None)
     ap.add_argument("--lake-dir", type=Path, default=None)
     ap.add_argument("--emit", type=Path, default=None, help="output .lean path (default: obligations/<mod>_<name>.lean)")
     ap.add_argument("--out-ledger", type=Path, default=Path("formalization_obligations.json"))
     ap.add_argument("--update-feasibility", action="store_true",
                     help="also stamp a summary label into formalization_feasibility.json")
+    ap.add_argument("--allow-sorry-draft", action="store_true",
+                    help="legacy/debug only: emit a theorem with sorry when no proof is supplied")
     args = ap.parse_args()
 
     text = args.wit.read_text(encoding="utf-8", errors="replace")
@@ -185,30 +195,45 @@ def main() -> int:
     statement_provided = args.lean_statement is not None
     proof_provided = proof is not None
 
-    lean_src = build_lean(parsed, args.lean_statement, proof, args.wit)
     emit = args.emit or Path("obligations") / f"{sanitize_ident(parsed['module'])}_{sanitize_ident(parsed['name'])}.lean"
-    emit.parent.mkdir(parents=True, exist_ok=True)
-    emit.write_text(lean_src, encoding="utf-8")
-
-    verdict = lean_verify(emit, args.lake_dir)
-    checked = bool(verdict.get("checked"))
-    build_ok = bool(verdict.get("build", {}).get("ok"))
-    verified = bool(verdict.get("verified"))
-    label = classify(statement_provided, proof_provided, build_ok, verified, checked)
+    verdict = {"checked": True, "verified": False, "build": {"ok": False}, "forbidden": []}
+    checked = True
+    build_ok = False
+    verified = False
+    lean_path: str | None = None
+    if not statement_provided:
+        label = "STATEMENT_NOT_FORMALIZED"
+    elif proof_provided and scan_forbidden(proof or ""):
+        label = "OBLIGATION_OPEN"
+        verdict = {"checked": True, "verified": False, "build": {"ok": False},
+                   "forbidden": scan_forbidden(proof or ""),
+                   "reason": "proof contains forbidden Lean escape hatch"}
+    else:
+        lean_src = build_lean(parsed, args.lean_statement, proof, args.wit,
+                              allow_sorry_draft=args.allow_sorry_draft)
+        emit.parent.mkdir(parents=True, exist_ok=True)
+        emit.write_text(lean_src, encoding="utf-8")
+        lean_path = str(emit)
+        verdict = lean_verify(emit, args.lake_dir)
+        checked = bool(verdict.get("checked"))
+        build_ok = bool(verdict.get("build", {}).get("ok"))
+        verified = bool(verdict.get("verified"))
+        label = classify(statement_provided, proof_provided, build_ok, verified, checked)
 
     record = {
         "schema": "witsoc.formalization_obligation.v1",
         "wit": str(args.wit),
         "module": parsed["module"],
         "theorem": parsed["name"],
-        "lean_path": str(emit),
+        "lean_path": lean_path,
         "informal_claim": parsed["claim"],
         "statement_provided": statement_provided,
-        "statement_compiles": ("PASS" if build_ok else "FAIL") if checked else "UNCHECKED",
+        "statement_compiles": ("PASS" if build_ok else "FAIL") if checked and statement_provided else "NOT_FORMALIZED",
         "proof_provided": proof_provided,
         "proof_discharged": label == "PROOF_DISCHARGED",
         "forbidden_tokens": verdict.get("forbidden", []),
         "label": label,
+        "sorry_free_generation": not args.allow_sorry_draft,
     }
 
     # Append to the obligations ledger (a list).
@@ -221,7 +246,7 @@ def main() -> int:
                 existing = data
         except Exception:
             existing = []
-    existing = [r for r in existing if not (isinstance(r, dict) and r.get("lean_path") == record["lean_path"])]
+    existing = [r for r in existing if not (isinstance(r, dict) and r.get("wit") == record["wit"] and r.get("theorem") == record["theorem"])]
     existing.append(record)
     ledger_path.parent.mkdir(parents=True, exist_ok=True)
     ledger_path.write_text(json.dumps(existing, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")

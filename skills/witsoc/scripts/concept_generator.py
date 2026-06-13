@@ -29,7 +29,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import math
 import re
 import sys
 from collections import Counter
@@ -56,14 +55,7 @@ def tok(s: str) -> Counter:
     return Counter(re.findall(r"[A-Za-z0-9_]+", (s or "").lower()))
 
 
-def cosine(a: Counter, b: Counter) -> float:
-    if not a or not b:
-        return 0.0
-    dot = sum(a[k] * b.get(k, 0) for k in a)
-    na = math.sqrt(sum(v * v for v in a.values()))
-    nb = math.sqrt(sum(v * v for v in b.values()))
-    return dot / (na * nb) if na and nb else 0.0
-
+from witcore import cosine  # noqa: E402  -- shared substrate, was a local copy
 
 def force_open(cand: dict) -> dict:
     """The single chokepoint: a candidate can only ever be OPEN_UNFALSIFIED /

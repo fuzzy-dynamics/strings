@@ -98,6 +98,12 @@ def mine_number_theory(a: int, b: int, falsify_extra: int, min_support: int) -> 
                     if r[p] and not r[q]:
                         broke_at = n
                         break
+                # W1 formalization bridge: every miner predicate ships its Lean
+                # form in predicate_registry, so the conjecture is a REAL
+                # dispatchable statement by construction. A predicate outside
+                # the registry keeps the honest stub (never a guess).
+                import predicate_registry as pr
+                lean, blocker, needs_mathlib = pr.implication(p, q)
                 conjectures.append({
                     "form": f"{p}(n) -> {q}(n)",
                     "support": len(antecedent),
@@ -105,7 +111,11 @@ def mine_number_theory(a: int, b: int, falsify_extra: int, min_support: int) -> 
                     "falsification_range": [b + 1, b + falsify_extra],
                     "falsified_at": broke_at,
                     "status": "FALSIFIED" if broke_at else "OPEN_UNFALSIFIED",
-                    "lean_statement_stub": f"∀ n : Nat, 2 ≤ n → P_{p} n → P_{q} n  -- define P_{p},P_{q}",
+                    "lean_statement": lean,
+                    "lean_imports": "import Mathlib" if needs_mathlib else "",
+                    "formalization_blocker": blocker,
+                    "lean_statement_stub": (None if lean else
+                                            f"∀ n : Nat, 2 ≤ n → P_{p} n → P_{q} n  -- define P_{p},P_{q}"),
                 })
     # Surface the unfalsified ones first, by support.
     conjectures = [c for c in conjectures if c["status"] == "OPEN_UNFALSIFIED" or c["falsified_at"]]

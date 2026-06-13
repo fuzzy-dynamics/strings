@@ -36,7 +36,7 @@ from pathlib import Path
 APPROACHES = [
     "direct_prover", "generalize_invariant", "structural_induction", "premise_retrieval",
     "conjecture_mining", "construction_search", "analogical_transfer", "speculative_arena",
-    "counterexample_search", "ontology_pivot",
+    "counterexample_search", "ontology_pivot", "invention", "finite_reduction",
 ]
 
 # rung -> reward (verified progress). Kernel outcomes only; the controller never sets these.
@@ -90,6 +90,9 @@ def select_approach(state: dict, priors: dict | None = None) -> str | None:
     live = [a for a in APPROACHES if a not in state["dead_ends"]]
     if not live:
         return None
+    # setdefault: states saved before a new approach existed must stay loadable
+    for a in live:
+        state["approach_stats"].setdefault(a, {"tries": 0, "reward": 0.0, "fail_streak": 0})
     total = sum(state["approach_stats"][a]["tries"] for a in live) + 1
     best, best_score = None, -1e18
     for a in live:

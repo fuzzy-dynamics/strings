@@ -109,6 +109,52 @@
         "required": ["step_id", "type", "statement", "depends_on", "method"]
       }
     },
+    "actual_lemma_queue": {
+      "description": "Optional orchestrator-ready Lovasz queue items generated from the lemma plan.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "node_id": { "type": "string", "minLength": 1 },
+          "statement": { "type": "string", "minLength": 1 },
+          "why_it_matters": { "type": "string", "minLength": 1 },
+          "unlocks": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 }
+          },
+          "smallest_formalizable_subcase": { "type": "string", "minLength": 1 },
+          "status": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "proof_dependency_dag": {
+      "description": "Optional orchestrator-ready proof DAG nodes generated from the lemma plan.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "node_id": { "type": "string", "minLength": 1 },
+          "statement": { "type": "string", "minLength": 1 },
+          "why_it_matters": { "type": "string", "minLength": 1 },
+          "unlocks": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 }
+          },
+          "smallest_formalizable_subcase": { "type": "string", "minLength": 1 },
+          "status": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "generator_artifacts": {
+      "description": "Optional artifacts written or repaired by Generator.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true
+      }
+    },
     "generator_directive": {
       "description": "What exactly the Generator is supposed to write.",
       "type": "object",

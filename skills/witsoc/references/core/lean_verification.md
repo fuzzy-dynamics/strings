@@ -17,6 +17,13 @@ Do not run full `lake build` in a tight repair loop when per-tactic or per-file 
 - If imports change, expect cache invalidation and record why the change is necessary.
 - Do not trigger massive rebuilds accidentally while testing minor tactic changes.
 
+## Hole-Free Artifacts
+
+Generated Lean deliverables must not use `sorry`, `admit`, `sorryAx`, local
+`axiom`, `constant`, `opaque`, `unsafe`, or equivalent escape hatches. Missing
+proofs produce statement-check obligations or explicit blockers, not theorem
+declarations closed by placeholders.
+
 ## Temporary Project Cleanup
 
 Generator workers may create temporary Lean projects only when needed for verification. Every WIT/Lean proof target must run in a session-scoped proof worktree.

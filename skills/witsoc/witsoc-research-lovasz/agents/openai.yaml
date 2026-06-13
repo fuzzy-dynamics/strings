@@ -1,4 +1,0 @@
-interface:
-  display_name: "Witsoc Research Lovasz"
-  short_description: "Barrier-aware open-problem research."
-  default_prompt: "Use witsoc-research-lovasz to attack an open mathematical problem with barrier analysis, autonomous research loops, verification gating, and Witsoc handoff."

@@ -179,11 +179,23 @@ def append_insight(args: argparse.Namespace) -> dict[str, Any]:
 def query(args: argparse.Namespace) -> dict[str, Any]:
     path = ensure_soc(args.run_dir)
     failures = matching_failures(path, args.statement or "", args.method or "")
+    # R4/L4: also consult the GLOBAL failure memory — an approach that already
+    # failed in another run raises repeat risk here too. Guarded: an empty or
+    # unavailable store contributes nothing.
+    global_failures: list[dict[str, Any]] = []
+    try:
+        import knowledge_store as ks
+        global_failures = ks.query_failures(args.statement or "", args.method or "", limit=3)
+    except Exception:
+        pass
+    any_match = bool(failures or global_failures)
     return {
         "soc": str(path),
         "matching_failed_approaches": failures,
-        "repeat_risk": "HIGH" if failures else "LOW",
-        "guidance": "change method family or record a one-axis mutation before retrying" if failures else "no matching failed approach found",
+        "global_failed_approaches": global_failures,
+        "repeat_risk": "HIGH" if any_match else "LOW",
+        "guidance": ("change method family or record a one-axis mutation before retrying"
+                     if any_match else "no matching failed approach found"),
     }
 
 

@@ -63,36 +63,13 @@ ARENA = cg.ARENA        # "SPECULATIVE"
 FORBIDDEN_LEAN = ("sorry", "admit", "axiom", "native_decide")
 
 # --------------------------------------------------------------------------- #
-# Faithful, meaning-preserving predicate -> Lean dictionary.
+# Faithful, meaning-preserving predicate -> Lean expansion.
 #
-# Each entry is a function of the bound variable name that returns a Lean Prop
-# over `{v} : Nat`. Faithfulness is the contract here, NOT provability: a faithful
-# statement the kernel cannot close is an honest OPEN, which is exactly the
-# calibration behavior we want. The sum-of-divisors predicates use Mathlib's
-# `Nat.divisors`, so dispatchable nodes built from them require a Mathlib
-# toolchain; without one the kernel reports OPEN (honest), never a fake solve.
+# W1: the expansions live in predicate_registry.py — the shared, user-extensible
+# registry both this pipeline and conjecture_miner consume. Faithfulness is the
+# contract there, NOT provability: a faithful statement the kernel cannot close
+# is an honest OPEN, which is exactly the calibration behavior we want.
 # --------------------------------------------------------------------------- #
-def _sigma(v: str) -> str:
-    return f"(∑ d ∈ Nat.divisors {v}, d)"
-
-
-PREDICATE_LEAN = {
-    "prime": lambda v: f"Nat.Prime {v}",
-    "square": lambda v: f"(∃ k : Nat, k * k = {v})",
-    "even": lambda v: f"({v} % 2 = 0)",
-    "odd": lambda v: f"({v} % 2 = 1)",
-    "perfect": lambda v: f"({_sigma(v)} = 2 * {v})",
-    "abundant": lambda v: f"({_sigma(v)} > 2 * {v})",
-    "deficient": lambda v: f"({_sigma(v)} < 2 * {v})",
-    "sigma_even": lambda v: f"({_sigma(v)} % 2 = 0)",
-    "sigma_odd": lambda v: f"({_sigma(v)} % 2 = 1)",
-    "prime_power": lambda v: f"(∃ p k : Nat, Nat.Prime p ∧ 1 ≤ k ∧ {v} = p ^ k)",
-    "square_or_2square": lambda v: f"(∃ k : Nat, k * k = {v} ∨ 2 * (k * k) = {v})",
-}
-# Predicates whose faithful Lean uses Mathlib-only declarations.
-_NEEDS_MATHLIB = {"prime", "perfect", "abundant", "deficient",
-                  "sigma_even", "sigma_odd", "prime_power"}
-
 _FORM_RE = re.compile(r"^\s*([a-z_0-9]+)\(n\)\s*->\s*([a-z_0-9]+)\(n\)\s*$")
 
 
@@ -103,21 +80,18 @@ def sha(text: str) -> str:
 def formalize_form(form: str, var: str = "n") -> tuple[str | None, str | None, bool]:
     """Expand a mined `P(n) -> Q(n)` into a faithful Lean statement.
 
-    Returns (lean_or_None, blocker_or_None, needs_mathlib). A missing predicate is
-    an honest blocker, not a guess."""
+    Returns (lean_or_None, blocker_or_None, needs_mathlib). W1: the expansion
+    is owned by predicate_registry (built-ins + user registrations), so a
+    newly registered predicate flows through here with no code change. A
+    missing predicate is an honest blocker, not a guess."""
     m = _FORM_RE.match(form or "")
     if not m:
         return None, f"unrecognized conjecture form `{form}` (not a P(n)->Q(n) implication)", False
-    p, q = m.group(1), m.group(2)
-    if p not in PREDICATE_LEAN or q not in PREDICATE_LEAN:
-        missing = [x for x in (p, q) if x not in PREDICATE_LEAN]
-        return None, f"no faithful Lean expansion for predicate(s) {missing}; kept prose-only", False
-    body = f"{PREDICATE_LEAN[p](var)} → {PREDICATE_LEAN[q](var)}"
-    lean = f"∀ {var} : Nat, 2 ≤ {var} → {body}"
-    needs_mathlib = bool({p, q} & _NEEDS_MATHLIB)
-    if any(t in lean for t in FORBIDDEN_LEAN):  # defensive; dictionary is clean
+    import predicate_registry as pr
+    lean, blocker, needs_mathlib = pr.implication(m.group(1), m.group(2), var)
+    if lean and any(t in lean for t in FORBIDDEN_LEAN):  # defensive; registry screens too
         return None, "expansion produced a forbidden token", needs_mathlib
-    return lean, None, needs_mathlib
+    return lean, blocker, needs_mathlib
 
 
 def falsification_test(domain: str, lean_statement: str | None) -> dict:
@@ -369,6 +343,47 @@ def mine(domain: str, a: int, b: int, falsify: int, min_support: int) -> list[di
     raise SystemExit(f"--mine for domain {domain!r} not supported; pass --conjectures instead")
 
 
+def fleet_conjectures(domain: str, count: int, target: str | None = None,
+                      theory: dict | None = None) -> list[dict]:
+    """P3 free-form conjecturing: ask the fleet/bus for conjectures BEYOND the
+    miner's predicate grammar. Every reply is born OPEN_UNFALSIFIED and walks
+    the SAME downstream discipline as mined conjectures: interestingness
+    ranking, faithful formalization (predicate registry / gated
+    autoformalizer, honest blocker otherwise), and attached falsification
+    tests. Bold is fine — the kernel and the falsifier are the filters."""
+    import sampler_fleet as sf
+    request = {
+        "task": "conjecture",
+        "domain": domain,
+        "target": target or "",
+        "problem_theory": theory or {},
+        "count": count,
+        "rules": "Propose mathematically interesting, FALSIFIABLE conjectures for this domain"
+                 + (" that would illuminate the target" if target else "") +
+                 ". Return {conjectures: [{form, why_interesting, falsification_hint}]} — "
+                 "`form` is one precise mathematical statement (prefer 'P(n) -> Q(n)' shapes "
+                 "over prose when possible). Bold conjectures welcome; they are born "
+                 "unfalsified and witsoc will try to kill them.",
+    }
+    out: list[dict] = []
+    for result in sf.sample(request, per_sampler=1):
+        for c in result["reply"].get("conjectures") or []:
+            if not (isinstance(c, dict) and c.get("form")):
+                continue
+            out.append({
+                "form": str(c["form"])[:500],
+                "status": "OPEN_UNFALSIFIED",
+                "support": 0,
+                "support_examples": [],
+                "why_interesting": str(c.get("why_interesting") or "")[:200],
+                "falsification_hint": str(c.get("falsification_hint") or "")[:200],
+                "source": f"fleet:{result['sampler_id']}",
+            })
+            if len(out) >= count:
+                return out
+    return out
+
+
 def reanchor(nodes: list[dict], existing_ids: set[str]) -> None:
     """Resolve each node's dependencies to anchor nodes that actually exist.
 
@@ -403,6 +418,9 @@ def main() -> int:
     src = ap.add_mutually_exclusive_group(required=True)
     src.add_argument("--mine", nargs=2, type=int, metavar=("A", "B"), help="mine conjectures over [A,B]")
     src.add_argument("--conjectures", type=Path, help="consume an existing conjectures.json")
+    src.add_argument("--fleet", type=int, metavar="N",
+                     help="P3 free-form: ask the fleet/Intelligence Bus for N conjectures "
+                          "(same downstream discipline as mined ones)")
     ap.add_argument("--falsify", type=int, default=10000)
     ap.add_argument("--min-support", type=int, default=3)
     ap.add_argument("--domain", default="number_theory")
@@ -425,6 +443,9 @@ def main() -> int:
     if args.mine:
         conjectures = mine(args.domain, args.mine[0], args.mine[1], args.falsify, args.min_support)
         range_size = args.mine[1] - args.mine[0] + 1
+    elif args.fleet:
+        conjectures = fleet_conjectures(args.domain, args.fleet, target=args.target_lean)
+        range_size = args.range_size
     else:
         doc = witcore.load_json(args.conjectures, {})
         conjectures = doc.get("conjectures", []) if isinstance(doc, dict) else []

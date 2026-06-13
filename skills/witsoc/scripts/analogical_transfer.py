@@ -76,6 +76,16 @@ KB: list[dict] = [
      "triggers": ["graph", "eigenvalue", "matrix", "spectral", "polynomial"],
      "example": "expander mixing lemma; combinatorial Nullstellensatz.",
      "unlocks": "pseudorandomness and algebraic extremal bounds"},
+    {"technique": "ramsey_cup_cap_order_type",
+     "construction": "Abstract the point set to its order type / oriented matroid, then force a long monotone (cup/cap) sub-configuration via Ramsey or Dilworth — the Erdős–Szekeres engine.",
+     "triggers": ["convex_geometry", "geometry", "exists", "lower_bound", "set"],
+     "example": "Erdős–Szekeres: 2^{n-2}+1 points in general position contain a convex n-gon.",
+     "unlocks": "convex-position / order-type existence bounds"},
+    {"technique": "polynomial_partitioning_incidence",
+     "construction": "Encode points/lines as polynomial vanishing and cut space with a low-degree polynomial (polynomial partitioning) to bound incidences and distances.",
+     "triggers": ["convex_geometry", "geometry", "incidence", "count"],
+     "example": "Guth–Katz distinct distances; Szemerédi–Trotter via partitioning.",
+     "unlocks": "incidence, distance, and extremal-geometry bounds"},
 ]
 
 # Concept tags extracted from a goal's text (keyword families).
@@ -87,6 +97,11 @@ _CONCEPTS: list[tuple[str, tuple[str, ...]]] = [
     ("prime", ("prime",)), ("multiplicative", ("multiplicative", "euler", "totient", "φ")),
     ("congruence", ("congruence", "residue")), ("mod", ("mod", "%", "≡")),
     ("diophantine", ("diophantine", "equation", "x y z", "rational")),
+    ("convex_geometry", ("convex", "polygon", "general position", "convex position",
+                         "convex hull", "order type")),
+    ("geometry", ("points", "plane", "collinear", "incidence", "segment",
+                  "distance", "polytope", "simplex")),
+    ("incidence", ("incidence", "incidences", "lines", "collinear")),
     ("graph", ("graph", "vertex", "vertices", "edge", "clique", "tree", "cycle")),
     ("coloring", ("coloring", "colour", "chromatic")),
     ("forbidden_subgraph", ("forbidden", "subgraph", "triangle-free", "k_")),
@@ -118,7 +133,7 @@ def concepts(statement: str, domain: str = "") -> set[str]:
     return tags
 
 
-def suggest(statement: str, domain: str = "", k: int = 4) -> list[dict]:
+def suggest(statement: str, domain: str = "", k: int = 4, atlas: Path | None = None) -> list[dict]:
     tags = concepts(statement, domain)
     scored = []
     for entry in KB:
@@ -144,6 +159,17 @@ def suggest(statement: str, domain: str = "", k: int = 4) -> list[dict]:
             "next_action": "instantiate this technique as a concrete barrier lemma "
                            "(domain_barrier_lemmas / concept_generator), then kernel-dispatch it",
         })
+    # GROWN analogies: the technique atlas (proof_autopsy) holds moves harvested
+    # from this system's own kernel-verified closures — taste that compounds
+    # across runs instead of staying a hand-curated list. Same calibration: hints only.
+    try:
+        from proof_autopsy import suggest_from_atlas
+        seen = {s["technique"] for s in out}
+        for s in suggest_from_atlas(statement, atlas_path=atlas, k=k):
+            if s["technique"] not in seen:
+                out.append(s)
+    except Exception:
+        pass
     return out
 
 

@@ -8,8 +8,9 @@ wit->Lean obligation bridge.
 The subtlety this module exists to handle: `lake build` / `lean file.lean`
 returns exit code 0 even when a declaration is closed by `sorry` (it is only a
 *warning*). So "build is green" is NOT the same as "proof is sound". A file that
-contains `sorry`, `admit`, the `sorryAx` axiom, or a locally-declared `axiom`
-must never be counted as machine-verified. `scan_forbidden` enforces that.
+contains `sorry`, `admit`, the `sorryAx` axiom, a locally-declared `axiom`,
+`constant`, `opaque`, or `unsafe` declaration must never be counted as
+machine-verified. `scan_forbidden` enforces that.
 
 Functions:
   run_lean_check(lean_path, lake_dir) -> dict   build/type-check via the real toolchain
@@ -32,15 +33,20 @@ from typing import Any
 # Tokens that make a "successful" Lean build unsound as a proof of its own claim.
 #   sorry / admit  : leave a hole the kernel fills with `sorryAx`.
 #   sorryAx        : the underlying axiom, sometimes written directly.
-# A locally-declared `axiom` is handled separately (see _AXIOM_DECL) because a
-# file that is supposed to *prove* its lemma must not simply *assume* it.
+# Local declarations that make a generated proof unsound as evidence for its
+# target are handled separately because a proof file must not simply assume or
+# hide the claim.
 _FORBIDDEN = (
     (re.compile(r"(?<![A-Za-z0-9_])sorry(?![A-Za-z0-9_])"), "sorry"),
     (re.compile(r"(?<![A-Za-z0-9_])admit(?![A-Za-z0-9_])"), "admit"),
     (re.compile(r"(?<![A-Za-z0-9_])sorryAx(?![A-Za-z0-9_])"), "sorryAx"),
 )
-# A top-level `axiom foo : T` introduces an unproved assumption local to the file.
-_AXIOM_DECL = re.compile(r"^\s*axiom\s+[A-Za-z_]", re.MULTILINE)
+_ESCAPE_DECLS = (
+    (re.compile(r"^\s*axiom\s+[A-Za-z_]", re.MULTILINE), "axiom"),
+    (re.compile(r"^\s*constant\s+[A-Za-z_]", re.MULTILINE), "constant"),
+    (re.compile(r"^\s*opaque\s+[A-Za-z_]", re.MULTILINE), "opaque"),
+    (re.compile(r"^\s*unsafe\s+(?:def|theorem|opaque|axiom)\s+[A-Za-z_]", re.MULTILINE), "unsafe"),
+)
 
 # Lean's own warning when a declaration is closed by a hole. Caught from build
 # output as a belt-and-suspenders signal in addition to the source scan, since a
@@ -66,8 +72,9 @@ def scan_forbidden(text: str) -> list[str]:
     for pattern, name in _FORBIDDEN:
         if pattern.search(code):
             found.add(name)
-    if _AXIOM_DECL.search(code):
-        found.add("axiom")
+    for pattern, name in _ESCAPE_DECLS:
+        if pattern.search(code):
+            found.add(name)
     return sorted(found)
 
 
@@ -88,12 +95,20 @@ def run_lean_check(lean_path: Path, lake_dir: Path | None = None,
         lake = shutil.which("lake")
         if not lake:
             return {"ok": False, "tool": "absent", "reason": "lake not found"}
-        # WITSOC_LAKE_ENV: type-check THIS external file against the lake project's
-        # dependencies (`lake env lean <file>` puts Mathlib on LEAN_PATH and uses the
-        # project toolchain). The default keeps the existing `lake build` semantics
-        # (build a self-contained project's own targets) so current callers are
-        # unaffected — this only activates when a Mathlib lake env is wired in.
-        if _os.environ.get("WITSOC_LAKE_ENV"):
+        # SOUNDNESS: `lake build` builds the PROJECT'S OWN targets — it never
+        # looks at a file outside the project. Checking an external candidate
+        # file that way is vacuous: a prebuilt project returns exit 0 for any
+        # proof text whatsoever. So `lake build` is legal ONLY when the file
+        # actually lives inside the lake project (the generator's
+        # self-contained-project flow). For any external file — the prover's
+        # tempfile candidates above all — the only sound check is
+        # `lake env lean <file>` (project deps on LEAN_PATH, project
+        # toolchain), regardless of whether WITSOC_LAKE_ENV is set.
+        try:
+            inside = Path(lean_path).resolve().is_relative_to(Path(lake_dir).resolve())
+        except Exception:
+            inside = False
+        if _os.environ.get("WITSOC_LAKE_ENV") or not inside:
             cmd, tool = [lake, "env", "lean", str(lean_path)], "lake env lean"
         else:
             cmd, tool = [lake, "build"], "lake build"

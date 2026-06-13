@@ -31,7 +31,7 @@ The returned `research_mode` controls default worker spawning:
 | "Can you prove or disprove this unsolved problem?" | `Using witsoc with witsoc-explorer.` | Explorer first. |
 | "This is unsolved; try to prove it" | `Using witsoc with witsoc-explorer.` | Explorer first, even if no problem-list name is given. |
 | "Formalize this open conjecture in Lean" | `Using witsoc with witsoc-explorer.` | Explorer first; Lovasz if open/blocked; Generator only after accepted narrow target. |
-| "Prove Hall's theorem" | `Using witsoc with witsoc-explorer.` | Explorer reconstructs proof; Generator only if artifact requested or useful. |
+| "Prove Hall's theorem" | `Using witsoc with witsoc-explorer -> witsoc-research-lovasz -> witsoc-explorer.` | Serious-proof guard: Explorer freezes the statement, Lovasz directs the proof campaign in solved-class mode, Explorer reviews. Explorer may skip Lovasz only by settling the target as routine with a kernel-verified proof and recording that decision. |
 | "Find a counterexample to this proposed lemma" | `Using witsoc with witsoc-explorer.` | Explorer counterexample mode. |
 | "Rank these proof sketches" | `Using witsoc with witsoc-explorer.` | Explorer rater mode. |
 | "Write WIT for this already-stated theorem" | `Using witsoc with witsoc-explorer.` | Explorer freezes and accepts target, then Generator writes WIT. |
@@ -43,6 +43,18 @@ The returned `research_mode` controls default worker spawning:
 |---|---|---|
 | "Repair this .wit file" | `Using witsoc with witsoc-generator.` | Existing artifact repair can start at Generator. |
 | "Fix the failing WIT proof in theorem.wit" | `Using witsoc with witsoc-generator.` | Existing artifact repair. |
+
+## Lovasz Chain (Solved-Class: Olympiad / Competition / Serious Proof)
+
+Olympiad and competition problems, and serious prove/show requests with mathematical substance, route through Lovasz mandatorily even though they are solved-class. Lovasz runs as the proof-campaign director (ideation, sketch tournament/decomposition, per-node Prover dispatch, skeptic gate); open-problem novelty ledgers are waived unless the campaign stalls.
+
+| User request | Required announcement | Required route |
+|---|---|---|
+| "IMO 2019 shortlist: determine all functions f : Z -> Z such that f(2a)+2f(b)=f(f(a+b))" | `Using witsoc with witsoc-explorer -> witsoc-research-lovasz -> witsoc-explorer.` | Explorer freezes; Lovasz conjectures the answer set first (bounded search), then proves the characterization via dispatch; Explorer reviews. |
+| "This Putnam inequality looks hard, give it a try" | `Using witsoc with witsoc-explorer -> witsoc-research-lovasz -> witsoc-explorer.` | Olympiad guard; deep research mode. |
+| "Prove that every triangle-free graph on n vertices has at most n^2/4 edges" | `Using witsoc with witsoc-explorer -> witsoc-research-lovasz -> witsoc-explorer.` | Serious-proof guard (quantified statement over a named object class). |
+| "prove 1+1=2" | `Using witsoc with witsoc-explorer.` | Triviality guard: no mathematical-substance marker; light Explorer path. |
+| "what is 2+2" | `Using witsoc.` | Simple/direct guard. |
 
 ## Lovasz Chain
 

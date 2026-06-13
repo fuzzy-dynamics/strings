@@ -9,9 +9,9 @@ self-play / search can climb.
 
 Each rung is a formal Lean statement whose proof is attempted by the verifier-
 guided search; difficulty is the search budget needed to close it (∞ = open).
-The composition obligation `(rungs) → target` is emitted (validate_decomposition)
-and an attempt is made to discharge it, so a fully-climbed ladder yields a real
-proof of the target — never asserted, always kernel-checked.
+The composition obligation `(rungs) → target` is emitted and an attempt is made
+to discharge it, so a fully-climbed ladder yields a real proof of the target —
+never asserted, always kernel-checked.
 
 Sub-lemmas come from `--sublemma` (repeatable), or by splitting a conjunction
 `--target-lean "A ∧ B ∧ C"` at top level.

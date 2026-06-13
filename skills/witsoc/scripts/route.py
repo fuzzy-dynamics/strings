@@ -22,6 +22,7 @@ LOVASZ = "witsoc-research-lovasz"
 EXPLORER = "witsoc-explorer"
 GENERATOR = "witsoc-generator"
 DIRECT = "witsoc-direct"
+OLYMPIAD_FAST = "witsoc-olympiad-fast-lane"
 
 
 UNSOLVED_PATTERNS = [
@@ -75,6 +76,57 @@ NAMED_OPEN_PATTERNS = [
     r"\btwin prime\b",
     r"\bcollatz\b",
     r"\bp\s*(=|vs\.?|versus)\s*np\b",
+]
+
+OLYMPIAD_PATTERNS = [
+    r"\bimo\b",
+    r"\busamo\b",
+    r"\begmo\b",
+    r"\bapmo\b",
+    r"\bputnam\b",
+    r"\bimc\b",
+    r"\baime\b",
+    r"\bamc\b",
+    r"\bolympiad\b",
+    r"\bshortlist\b",
+    r"\bcompetition (problem|math)\b",
+    r"\bmath(s|ematical)? competition\b",
+    r"\bminif2f\b",
+]
+
+# Serious prove/show requests. These route through Lovasz as proof-campaign
+# director (sketch tournament -> decompose -> prover dispatch -> skeptic) when
+# the statement has mathematical substance — see MATH_SUBSTANCE_PATTERNS.
+HARD_PROOF_PATTERNS = [
+    r"\bprove\b",
+    r"\bdisprove\b",
+    r"\bshow that\b",
+    r"\bdetermine all\b",
+    r"\bfind all\b",
+    r"\bgive a (full |complete |rigorous )?proof\b",
+    r"\bsolve\b.*\b(functional equation|diophantine|congruence|recurrence)\b",
+]
+
+# Triviality guard for HARD_PROOF: a bare "prove 1+1=2" stays on the light
+# Explorer path; anything with real mathematical objects gets the campaign.
+MATH_SUBSTANCE_PATTERNS = [
+    r"[∀∃∑∏≤≥≠∣]",
+    r"\bfor (all|every|each)\b",
+    r"\bthere (exist|is|are)\b",
+    r"\binfinitely many\b",
+    r"\b(positive |natural |real |rational )?(integers?|numbers?|reals?)\b",
+    r"\bprimes?\b",
+    r"\bgraphs?\b",
+    r"\bsequences?\b",
+    r"\bfunctions?\b",
+    r"\bpolynomials?\b",
+    r"\btriangles?\b",
+    r"\binequalit(y|ies)\b",
+    r"\bdivisib(le|ility)\b",
+    r"\btheorems?\b",
+    r"\blemmas?\b",
+    r"\bmodulo\b",
+    r"\bset of\b",
 ]
 
 ARTIFACT_PATTERNS = [
@@ -246,6 +298,9 @@ def route(prompt: str) -> dict[str, object]:
 
     unsolved_hit = any_match(UNSOLVED_PATTERNS, lower)
     named_hit = any_match(NAMED_OPEN_PATTERNS, lower)
+    olympiad_hit = any_match(OLYMPIAD_PATTERNS, lower)
+    hard_proof_hit = any_match(HARD_PROOF_PATTERNS, lower)
+    substance_hit = any_match(MATH_SUBSTANCE_PATTERNS, text) or len(text) > 120
     artifact_hit = any_match(ARTIFACT_PATTERNS, lower)
     repair_hit = any_match(REPAIR_PATTERNS, lower)
     explorer_hit = any_match(EXPLORER_PATTERNS, lower)
@@ -287,11 +342,48 @@ def route(prompt: str) -> dict[str, object]:
             include_generator=bool(artifact_hit),
         )
 
+    if olympiad_hit:
+        chain = [EXPLORER, OLYMPIAD_FAST, EXPLORER]
+        must_not_skip = [EXPLORER, OLYMPIAD_FAST, "explorer_review_after_fast_lane"]
+        if artifact_hit:
+            chain.append(GENERATOR)
+            must_not_skip.append("generator_after_explorer_authorization")
+        return with_common_fields(
+            prompt=text,
+            route_name=EXPLORER,
+            announcement=f"Using witsoc with {EXPLORER} -> {OLYMPIAD_FAST} -> {EXPLORER}.",
+            reason=f"olympiad/competition guard matched {olympiad_hit!r}; Explorer freezes the "
+                   "target, then the local olympiad fast lane attempts bounded kernel-gated "
+                   "closure before falling back to Lovasz solved-class mode",
+            chain=chain,
+            research_mode_value="deep" if mode == "quick" else mode,
+            worker_policy="local-first fast lane; if it fails, Lovasz solved-class campaign with 8-20 agents by default",
+            confidence="high",
+            blockers=[],
+            must_not_skip=must_not_skip,
+            conditional_followup=LOVASZ,
+            conditional_followup_when="olympiad fast lane returns OBLIGATION_OPEN, BUDGET_EXHAUSTED, GAP, or non-kernel status",
+            requires_explorer_review_after_lovasz=False,
+            generator_after_explorer_authorization=bool(artifact_hit),
+            completion_guard="fast-lane closure must be kernel-gated; otherwise Explorer must dispatch Lovasz solved-class mode and review its return before final reporting",
+        )
+
     if lovasz_direct_hit:
         return explorer_then_lovasz(
             prompt=text,
             reason=f"direct Lovasz/skip-exploration guard matched {lovasz_direct_hit!r}; Explorer must still freeze the target before Lovasz",
             mode="deep",
+            worker_policy=worker_policy,
+            include_generator=bool(artifact_hit),
+        )
+
+    if hard_proof_hit and substance_hit:
+        return explorer_then_lovasz(
+            prompt=text,
+            reason=f"serious-proof guard matched {hard_proof_hit!r} with mathematical substance "
+                   f"({substance_hit if isinstance(substance_hit, str) else 'long statement'}); "
+                   "Lovasz directs the proof campaign after Explorer freezes the target",
+            mode=mode,
             worker_policy=worker_policy,
             include_generator=bool(artifact_hit),
         )

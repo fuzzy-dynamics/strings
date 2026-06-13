@@ -20,10 +20,7 @@ def load(path: Path, default: Any) -> Any:
         return default
 
 
-def records(path: Path) -> list[dict]:
-    data = load(path, [])
-    return [x for x in data if isinstance(x, dict)] if isinstance(data, list) else []
-
+from witcore import records  # noqa: E402  -- shared substrate, was a local copy
 
 def grade_value(grade: str) -> int:
     return {"A": 5, "B": 4, "C": 3, "D": 2, "F": 1}.get(str(grade).upper(), 0)
@@ -51,6 +48,13 @@ def main() -> int:
     args = parser.parse_args()
 
     run = args.run_dir
+    # R4/L4: returning to Explorer is the natural sync point — this run's
+    # failure memory joins the global store so future runs see it. Guarded.
+    try:
+        import knowledge_store
+        knowledge_store.sync_run(run)
+    except Exception:
+        pass
     manifest = load(run / "lovasz_run.json", {})
     formal = load(run / "formalization_feasibility.json", {})
     grade = load(run / "report_quality_grade.json", {})
@@ -102,6 +106,11 @@ def main() -> int:
         "report_quality": {
             "score": grade.get("score"),
             "grade": grade.get("grade"),
+            # Progress (verifiable math) vs structural (scaffolding) — surface
+            # both so a scaffolding-inflated grade can't read as real progress.
+            "progress_score": grade.get("progress_score"),
+            "progress_grade": grade.get("progress_grade"),
+            "headline": grade.get("headline"),
             "gaps": grade.get("gaps", []),
         },
         "summary": {

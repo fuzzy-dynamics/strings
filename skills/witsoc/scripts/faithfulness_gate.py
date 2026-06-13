@@ -25,7 +25,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import math
 import re
 import sys
 from collections import Counter
@@ -50,14 +49,7 @@ def tok(s: str) -> Counter:
     return Counter(w for w in re.findall(r"[a-z0-9]+", (s or "").lower()) if len(w) > 1)
 
 
-def cosine(a: Counter, b: Counter) -> float:
-    if not a or not b:
-        return 0.0
-    dot = sum(a[k] * b.get(k, 0) for k in a)
-    na = math.sqrt(sum(v * v for v in a.values()))
-    nb = math.sqrt(sum(v * v for v in b.values()))
-    return dot / (na * nb) if na and nb else 0.0
-
+from witcore import cosine  # noqa: E402  -- shared substrate, was a local copy
 
 def structural_back_translation(lean: str) -> str:
     """A deterministic, model-free NL rendering of the Lean surface. Weak but

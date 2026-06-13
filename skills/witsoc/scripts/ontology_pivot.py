@@ -74,23 +74,51 @@ PIVOTS: dict[str, list[dict]] = {
          "unlocks": ["compactness", "continuity/closure arguments"],
          "reflects": "an order obstruction becomes a non-closed / non-compact witness"},
     ],
+    "geometry": [
+        {"target": "algebra_polynomial",
+         "encoding": "encode points/incidences as polynomial (non)vanishing; apply the polynomial method / combinatorial Nullstellensatz",
+         "preserves": "collinearity & incidence ↔ polynomial roots; degrees of freedom ↔ degree",
+         "unlocks": ["polynomial partitioning", "Schwartz–Zippel", "Guth–Katz dimension counts"],
+         "reflects": "an incidence/extremal-geometry bound becomes a degree/dimension bound"},
+        {"target": "extremal_combinatorics",
+         "encoding": "abstract the geometric configuration to its order-type / oriented-matroid, then count via Ramsey/Dilworth-type extremal arguments",
+         "preserves": "convex-position & general-position predicates ↔ forbidden sub-configurations",
+         "unlocks": ["Erdős–Szekeres cup–cap", "Ramsey bounds", "Dilworth/Mirsky chains"],
+         "reflects": "a convexity obstruction becomes a forbidden monotone sub-configuration"},
+    ],
 }
 
 _DOMAIN_KEYWORDS = [
-    ("graph_theory", ("graph", "vertex", "vertices", "edge", "clique", "tree", "chromatic", "triangle")),
-    ("number_theory", ("prime", "divisor", "divisors", "modular", "congruence", "diophantine", "integer", "perfect")),
-    ("additive_combinatorics", ("sumset", "progression", "arithmetic progression", "3-ap", "density", "sidon", "additive")),
-    ("order_theory", ("poset", "order", "lattice", "monotone", "chain", "antichain")),
+    ("geometry", ("point", "points", "plane", "convex", "polygon", "polytope",
+                  "general position", "collinear", "incidence", "segment",
+                  "distance", "triangle", "lattice point", "simplex", "halfplane")),
+    ("graph_theory", ("graph", "vertex", "vertices", "edge", "edges", "clique",
+                      "chromatic", "colouring", "coloring", "independent set",
+                      "hamiltonian", "bipartite", "subgraph", "degree")),
+    ("number_theory", ("prime", "divisor", "divisors", "modular", "congruence",
+                       "diophantine", "integer", "perfect number", "gcd", "totient")),
+    ("additive_combinatorics", ("sumset", "progression", "arithmetic progression",
+                                "3-ap", "density", "sidon", "additive")),
+    ("order_theory", ("poset", "partial order", "lattice order", "antichain", "chain")),
 ]
 
 
 def infer_domain(statement: str, domain: str = "") -> str:
+    """Score every domain by keyword hits and return the best — scoring (not
+    first-match) so a single collision keyword can't capture the classification
+    (e.g. 'vertices of a polygon' should be geometry, not graph_theory). An
+    explicit, recognized `domain` always wins."""
     if domain in PIVOTS:
         return domain
     text = f"{statement} {domain}".lower()
-    for dom, kws in _DOMAIN_KEYWORDS:
-        if any(k in text for k in kws):
-            return dom
+    scores: list[tuple[int, str]] = []
+    for i, (dom, kws) in enumerate(_DOMAIN_KEYWORDS):
+        hits = sum(1 for k in kws if k in text)
+        if hits:
+            # tie-break by table order (earlier = more specific), so negate index
+            scores.append((hits * 100 - i, dom))
+    if scores:
+        return max(scores)[1]
     return domain or "other"
 
 

@@ -24,13 +24,13 @@ import argparse
 import json
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
 import engine_dispatch as ed  # noqa: E402
 import research_state as rs   # noqa: E402
+import witcore                # noqa: E402
 
 RUNG_VALUE = rs.RUNG_REWARD
 
@@ -64,6 +64,7 @@ def run(portfolio: list[dict], library: Path, iterations: int, max_steps: int,
 
     log: list[dict] = []
     violations: list[str] = []
+    solve_claims_required: list[dict] = []
     best_rung_seen: dict[str, str] = {p["id"]: "L0" for p in portfolio}
 
     for it in range(1, iterations + 1):
@@ -79,6 +80,15 @@ def run(portfolio: list[dict], library: Path, iterations: int, max_steps: int,
             # CALIBRATION: a frozen-calibration problem must never reach a solve.
             if p.get("tier") == "frozen_calibration" and rung == "L6":
                 violations.append(f"iter{it}:{p['id']}")
+            # FRONTIER: an L6 on a frontier_attack problem is not a violation,
+            # but it is reportable as a solve ONLY through the solve-claim
+            # protocol (math-solve audit + independent re-derivation + novelty
+            # + human gate). Until SOLVE_ACCEPTED it stays an internal result.
+            elif p.get("tier") == "frontier_attack" and rung == "L6":
+                solve_claims_required.append({
+                    "iteration": it, "id": p["id"],
+                    "required": "solve_claim_protocol: open -> add-rederivation -> add-novelty -> human-gate",
+                })
             per_problem.append({"id": p["id"], "rung": rung, "status": st["status"],
                                 "tier": p.get("tier", "open")})
 
@@ -106,9 +116,11 @@ def run(portfolio: list[dict], library: Path, iterations: int, max_steps: int,
         "verdict": "FLYWHEEL_TURNS" if turned else "PLATEAU",
         "calibration_clean": not violations,
         "calibration_violations": violations,
+        "solve_claims_required": solve_claims_required,
         "note": ("a campaign reaches SOLVED only at a kernel-verified L6; one calibration violation "
-                 "fails the whole campaign. PLATEAU is honest (corpus at ceiling); the library and "
-                 "value model still compound underneath."),
+                 "fails the whole campaign. A frontier_attack L6 is reportable as a solve only after "
+                 "solve_claim_protocol reaches SOLVE_ACCEPTED. PLATEAU is honest (corpus at ceiling); "
+                 "the library and value model still compound underneath."),
     }
 
 
@@ -120,26 +132,43 @@ def main() -> int:
     ap.add_argument("--library", type=Path, default=None)
     ap.add_argument("--lake-dir", type=Path, default=None)
     ap.add_argument("--out", type=Path, default=None)
+    ap.add_argument("--lovasz-run", type=Path, default=None,
+                    help="Lovasz run dir (with lovasz_run.json) this campaign belongs to")
+    ap.add_argument("--standalone", action="store_true",
+                    help="explicit opt-out of the Lovasz run context (recorded in output)")
     args = ap.parse_args()
+
+    # Ownership gate (references/core/services.md): the flywheel is SOLVER
+    # machinery — it runs inside a Lovasz campaign context, not bare.
+    # research_campaign (the scheduler) creates per-problem contexts itself.
+    if args.lovasz_run is None and not args.standalone:
+        print(json.dumps({"error": "autonomous_campaign is Lovasz-owned: pass --lovasz-run <dir> "
+                                   "(with lovasz_run.json) or an explicit --standalone"}), file=sys.stderr)
+        return 2
+    if args.lovasz_run is not None and not (args.lovasz_run / "lovasz_run.json").exists():
+        print(json.dumps({"error": f"no lovasz_run.json in {args.lovasz_run}; "
+                                   "run lovasz_run_manifest.py first"}), file=sys.stderr)
+        return 2
 
     portfolio = json.loads(args.portfolio.read_text(encoding="utf-8"))
     if isinstance(portfolio, dict):
         portfolio = portfolio.get("problems", [])
-    tmp = None
-    library = args.library
-    if library is None:
-        tmp = tempfile.TemporaryDirectory()
-        library = Path(tmp.name) / "lib"
+    # Deep runs push into the LIVE knowledge store and prove in MATHLIB MODE by
+    # default (knowledge-stores.md): results compound across runs and the
+    # prover gets ring/nlinarith reach. Override with --library/--lake-dir;
+    # WITSOC_CORE_ONLY=1 forces core Lean.
+    library = args.library or witcore.global_library()
+    lake_dir = witcore.enable_mathlib_mode(args.lake_dir)
     closure_ledger = library / "closures.json"
-    report = run(portfolio, library, args.iterations, args.max_steps, args.lake_dir,
+    report = run(portfolio, library, args.iterations, args.max_steps, lake_dir,
                  closure_ledger=closure_ledger)
+    report["lovasz_run"] = str(args.lovasz_run) if args.lovasz_run else None
+    report["standalone"] = bool(args.standalone)
     if args.out:
         args.out.write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     print(json.dumps({k: v for k, v in report.items() if k != "log"} |
                      {"log": [{kk: vv for kk, vv in r.items() if kk != "per_problem"} for r in report["log"]]},
                      indent=2, ensure_ascii=False))
-    if tmp:
-        tmp.cleanup()
     return 0 if report["calibration_clean"] else 1
 
 

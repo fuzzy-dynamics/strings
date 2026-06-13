@@ -38,6 +38,36 @@ PHASE_REQUIREMENTS = {
     "NO_GO": ["failure_memory.md"],
 }
 
+# L3 escalation ladder: every campaign walks DOWN this list, never up.
+# DIRECT_ATTACK -> PRODUCT_LADDER (tractable rungs from result_ladder) ->
+# OBSTRUCTION_CONVERSION (prove the barrier itself is an obstruction) ->
+# HONEST_STOP (return to Explorer with failure memory).
+ESCALATION_LADDER = [
+    "DIRECT_ATTACK",
+    "PRODUCT_LADDER",
+    "OBSTRUCTION_CONVERSION",
+    "HONEST_STOP",
+]
+
+
+def default_campaign() -> dict:
+    return {
+        "schema": "witsoc.lovasz_campaign.v1",
+        "budget": {
+            "max_attempts": 60,
+            "max_time_minutes": 480,
+            "max_attempts_per_barrier": 3,
+            "worker": {"time_minutes": 30, "max_tool_calls": 20, "max_tokens": 12000},
+        },
+        "spent": {"attempts": 0, "time_minutes": 0},
+        "escalation_level": "DIRECT_ATTACK",
+        "escalation_history": [],
+        "barrier_attempts": {},
+        "last_best_rung": "L0",
+        "stall_count": 0,
+    }
+
+
 ALLOWED_NEXT = {
     "EXPLORER_PACKET_REQUIRED": ["TARGET_FROZEN", "NO_GO"],
     "TARGET_FROZEN": ["BARRIER_LEDGERS_READY", "NO_GO"],
@@ -60,10 +90,7 @@ def load(path: Path, default: Any) -> Any:
         return default
 
 
-def records(path: Path) -> list[dict]:
-    data = load(path, [])
-    return [x for x in data if isinstance(x, dict)] if isinstance(data, list) else []
-
+from witcore import records  # noqa: E402  -- shared substrate, was a local copy
 
 def sha256_text(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
@@ -136,6 +163,12 @@ def manifest(run: Path, phase: str, target: str, target_hash: str) -> dict:
             blocking_gaps.append(f"{phase} requires nonempty {required}")
     if not target_hash and phase != "EXPLORER_PACKET_REQUIRED":
         blocking_gaps.append("missing frozen target hash")
+    # The campaign block (budget, escalation, barrier counters) is mutable
+    # state owned by campaign_budget_gate.py; regeneration must preserve it.
+    existing = load(run / "lovasz_run.json", {})
+    campaign = existing.get("campaign") if isinstance(existing, dict) else None
+    if not isinstance(campaign, dict) or campaign.get("schema") != "witsoc.lovasz_campaign.v1":
+        campaign = default_campaign()
     return {
         "schema": "witsoc.lovasz_run.v1",
         "run_id": run.name,
@@ -154,6 +187,7 @@ def manifest(run: Path, phase: str, target: str, target_hash: str) -> dict:
             "worker_results": len(records(run / "worker_results.json")),
             "skeptic_reviews": len(records(run / "skeptic_reviews.json")),
         },
+        "campaign": campaign,
         "blocking_gaps": blocking_gaps,
     }
 
