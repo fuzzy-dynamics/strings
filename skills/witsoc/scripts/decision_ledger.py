@@ -48,6 +48,22 @@ def _connect():
 
 
 # --- the option table -------------------------------------------------------------
+def _as_list(v) -> list[str]:
+    """Coerce a suggester field to a clean list of tokens. The suggester returns
+    `matched_concepts`/`unlocks` as a LIST for most entries but as a plain STRING
+    for some (e.g. atlas-harvested moves). The old code did `", ".join(map(str,
+    v))` directly, so a string value was iterated CHARACTER-BY-CHARACTER —
+    producing garbage like `u, n, i, v, e, r, s, a, l`. Coerce here so a string
+    becomes one token (split on commas if it already looks like a list)."""
+    if not v:
+        return []
+    if isinstance(v, str):
+        return [p.strip() for p in v.split(",") if p.strip()] if "," in v else [v.strip()]
+    if isinstance(v, (list, tuple, set)):
+        return [str(x).strip() for x in v if str(x).strip()]
+    return [str(v)]
+
+
 def _applicability(s: dict) -> str:
     """Compose a human-readable applicability note from the fields the technique
     suggester returns (construction = what it does, matched_concepts = why it fit
@@ -58,12 +74,12 @@ def _applicability(s: dict) -> str:
     parts: list[str] = []
     if s.get("construction"):
         parts.append(str(s["construction"]))
-    matched = s.get("matched_concepts") or []
+    matched = _as_list(s.get("matched_concepts"))
     if matched:
-        parts.append("fits here via: " + ", ".join(map(str, matched)))
-    unlocks = s.get("unlocks") or []
+        parts.append("fits here via: " + ", ".join(matched))
+    unlocks = _as_list(s.get("unlocks"))
     if unlocks:
-        parts.append("unlocks: " + ", ".join(map(str, unlocks)))
+        parts.append("unlocks: " + ", ".join(unlocks))
     return " — ".join(parts)
 
 
@@ -85,7 +101,7 @@ def option_table(statement: str, domain: str = "", decision_point: str = "techni
     try:
         import analogical_transfer as at
         for s in at.suggest(statement, domain, k):
-            matched = s.get("matched_concepts") or []
+            matched = _as_list(s.get("matched_concepts"))
             # Atlas-harvested tactic moves match only the generic 'g:other'
             # bucket and carry a raw Lean proof skeleton; flag them so they read
             # as generic and never out-rank a domain-matched research technique.
@@ -99,9 +115,39 @@ def option_table(statement: str, domain: str = "", decision_point: str = "techni
                 "generic": generic,
                 "evidence": {"relevance": s.get("relevance"),
                              "matched_concepts": matched,
-                             "unlocks": s.get("unlocks") or []},
+                             "unlocks": _as_list(s.get("unlocks"))},
                 "status": s.get("status"),
             })
+    except Exception:
+        pass
+
+    # Ontology-pivot fallback tier: the curated analogy KB does not cover every
+    # domain (analysis, algebra, topology, probability, logic, …). Derive
+    # domain-appropriate technique options from the domain's orthogonal pivots so
+    # the advisor is never EMPTY — an empty table returns recommended=None and
+    # breaks the "undecided agent still moves" contract. Tagged generic so a real
+    # KB/domain match still outranks them when one exists.
+    have = {c["candidate"] for c in candidates}
+    try:
+        import ontology_pivot as _op
+        for p in _op.pivots(statement, domain, k=k):
+            tech = f"pivot_to_{p.get('target_domain') or p.get('target')}"
+            if tech in have:
+                continue
+            unlocks = p.get("unlocks") or []
+            app = f"{p.get('encoding', '')}".strip()
+            if unlocks:
+                app += " — unlocks: " + ", ".join(_as_list(unlocks))
+            candidates.append({
+                "candidate": tech,
+                "applicability": app or f"pivot to {p.get('target_domain')}",
+                "source": "ontology_pivot",
+                "generic": True,
+                "evidence": {"relevance": 0.3, "matched_concepts": [p.get("source_domain") or domain],
+                             "unlocks": _as_list(unlocks)},
+                "status": "OPEN_UNFALSIFIED",
+            })
+            have.add(tech)
     except Exception:
         pass
 
@@ -150,11 +196,17 @@ def option_table(statement: str, domain: str = "", decision_point: str = "techni
     candidates.sort(key=lambda c: (0 if c.get("generic") else 1, score(c)), reverse=True)
     for i, c in enumerate(candidates):
         c["recommended_default"] = i == 0
+    shown = candidates[:max(2, k)]
+    # Surface the default at the TOP LEVEL too. The contract is "a recommended
+    # default so an undecided agent still moves"; burying it in a per-option
+    # boolean made an orchestrator scan for it (and read `recommended: None`).
+    recommended = next((c["candidate"] for c in shown if c.get("recommended_default")), None)
     return {
         "schema": "witsoc.option_table.v1",
         "decision_point": decision_point,
         "statement": statement,
-        "options": candidates[:max(2, k)],
+        "recommended": recommended,
+        "options": shown,
         "calibration": ("candidates and the default are ADVICE assembled from live stores; "
                         "the agent chooses and records the choice (witsoc decide record). "
                         "Contracts are never decision points."),

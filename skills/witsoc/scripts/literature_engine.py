@@ -199,6 +199,38 @@ def theorem_audit(problem_id: str, target: str, out: Path | None = None,
     from PENDING to EXTRACTED — the gated path off pointer-level research.
     """
     ledger = ledger_for(problem_id)
+    from_atlas = False
+    # P4: before treating "no per-problem ledger" as a dead-end, consult the
+    # persistent cross-problem atlas. A target overlapping a previously-researched
+    # one reuses those cached pointers (synthesized into a per-problem ledger),
+    # so the orchestrator is not asked to re-search a topic witsoc already knows.
+    if not ledger:
+        try:
+            import literature_atlas as la
+            hit = la.lookup(target)
+            if hit and hit.get("findings"):
+                sources = [{
+                    "title": str(f.get("title") or "untitled source"),
+                    "url": str(f.get("source") or f.get("url") or ""),
+                    "arxiv_id": str(f.get("arxiv_id") or ""),
+                    "year": str(f.get("year") or ""),
+                    "authors": f.get("authors") or [],
+                    "source_type": "literature_atlas_cache",
+                    "claim": str(f.get("claim") or ""),
+                    "relevance": str(f.get("relevance") or ""),
+                } for f in hit["findings"] if isinstance(f, dict)]
+                if sources:
+                    ledger = {
+                        "schema": "witsoc.literature_ledger.v1",
+                        "problem_id": problem_id,
+                        "queries": [{"query": target, "source": f"atlas:{hit['topic']}"}],
+                        "sources": sources,
+                        "note": "sources reused from the persistent literature atlas (untrusted pointers)",
+                    }
+                    witcore.save_json(ledger_dir() / f"{slug(problem_id)}.json", ledger)
+                    from_atlas = True
+        except Exception:
+            ledger = ledger
     rows = []
     emitted = []
     if ledger:
@@ -276,6 +308,7 @@ def theorem_audit(problem_id: str, target: str, out: Path | None = None,
         "problem_id": problem_id,
         "target_subgoal": target,
         "source_ledger_found": bool(ledger),
+        "source_ledger_from_atlas": from_atlas,
         "rows": rows,
         "extracted": sum(1 for r in rows if r.get("extraction_status") == "EXTRACTED"),
         "pending": sum(1 for r in rows if r.get("extraction_status") == "PENDING"),

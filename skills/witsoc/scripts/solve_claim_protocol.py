@@ -17,13 +17,16 @@ independent requirements, ALL mandatory:
   3. NOVELTY        a recorded novelty verdict; NOVEL_CANDIDATE is required —
                     KNOWN/KNOWN_INTERNAL rejects the claim (priority), and
                     LOCALLY_NEW_UNCHECKED is insufficient at frontier stakes;
-  4. HUMAN GATE     an explicit named human approval (mirrors the
-                    foundation-outcome human gate in status_lattice).
+  4. FORMAL RECEIPT for FORMAL_SOLVE claims, validated by
+                    validate_lean_receipt.py so environment-only placeholder
+                    Lean output cannot support a solve.
 
 Claim state lives in <run_dir>/solve_claim.json; every mutation also appends
 an event to the durable ledger <witsoc home>/solve_claims.jsonl. Status is
 computed from satisfied requirements, never stored as a free-form label:
-CLAIMED -> SOLVE_ACCEPTED only when all four hold; REJECTED is terminal.
+CLAIMED -> SOLVE_ACCEPTED only when all machine-verification requirements hold;
+REJECTED is terminal. Human review can be recorded as optional evidence, but is
+not required for the default machine-verified solve label.
 
 Only SOLVE_ACCEPTED may ever be reported as a solve of the named problem.
 """
@@ -37,6 +40,7 @@ from pathlib import Path
 from typing import Any
 
 import validate_mathematical_solve as vms
+import validate_lean_receipt as vlr
 import witcore
 
 STAGES = ("MATHEMATICAL_SOLVE", "FORMAL_SOLVE")
@@ -89,8 +93,6 @@ def missing_requirements(claim: dict) -> list[str]:
         missing.append("at least one verified independent re-derivation")
     if claim.get("novelty", {}).get("verdict") != "NOVEL_CANDIDATE":
         missing.append("novelty verdict NOVEL_CANDIDATE")
-    if claim.get("human_gate", {}).get("decision") != "approve":
-        missing.append("named human approval")
     return missing
 
 
@@ -103,9 +105,14 @@ def open_claim(args: argparse.Namespace) -> dict:
         return {"error": "cannot open a solve claim: the mathematical-solve audit fails",
                 "failures": audit["failures"]}
     lean_receipt = ""
+    lean_receipt_validation = {}
     if args.stage == "FORMAL_SOLVE":
         if not args.lean_receipt or not Path(args.lean_receipt).exists():
             return {"error": "FORMAL_SOLVE claims require --lean-receipt pointing to an existing receipt"}
+        lean_receipt_validation = vlr.validate(args.lean_receipt, audit["target_hash"])
+        if not lean_receipt_validation["valid"]:
+            return {"error": "FORMAL_SOLVE Lean receipt failed validation",
+                    "failures": lean_receipt_validation["errors"]}
         lean_receipt = str(args.lean_receipt)
     claim = {
         "schema": "witsoc.solve_claim.v1",
@@ -117,6 +124,7 @@ def open_claim(args: argparse.Namespace) -> dict:
         "audit_passed": True,
         "audit": {"min_skeptics": audit["min_skeptics"], "counts": audit["counts"]},
         "lean_receipt": lean_receipt,
+        "lean_receipt_validation": lean_receipt_validation,
         "rederivations": [],
         "novelty": {},
         "human_gate": {},

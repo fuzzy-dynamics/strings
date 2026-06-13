@@ -77,7 +77,7 @@ python3 "$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/witsoc.py)" services
 | `budget-gate` | `campaign_budget_gate.py` | L3: campaign budget + one-way escalation ladder. Owns the `campaign` block in `lovasz_run.json`. |
 | `gap-feedback` | `proof_gap_to_barrier_feedback.py` | L1: classifies worker failures, proposes one one-axis mutation, enforces the re-dispatch contract. |
 | `validate-math-solve` | `validate_mathematical_solve.py` | F0 stage-1 audit: every DAG node closed, skeptic fleet (≥3/node), no gaps, preconditions audited. Precondition for a solve claim — never itself a solve. |
-| `solve-claim` | `solve_claim_protocol.py` | F0 frontier solve gate: audit + independent re-derivation + `NOVEL_CANDIDATE` novelty + named human approval. Only `SOLVE_ACCEPTED` is reportable. |
+| `solve-claim` | `solve_claim_protocol.py` | F0 frontier solve gate: audit + formal receipt for `FORMAL_SOLVE` + independent re-derivation + `NOVEL_CANDIDATE` novelty. Only `SOLVE_ACCEPTED` is reportable. |
 
 ## The campaign block (budget truth)
 

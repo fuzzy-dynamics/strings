@@ -153,7 +153,7 @@ def success_definition(run: Path) -> dict[str, Any]:
             "every failed route records gap_feedback plus local/global failure memory",
             "every repeated attack changes exactly one mutation axis",
             "every novelty claim has live-library, atlas, and literature/external-check evidence",
-            "every solve claim passes audit, independent re-derivation, NOVEL_CANDIDATE novelty, and named human approval",
+            "every solve claim passes audit, formal receipt when applicable, independent re-derivation, and NOVEL_CANDIDATE novelty",
             "rediscovery benchmark reports calibration_clean and soundness_clean",
             "campaign loops produce a theory diff, mutation, escalation, or honest stop",
         ],

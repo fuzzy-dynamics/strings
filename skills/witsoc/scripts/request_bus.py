@@ -78,6 +78,31 @@ ROLE_HINTS = {
                   "must not include a proof, axiom, sorry, or a stronger/weaker target hidden "
                   "without notes. (Declaration-shaped replies are auto-normalized when "
                   "unambiguous, but a bare Prop avoids the round-trip.)"),
+    "seed_lemmas": ("PROBLEM-SPECIFIC decomposition of the target — replace generic "
+                    "templates with real math. reply {\"obligations\": [{\"statement\": str, "
+                    "\"lean_statement\": str (a BARE Lean Prop, same rules as `formalize`: no "
+                    "theorem/:=/proof), \"applies_because\": str (WHY this bears on THIS target — a "
+                    "real relevance argument, not a restatement; obligations without it are "
+                    "rejected), \"covers\": str (what part of the target it discharges), \"kind\": "
+                    "str}], \"open_core\": [{\"description\": str (the residual your obligations do "
+                    "NOT cover — the hard part), \"why_hard\": str}], \"reduction_justification\": "
+                    "str (why the obligations + open_core together imply the target)}. Be HONEST "
+                    "about open_core: naming the hard part you cannot reduce is the point — an empty "
+                    "open_core claims the obligations fully reduce the target. Each lean_statement is "
+                    "elaboration-gated; obligations enter the reduction ledger OPEN (dispatchable), "
+                    "never proved."),
+    "coverage_audit": ("ADVERSARIAL completeness check of a reduction. The payload's "
+                       "`coverage` lists the target plus each obligation's `covers` and the "
+                       "`open_core`. Try to exhibit an instance satisfying the target's "
+                       "hypotheses but covered by NEITHER an obligation NOR open_core. reply "
+                       "{\"hole_found\": bool, \"uncovered_case\": str, \"reasoning\": str}; "
+                       "default hole_found=false when the cases provably tile the space — do "
+                       "not invent a hole"),
+    "verify_reduction": ("kernel-PROVE the reduction lemma. The payload carries `lean_goal` "
+                         "(the Lean Prop `obligations ⟹ target`). reply {\"proof\": str, "
+                         "\"lean_goal\"?, \"imports\"?}; the proof is kernel-checked and only a "
+                         "green, sorry/axiom-free proof upgrades the reduction to KERNEL_CHECKED. "
+                         "Iterate with `witsoc prove` against real diagnostics before submitting"),
     "conjecture": "reply with conjecture candidates in the requested JSON shape; bold is fine, they are born unfalsified",
     "rerank": "reply with the requested ranking/scoring JSON over the given candidates only",
     "literature_search": "use your own search/browse access; reply {\"findings\": [{\"claim\", \"source\", \"relevance\"}]}",
@@ -182,7 +207,8 @@ def requests_by_id(d: Path) -> dict[str, dict]:
 # P4 compounding surface: failure warnings, proved lemmas, proof examples,
 # and approach priors travel WITH the request to whoever fulfills it.
 ENRICH_ROLES = {"ideate", "prove_sketch", "formalize", "mutate", "conjecture", "rerank",
-                "evolve_program", "mutate_decomposition", "pose_frontier_conjectures"}
+                "evolve_program", "mutate_decomposition", "pose_frontier_conjectures",
+                "seed_lemmas", "verify_reduction"}
 
 _STATEMENT_KEYS = ("statement", "target", "goal", "lean_target", "seed_statement", "claim")
 

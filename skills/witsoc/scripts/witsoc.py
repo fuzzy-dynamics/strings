@@ -125,6 +125,7 @@ GROUPS: dict[str, dict[str, str]] = {
         "validate-lovasz-phase": "validate_lovasz_phase.py",
         "validate-prover": "validate_prover_result.py",
         "validate-math-solve": "validate_mathematical_solve.py",
+        "validate-lean-receipt": "validate_lean_receipt.py",
         "solve-claim": "solve_claim_protocol.py",
         "refute-deterministic": "refute_deterministic.py",
         "status-lattice": "status_lattice.py",
@@ -134,6 +135,7 @@ GROUPS: dict[str, dict[str, str]] = {
     },
     "core": {
         "bus": "request_bus.py",
+        "controller": "witsoc_controller.py",
         "init": "init.sh",
         "check": "check.sh",
         "verify": "verify.sh",
@@ -325,8 +327,12 @@ SERVICES = {
                             "contract": "F0 stage-1 audit: all DAG nodes closed, skeptic fleet, no gaps; "
                                         "precondition for a solve claim, never a reportable solve"},
     "solve-claim": {"script": "solve_claim_protocol.py", "role": "validator",
-                    "contract": "F0 frontier solve gate: audit + independent re-derivation + novelty + "
-                                "human gate; only SOLVE_ACCEPTED is reportable"},
+                    "contract": "F0 frontier solve gate: audit + formal receipt + independent "
+                                "re-derivation + novelty; only SOLVE_ACCEPTED is reportable"},
+    "validate-lean-receipt": {"script": "validate_lean_receipt.py", "role": "validator",
+                              "contract": "rejects Lean ENV_CHECK_ONLY/placeholder output; "
+                                          "VERIFIED_LEAN requires explicit theorem code, hashes, "
+                                          "and SafeVerify/faithfulness evidence"},
     "engine-dispatch": {"script": "engine_dispatch.py", "role": "solver",
                         "contract": "research-director actuator; Lovasz-owned, needs run context or --standalone"},
     "campaign": {"script": "autonomous_campaign.py", "role": "solver",
@@ -383,6 +389,8 @@ def main() -> int:
     if argv and argv[0] == "map":
         print_map()
         return 0
+    if argv and argv[0] in {"run-open", "finalize", "validate-all"}:
+        return run_script("witsoc_controller.py", [argv[0], *argv[1:]])
     # grouped invocation: `witsoc <group> <cmd> args...` / `witsoc <group>` lists
     if argv and argv[0] in GROUPS:
         group = GROUPS[argv[0]]

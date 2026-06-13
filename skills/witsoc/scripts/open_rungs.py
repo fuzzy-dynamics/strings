@@ -115,6 +115,16 @@ def build(target: str, domain: str) -> dict[str, Any]:
     else:
         rungs = generic_rungs(target, domain)
         detected = "generic"
+    # P3: every rung carries an `applies_because` relevance argument so that, when
+    # a rung is promoted into the reduction ledger as an obligation, it passes the
+    # structural applicability gate (reduction_ledger.applicability_ok) instead of
+    # being admitted on a bare problem-name match. Derived from relation_to_target.
+    for r in rungs:
+        if not r.get("applies_because"):
+            rel = str(r.get("relation_to_target") or "")
+            r["applies_because"] = (
+                f"{detected} rung for this target: {rel}" if rel
+                else f"{detected} structural rung tied to the frozen target")
     return {
         "schema": "witsoc.open_rungs.v1",
         "target": target,

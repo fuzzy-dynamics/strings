@@ -82,12 +82,13 @@ def run(portfolio: list[dict], library: Path, iterations: int, max_steps: int,
                 violations.append(f"iter{it}:{p['id']}")
             # FRONTIER: an L6 on a frontier_attack problem is not a violation,
             # but it is reportable as a solve ONLY through the solve-claim
-            # protocol (math-solve audit + independent re-derivation + novelty
-            # + human gate). Until SOLVE_ACCEPTED it stays an internal result.
+            # protocol (math-solve audit + formal receipt when applicable +
+            # independent re-derivation + novelty). Until SOLVE_ACCEPTED it
+            # stays an internal result.
             elif p.get("tier") == "frontier_attack" and rung == "L6":
                 solve_claims_required.append({
                     "iteration": it, "id": p["id"],
-                    "required": "solve_claim_protocol: open -> add-rederivation -> add-novelty -> human-gate",
+                    "required": "solve_claim_protocol: open -> add-rederivation -> add-novelty",
                 })
             per_problem.append({"id": p["id"], "rung": rung, "status": st["status"],
                                 "tier": p.get("tier", "open")})

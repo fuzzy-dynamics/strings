@@ -133,6 +133,21 @@ def concepts(statement: str, domain: str = "") -> set[str]:
     return tags
 
 
+# Concepts that pin a mathematical DOMAIN, vs generic structural tags every
+# problem trips (forall/exists/nat/integer/set/...). A technique that matches on a
+# domain concept (geometry, incidence, additive, …) is far more relevant to THIS
+# problem than one matching only on a generic tag — without this, a unit-distance
+# (geometry) target ranked `minimal_counterexample_descent` (matched on
+# forall/integer) above `polynomial_partitioning_incidence` (matched on geometry).
+_DOMAIN_CONCEPTS = frozenset({
+    "convex_geometry", "geometry", "incidence", "graph", "coloring",
+    "forbidden_subgraph", "extremal", "additive", "density", "progression",
+    "eigenvalue", "matrix", "polynomial", "spectral", "sigma", "multiplicative",
+    "congruence", "mod", "diophantine", "divisor", "prime", "number_theory",
+    "recurrence",
+})
+
+
 def suggest(statement: str, domain: str = "", k: int = 4, atlas: Path | None = None) -> list[dict]:
     tags = concepts(statement, domain)
     scored = []
@@ -143,6 +158,10 @@ def suggest(statement: str, domain: str = "", k: int = 4, atlas: Path | None = N
             continue
         # Jaccard-ish relevance, with a small bonus for covering more of the triggers.
         score = len(overlap) / len(trig | tags) + 0.1 * len(overlap)
+        # Domain-match boost: matching a DOMAIN concept (not a generic structural
+        # tag) is what makes a technique the RIGHT tool here, so weight it heavily.
+        domain_overlap = overlap & _DOMAIN_CONCEPTS
+        score += 0.5 * len(domain_overlap)
         scored.append((score, overlap, entry))
     scored.sort(key=lambda x: -x[0])
     out = []

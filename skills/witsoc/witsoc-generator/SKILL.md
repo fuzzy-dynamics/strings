@@ -159,6 +159,17 @@ theory gaps) are the formalization workhorses. No `sorry`/`admit`/`axiom`/
 placeholder bridges; Lean is `Lean VERIFIED` only after `lake build` +
 SafeVerify, else say `Lean code generation failed`.
 
+Before any Lean output is cited as verification evidence, validate the receipt:
+
+```bash
+WITSOC="$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/witsoc.py)"
+python3 "$WITSOC" validate-lean-receipt path/to/lean_receipt.json --target-hash "$FROZEN_TARGET_SHA256"
+```
+
+If the receipt came from auto-generated placeholder code or an environment
+sanity check, classify it as `ENV_CHECK_ONLY`; it cannot support
+`VERIFIED_LEAN`, `FORMAL_SOLVE`, or a Generator artifact status upgrade.
+
 Record failed attempts as reusable evidence (attempt id, artifact path,
 failure class, diagnostic excerpt, repair attempted, outcome, lesson) and
 write the failure note (`runs/<task>/approach_N_failure.md`: frozen target,

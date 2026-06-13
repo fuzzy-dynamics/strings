@@ -44,7 +44,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
 import witcore  # noqa: E402
 
-# Phase 0 capability ladder (see OPEN_PROBLEM_PROGRAM.md). The achieved rung of an
+# Phase 0 capability ladder (see docs/witsoc/OPEN_PROBLEM_PROGRAM.md). The achieved rung of an
 # item is the *product* it reached; the corpus declares the max honest rung
 # (`achievable_rung`) so "headroom" = items that did NOT yet reach their ceiling.
 RUNG_ORDER = ["L0", "L1", "L2", "L3", "L4", "L5", "L6", "L6_STAR"]

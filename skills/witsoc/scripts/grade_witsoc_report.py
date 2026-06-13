@@ -123,18 +123,41 @@ def progress_evaluate(run: Path) -> dict:
         capped = 25.0
         cap_applied = True
 
-    score = int(round(max(0.0, min(100.0, capped))))
     notes: list[str] = []
+
+    # P1 — conjecture-distance cap. The closure ratio above is over the SEEDED
+    # DAG; it rewards closing whatever was seeded (e.g. two trivial Erdős–Straus
+    # cases) even when the conjecture is untouched. When a reduction ledger
+    # exists it states `target ⟸ obligations ∧ open_core`, and its assessment
+    # bounds progress toward the actual TARGET: while the open_core is open,
+    # closing easy obligations is not progress on the conjecture. Apply it as a
+    # ceiling on the DAG-derived score. No ledger => unchanged (back-compat).
+    reduction = None
+    try:
+        import reduction_ledger as rl
+        led = rl._load(rl.ledger_path(run), None)
+        if isinstance(led, dict) and led.get("schema") == rl.SCHEMA:
+            reduction = rl.assess(led)
+    except Exception:
+        reduction = None
+    if reduction is not None:
+        red_cap = float(reduction["progress_cap"])
+        if capped > red_cap:
+            capped = red_cap
+            cap_applied = True
+            notes.append(f"reduction cap [{reduction['band']}]: {reduction['cap_note']}")
+
+    score = int(round(max(0.0, min(100.0, capped))))
     if total == 0:
         notes.append("no proof DAG: nothing to make progress on")
     if n_closed == 0:
         notes.append("ZERO kernel/verifier-closed nodes — no verifiable progress on the target")
-    if cap_applied:
+    if cap_applied and reduction is None:
         notes.append("progress score hard-capped at 25 (no closed nodes)")
     if n_formal and n_closed == 0:
         notes.append(f"{n_formal}/{total} nodes formalized but none proved — dispatchable, not progress")
 
-    return {
+    result = {
         "progress_score": score,
         "progress_grade": grade(score),
         "components": {k: round(v, 2) for k, v in components.items()},
@@ -148,6 +171,9 @@ def progress_evaluate(run: Path) -> dict:
         "cap_applied": cap_applied,
         "notes": notes,
     }
+    if reduction is not None:
+        result["reduction"] = reduction
+    return result
 
 
 def evaluate(run: Path) -> dict:
@@ -275,7 +301,24 @@ def evaluate(run: Path) -> dict:
         gaps.append("structural grade is scaffolding-inflated: progress grade is "
                     f"{progress['progress_grade']} ({progress['progress_score']}/100)")
 
-    return {
+    # Surface the conjecture-distance story to the human. The reduction
+    # assessment is the most honest thing the grader knows — without it the
+    # headline only compares scaffolding to seeded-DAG closure and never mentions
+    # the open_core (the real gap to the conjecture). Lead with it when present.
+    reduction = progress.get("reduction")
+    if reduction:
+        disc, tot = reduction["obligations_discharged"], reduction["obligations_total"]
+        oc = reduction["open_core_open"]
+        headline = (f"reduction [{reduction['band']}]: {disc}/{tot} obligations discharged, "
+                    f"{oc} open_core item(s) open — distance to the CONJECTURE | " + headline)
+        if oc:
+            gaps.append(f"reduction: {oc} open_core item(s) still OPEN — the hard part of the "
+                        "conjecture is unreduced; closing seeded obligations is not progress on it")
+        elif not reduction["reduced"]:
+            gaps.append(f"reduction: open_core addressed but {tot - disc} obligation(s) open / "
+                        "reduction unjustified — target not yet reduced")
+
+    result = {
         "schema": "witsoc.report_quality_grade.v2",
         "run_dir": str(run),
         "headline": headline,
@@ -301,6 +344,9 @@ def evaluate(run: Path) -> dict:
         "strengths": strengths,
         "gaps": gaps,
     }
+    if reduction:
+        result["reduction"] = reduction
+    return result
 
 
 def main() -> int:

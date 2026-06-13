@@ -79,7 +79,36 @@ def next_action(run: Path) -> dict:
                      f"witsoc budget-gate escalate {run} --reason '<why>'",
                      f"budget exhausted at {gate['escalation_level']}: {gate['required_action']}")
 
-    # 3. A frozen target but no attack surface yet.
+    # 3. The conjecture-distance keystone: a frozen target with no reduction yet.
+    # Seed the problem-specific obligations + honest open_core via the bus before
+    # cranking the DAG, so progress is measured against the CONJECTURE (open_core)
+    # and not just whatever got seeded into the DAG. Emits a seed_lemmas request,
+    # which priority 1 then surfaces for fulfillment next turn.
+    try:
+        import reduction_ledger as rl
+        import request_bus as rb
+        bus_driven = rb.enabled() or (run / "bus").exists()
+        if bus_driven and rl.needs_seeding(run):
+            return _step("seed_reduction",
+                         f"witsoc reduction seed {run} --bus-dir {run / 'bus'}",
+                         "no reduction ledger yet — seed the problem-specific obligations and "
+                         "honest open_core (target ⟸ obligations ∧ open_core) so progress is "
+                         "scored against the conjecture, not the seeded DAG",
+                         then=f"witsoc bus --dir {run / 'bus'} next-batch  # fulfill the seed_lemmas request")
+        # Once obligations exist, completeness-audit the reduction ONCE: an
+        # adversarial check that obligations ∪ open_core actually cover the target
+        # (a silent coverage hole makes the decomposition unsound).
+        if bus_driven and rl.needs_coverage_audit(run):
+            return _step("audit_reduction_coverage",
+                         f"witsoc reduction audit-coverage {run} --bus-dir {run / 'bus'}",
+                         "reduction seeded but not completeness-audited — emit an adversarial "
+                         "coverage_audit (does anything escape obligations ∪ open_core?) before "
+                         "trusting the decomposition",
+                         then=f"witsoc bus --dir {run / 'bus'} next-batch  # fulfill the coverage_audit")
+    except Exception:
+        pass
+
+    # 4. A frozen target but no attack surface yet.
     dag = witcore.records(run / "proof_dependency_dag.json")
     if not dag:
         return _step("seed_attack",

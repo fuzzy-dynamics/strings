@@ -125,6 +125,19 @@ return and choose exactly one: `LOVASZ_AGAIN` (new packet) | `DEMOTE` |
 `GENERATOR_READY`; `HONEST_STOP` on a prove/disprove run requires recorded
 barrier attacks or a concrete inability to dispatch.
 
+When the surrounding orchestrator does not enforce Witsoc phases directly,
+Explorer should rely on the skill-local controller:
+
+```bash
+WITSOC="$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/witsoc.py)"
+python3 "$WITSOC" run-open runs/<task> --prompt "<frozen target>" --loops 1
+python3 "$WITSOC" finalize runs/<task> --require-route
+```
+
+Use `witsoc_run_controller.json` as the final gate ledger. If it reports
+`FAILED_GATE`, return the first failing gate and repair target instead of a
+mathematical conclusion.
+
 ## Open Problem Mode
 
 Read `../references/core/open_problem.md` and

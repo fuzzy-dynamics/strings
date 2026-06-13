@@ -95,68 +95,18 @@ runs only with Explorer authorization for nontrivial targets. Everything else
 starting at Generator for artifact repair — is the agent's call, recorded in
 the route state (`scripts/route.py`, `scripts/validate_route_state.py`).
 
-## Capability Discovery Loop (retrieval before invention)
+## Strategy Doctrine (advisory — load when exploring)
 
-Witsoc is deliberately lazy: expertise lives in retrievable stores, not in
-prompt text. For any hard step, run the loop:
-
-1. **Identify the missing knowledge** — a status, a technique, a lemma, a
-   counterexample family, an encoder, a domain playbook.
-2. **Search the memory stores and atlases** — lemma library, proof bank,
-   technique atlas, Mathlib atlas, the two-part knowledge store
-   (`references/knowledge-stores.md`), literature engine, ontology mappings.
-3. **Retrieve candidate techniques and skills** — including from analogous
-   domains and similar solved problems; treat retrieved skills as composable
-   building blocks, and expand them recursively when they point further.
-4. **Surface ≥2 candidate approaches** whenever the step is nontrivial, each
-   with applicability conditions, tradeoffs, historical precedent, and a
-   confidence note stating what would lower it. Selection stays with the
-   reasoning agent. `witsoc decide options --statement "<goal>"` assembles
-   this table from the LIVE stores (technique atlas, L5 priors, L4 failure
-   warnings, past decisions at this point) with a recommended default — use
-   it instead of reciting doctrine from memory. Record nontrivial choices
-   (`witsoc decide record`) and their outcomes (`witsoc decide resolve`):
-   resolved decisions feed the priors, so defaults are LEARNED from what
-   actually worked. Contracts are never decision points.
-5. **Expand promising branches; recurse** when a branch reveals new missing
-   knowledge.
-
-Prefer discovering and adapting an existing technique before assuming novel
-mathematics is required: many hard steps fall to a transferred method. The
-standing question is *"what successful technique from another context could
-work here?"* The full playbook — resource map, transfer checklist,
-candidate-approach template, branch ledger — is
-`references/core/technique_discovery.md`.
-
-## Tree Search Over Linear Plans
-
-Avoid premature commitment to a single strategy. The machinery for this
-exists — use it as a portfolio manager, not a formality:
-
-- keep several hypotheses/sketches alive (`scripts/sketch_population.py`,
-  `scripts/sketch_tournament.py`; EV-ranked sketches in handoffs),
-- compare competing techniques on the same node (distinct method families
-  across workers),
-- track dead ends with *revival conditions*, not just failure labels (retry
-  ledger, failure memory, `do_not_repeat` entries should record what new
-  evidence would justify revisiting),
-- revisit previously discarded approaches when new evidence appears — a new
-  lemma, a refuted obstruction, or a fresh counterexample family changes the
-  EV landscape.
-
-A linear plan is a special case the agent may choose for cheap targets — not
-the default shape of serious work.
-
-## Primitives Over Wrappers
-
-Prefer composing general primitives (search, enumerate, mine, prove, check,
-certify, remember) over reaching for a narrow wrapper that hides the
-decision. The deterministic scripts form a capability catalog, organized by
-what each primitive does, when it applies, what evidence grade its output
-carries, and what it composes with: `references/core/capability_catalog.md`.
-Novel compositions are encouraged; the only non-composable layer is the
-contract layer (an LLM never substitutes for a structural check, receipt
-parse, or kernel verdict).
+The strategy-layer practices that shape *how* you explore — the capability
+discovery loop (retrieval before invention), tree search over linear plans,
+and primitives over wrappers — live in `references/core/strategy_doctrine.md`.
+Load it for nontrivial exploration. The one tool worth naming up front:
+`witsoc decide options --statement "<goal>"` assembles ≥2 candidate approaches
+from the LIVE stores (technique atlas, L5 priors, L4 failure warnings, past
+decisions) with a recommended default — prefer it over reciting doctrine from
+memory; record choices (`witsoc decide record`) and outcomes
+(`witsoc decide resolve`) so defaults are LEARNED. Contracts are never
+decision points.
 
 ## Required Contracts
 
@@ -243,7 +193,7 @@ Solving an open problem has two distinct success stages; never conflate them:
 - `MATHEMATICAL_SOLVE`: the complete informal proof DAG composes to the frozen target with every node closed (`PROVED_SKETCH` or better), a skeptic fleet (≥3 independent passing reviews per node), no open gaps, and audited theorem preconditions. Audited deterministically by `scripts/validate_mathematical_solve.py`. A `MATHEMATICAL_SOLVE` triggers a formalization campaign as its own subsequent program — it is never itself reported as a solve.
 - `FORMAL_SOLVE`: the existing bar — WIT + Lean + SafeVerify verifies the original frozen target.
 
-For `frontier_attack` portfolio problems, neither stage is reportable as a solve of the named problem until the solve-claim protocol (`scripts/solve_claim_protocol.py`) reaches `SOLVE_ACCEPTED`: passing math-solve audit, at least one verified independent re-derivation by a fleet with no access to the original proof, a `NOVEL_CANDIDATE` novelty verdict, and a named human approval. Calibration sentinels (`frozen_calibration`) remain frozen: a solve there still fails the campaign.
+For `frontier_attack` portfolio problems, neither stage is reportable as a solve of the named problem until the solve-claim protocol (`scripts/solve_claim_protocol.py`) reaches `SOLVE_ACCEPTED`: passing math-solve audit, an explicit Lean/SafeVerify receipt validated by `scripts/validate_lean_receipt.py` for `FORMAL_SOLVE`, at least one verified independent re-derivation by a fleet with no access to the original proof, and a `NOVEL_CANDIDATE` novelty verdict. Human review may be recorded as additional evidence, but is not the default machine-verified solve gate. Calibration sentinels (`frozen_calibration`) remain frozen: a solve there still fails the campaign.
 
 ## Quality Levels
 
@@ -263,6 +213,16 @@ The final answer must not imply a higher level than the run achieved.
 
 Prefer deterministic Witsoc scripts and native WIT/Lean tools for routing, validation, structural checks, receipt parsing, target-freeze checks, and report grading. Use `scripts/witsoc.py` as the unified entrypoint when available; otherwise use the specific script named by the relevant protocol.
 
+For open, unsolved, frontier, or deep-research targets, the self-enforcing Witsoc path is:
+
+```bash
+WITSOC="$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/witsoc.py)"
+python3 "$WITSOC" run-open runs/<task> --prompt "<frozen target or user request>" --loops 1
+python3 "$WITSOC" finalize runs/<task> --require-route
+```
+
+`run-open` writes `witsoc_run_controller.json` with every gate, command, exit code, and artifact path. If any gate fails, report `FAILED_GATE` plus the first failing gate and exact repair target; do not replace the failed gate with prose judgment.
+
 Distinguish the two layers in tooling too: for *strategy* tooling (search, mining, synthesis, proving), `references/core/capability_catalog.md` presents candidates and applicability — the agent chooses among them and may compose them in new ways. For *contract* tooling (validators, checkers, receipt parsers), the named script is the mechanism, and an LLM may not stand in for it.
 
 Common scripts are listed and explained in `references/core/tooling.md`. Do not load or summarize the entire scripts directory unless debugging the toolchain.
@@ -275,6 +235,8 @@ For serious finalization, run the applicable validators when the scripts are ava
 - Lovasz runs: `scripts/validate_lovasz_phase.py`, `scripts/validate_proof_dag_integrity.py`, `scripts/validate_lovasz_run.py`, `scripts/validate_open_problem_run.py`
 - Lovasz campaign loops: `scripts/campaign_budget_gate.py` (budget + escalation ladder), `scripts/proof_gap_to_barrier_feedback.py` (failure classification + re-dispatch contract)
 - reports: `scripts/open_problem_report.py`, `scripts/grade_witsoc_report.py`, `scripts/explorer_return_packet.py`
+- controller/final status: `scripts/witsoc_controller.py` via `python3 scripts/witsoc.py run-open|finalize|validate-all`
+- Lean receipts: `scripts/validate_lean_receipt.py`; placeholder/environment-only Lean output is `ENV_CHECK_ONLY`, never `VERIFIED_LEAN`
 
 Register generated WIT, Lean, SOC, receipt, Lake log, proof-worktree record, and report artifacts in `witsoc_artifacts.json` when artifact tooling is available.
 
@@ -284,7 +246,7 @@ If the user explicitly asks for WIT code, `.wit`, or WIT plus Lean, WIT generati
 
 Generator may run only after Explorer authorization for nontrivial targets. It is forbidden when the target is open/blocked without a Lovasz return packet, the accepted product is only speculative, target hashes disagree without a mutation record, formalization feasibility is poor, or required proof-DAG dependencies remain open.
 
-When Lean is requested, generate Lean from the frozen WIT target, attempt final `lake build` when feasible, and report `LEAN_VERIFIED` only when Lean and target-freeze/SafeVerify checks pass. If Lean repair is blocked, say `Lean code generation failed` and name the blocker.
+When Lean is requested, generate Lean from the frozen WIT target, attempt final `lake build` when feasible, and report `LEAN_VERIFIED` only when Lean and target-freeze/SafeVerify checks pass. A backend/tool result that auto-generates a placeholder theorem or only checks that Lean is operational must be classified `ENV_CHECK_ONLY`; run `scripts/validate_lean_receipt.py` before using any Lean result as claim evidence. If Lean repair is blocked, say `Lean code generation failed` and name the blocker.
 
 If WIT/Lean artifacts are generated and the Witsoc plugin is available, open the generated file in the plugin iframe. If plugin activation fails, still return artifact paths and check status.
 

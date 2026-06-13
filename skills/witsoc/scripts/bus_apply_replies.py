@@ -23,6 +23,7 @@ sys.path.insert(0, str(SCRIPT_DIR))
 
 import request_bus as rb  # noqa: E402
 import witcore  # noqa: E402
+import reduction_ledger as rl  # noqa: E402
 from witcore import slug  # noqa: E402
 
 
@@ -370,6 +371,18 @@ def _apply_literature_search(run: Path, req: dict, reply: dict) -> dict:
             }
             witcore.save_json(path, ledger)
             written = len(sources)
+            # P4: write-through to the persistent cross-problem atlas so a future
+            # target on the same topic reuses these pointers instead of re-emitting
+            # a literature_search. Best-effort; never blocks the per-problem ledger.
+            try:
+                import literature_atlas as la
+                topic = str(payload.get("target") or problem_id)
+                la.record(topic, [{"title": s["title"], "source": s["url"] or s["arxiv_id"],
+                                   "claim": s.get("claim", ""), "year": s.get("year", ""),
+                                   "relevance": s.get("relevance", "")} for s in sources],
+                          domain=str(payload.get("domain") or ""))
+            except Exception:
+                pass
         except Exception as exc:
             return {"schema": "witsoc.bus_literature_result.v1", "request_id": req.get("id"),
                     "status": "REJECTED", "error": str(exc)}
@@ -465,6 +478,164 @@ def _apply_formalization_to_dag(run: Path, req: dict, rec: dict, dag: list[dict]
     return changed
 
 
+def _apply_coverage_audit(run: Path, req: dict, reply: dict) -> dict:
+    """Phase-1 completeness auditor: record an adversarial coverage verdict on the
+    reduction. A found hole marks the decomposition UNSOUND (assess caps to
+    COVERAGE_HOLE); a clean audit is recorded as corroboration. Honest contract:
+    only the auditor can mark a hole; absence of a verdict is not soundness."""
+    led = rl._load(rl.ledger_path(run), None)
+    if not (isinstance(led, dict) and led.get("schema") == rl.SCHEMA):
+        return {"schema": "witsoc.bus_coverage_audit_result.v1", "request_id": req.get("id"),
+                "status": "NO_LEDGER"}
+    hole = bool(reply.get("hole_found"))
+    verdict = "HOLE_FOUND" if hole else "NO_HOLE"
+    led.setdefault("reduction", {})["coverage_audit_verdict"] = verdict
+    if hole:
+        rl.set_coverage_hole(led, str(reply.get("uncovered_case") or "unspecified"),
+                             str(reply.get("reasoning") or ""))
+    else:
+        rl.clear_coverage_hole(led)
+    rl._save(rl.ledger_path(run), led)
+    return {"schema": "witsoc.bus_coverage_audit_result.v1", "request_id": req.get("id"),
+            "status": verdict}
+
+
+def _apply_verify_reduction(run: Path, req: dict, reply: dict, lake_dir: Path | None) -> dict:
+    """Phase-1 honesty upgrade: kernel-check a fleet-supplied proof of the
+    reduction lemma (obligations ⟹ target). On success the reduction's
+    justification becomes KERNEL_CHECKED — a kernel fact, not a claim."""
+    payload = req.get("payload") if isinstance(req.get("payload"), dict) else {}
+    led = rl._load(rl.ledger_path(run), None)
+    if not (isinstance(led, dict) and led.get("schema") == rl.SCHEMA):
+        return {"schema": "witsoc.bus_verify_reduction_result.v1", "request_id": req.get("id"),
+                "status": "NO_LEDGER"}
+    goal = str(payload.get("lean_goal") or reply.get("lean_goal") or "")
+    imports = str(payload.get("imports") or reply.get("imports") or "")
+    if goal:
+        rl.set_reduction_goal(led, goal, imports)
+    proof = str(reply.get("proof") or "")
+    out = rl.verify_reduction(led, proof, lean_goal=goal, imports=imports, lake_dir=lake_dir)
+    rl._save(rl.ledger_path(run), led)
+    return {"schema": "witsoc.bus_verify_reduction_result.v1", "request_id": req.get("id"),
+            "status": out.get("status") or ("KERNEL_CHECKED" if out.get("ok") else "FAILED"),
+            "ok": bool(out.get("ok")), "env_blocker": out.get("env_blocker")}
+
+
+def _discharge_reduction_obligation(run: Path, node_id: str, goal: str, rid: str) -> bool:
+    """When a kernel-checked proof matches a reduction obligation (by id or by
+    its formal statement), set it DISCHARGED. No ledger -> no-op."""
+    led = rl._load(rl.ledger_path(run), None)
+    if not (isinstance(led, dict) and led.get("schema") == rl.SCHEMA):
+        return False
+    goal_n = (goal or "").strip()
+    changed = False
+    for ob in led.get("obligations", []):
+        if not isinstance(ob, dict):
+            continue
+        if str(ob.get("id")) == node_id or (goal_n and str(ob.get("lean_statement") or "").strip() == goal_n):
+            if rl._norm_status(ob.get("status")) not in rl.DISCHARGED_STATUSES:
+                ob["status"] = "DISCHARGED"
+                ob["discharged_by"] = f"bus_replay:{rid}"
+                changed = True
+    if changed:
+        rl._save(rl.ledger_path(run), led)
+    return changed
+
+
+def _apply_seed_lemmas(run: Path, req: dict, reply: dict, lake_dir: Path | None) -> dict:
+    """P2: a fleet-supplied PROBLEM-SPECIFIC decomposition of the target —
+    obligations + an honest open_core — replacing generic templates with real
+    math. Every obligation passes TWO gates before it enters the reduction
+    ledger: (P3) a substantive `applies_because` relevance argument, and (when it
+    carries a lean_statement) the SAME elaboration gate as `formalize`. Admitted
+    obligations enter OPEN/FORMALIZED — dispatchable, never proved (a later
+    prove_sketch discharges them). The open_core records what the fleet itself
+    says it did NOT reduce; an empty open_core is a strong claim and is recorded
+    verbatim so the grader's conjecture-distance cap can hold the run honest."""
+    payload = req.get("payload") if isinstance(req.get("payload"), dict) else {}
+    led = rl.load_or_init(run)
+    obligations = reply.get("obligations") or reply.get("lemmas") or []
+    if not isinstance(obligations, list):
+        obligations = []
+    open_core = reply.get("open_core") if isinstance(reply.get("open_core"), list) else []
+
+    admitted = 0
+    rejected_applicability = 0
+    rejected_elaboration = 0
+    env_blocked = 0
+    rows: list[dict] = []
+    for raw in obligations:
+        if not isinstance(raw, dict):
+            continue
+        statement = str(raw.get("statement") or raw.get("claim") or "")
+        lean_statement = str(raw.get("lean_statement") or "")
+        imports = str(raw.get("imports") or raw.get("lean_imports") or "")
+        # P3 applicability gate — structural, not a string match on the problem.
+        ok_app, why = rl.applicability_ok(
+            {"statement": statement, "lean_statement": lean_statement,
+             "applies_because": raw.get("applies_because")}, led["target"])
+        if not ok_app:
+            rejected_applicability += 1
+            rows.append({"statement": statement[:120], "admitted": False, "reason": why})
+            continue
+        # Elaboration gate (only when a formal statement is offered).
+        status = "OPEN"
+        env_blocker = None
+        if lean_statement.strip():
+            norm, was_norm, _ = _normalize_lean_statement(lean_statement)
+            elab = _statement_check(norm, imports, lake_dir)
+            if elab.get("elaborated"):
+                status = "FORMALIZED"
+                lean_statement = norm
+            else:
+                env_blocker = witcore.classify_lean_env_blocker(elab.get("raw"))
+                if env_blocker:
+                    status = "OPEN"     # unchecked, not the fleet's fault
+                    env_blocked += 1
+                else:
+                    rejected_elaboration += 1
+                    rows.append({"statement": statement[:120], "admitted": False,
+                                 "reason": "lean_statement failed to elaborate"})
+                    continue
+        row = rl.add_obligation(
+            led, statement or lean_statement,
+            applies_because=str(raw.get("applies_because")),
+            lean_statement=lean_statement if status == "FORMALIZED" else "",
+            kind=str(raw.get("kind") or "lemma"),
+            covers=str(raw.get("covers") or ""),
+            status=status, source=f"bus:{req.get('id')}")
+        if env_blocker:
+            row["env_blocker"] = env_blocker
+        admitted += 1
+        rows.append({"id": row["id"], "statement": statement[:120], "admitted": True,
+                     "status": status, **({"env_blocker": env_blocker} if env_blocker else {})})
+
+    core_added = 0
+    for c in open_core:
+        if isinstance(c, dict) and str(c.get("description") or "").strip():
+            rl.add_open_core(led, str(c["description"]), why_hard=str(c.get("why_hard") or ""))
+            core_added += 1
+
+    justification = str(reply.get("reduction_justification") or "")
+    if justification:
+        # Fleet text justifies the reduction at the ASSERTED tier — it is a claim,
+        # not a kernel proof; the open_core cap still governs progress.
+        rl.set_justification(led, justification, status="ASSERTED")
+
+    rl._save(rl.ledger_path(run), led)
+    return {
+        "schema": "witsoc.bus_seed_lemmas_result.v1",
+        "request_id": req.get("id"),
+        "status": "SEEDED" if admitted else "NO_ADMISSIBLE_OBLIGATIONS",
+        "obligations_admitted": admitted,
+        "rejected_applicability": rejected_applicability,
+        "rejected_elaboration": rejected_elaboration,
+        "env_blocked": env_blocked,
+        "open_core_added": core_added,
+        "rows": rows,
+    }
+
+
 def apply(run: Path, lake_dir: Path | None = None) -> dict:
     lake_dir = witcore.enable_mathlib_mode(lake_dir)
     bus = run / "bus"
@@ -483,18 +654,26 @@ def apply(run: Path, lake_dir: Path | None = None) -> dict:
     extractions = []
     skeptic_reviews = []
     literature = []
+    seed_results = []
     skipped = []
     dag_changed = False
     for rid, req in reqs.items():
         if rid in applied_ids or rid not in responses:
             continue
         role = req.get("role")
-        if role not in {"prove_sketch", "formalize", "theorem_extract", "skeptic", "literature_search"}:
+        if role not in {"prove_sketch", "formalize", "theorem_extract", "skeptic",
+                        "literature_search", "seed_lemmas", "coverage_audit", "verify_reduction"}:
             skipped.append({"id": rid, "role": req.get("role"), "reason": "unsupported_role"})
             continue
         payload = req.get("payload") if isinstance(req.get("payload"), dict) else {}
         reply = responses[rid].get("reply") if isinstance(responses[rid], dict) else {}
-        if role == "literature_search":
+        if role == "coverage_audit":
+            seed_results.append(_apply_coverage_audit(run, req, reply if isinstance(reply, dict) else {}))
+        elif role == "verify_reduction":
+            seed_results.append(_apply_verify_reduction(run, req, reply if isinstance(reply, dict) else {}, lake_dir))
+        elif role == "seed_lemmas":
+            seed_results.append(_apply_seed_lemmas(run, req, reply if isinstance(reply, dict) else {}, lake_dir))
+        elif role == "literature_search":
             literature.append(_apply_literature_search(run, req, reply if isinstance(reply, dict) else {}))
         elif role == "skeptic":
             review, ch = _apply_skeptic_to_run(run, req, reply if isinstance(reply, dict) else {}, dag)
@@ -520,6 +699,11 @@ def apply(run: Path, lake_dir: Path | None = None) -> dict:
                 node["proof"] = proof
                 node.setdefault("evidence", []).append(f"bus_replay:{rid}")
                 dag_changed = True
+            if replay.get("checked"):
+                # Close the seed->prove->discharge loop: if this proof closed a
+                # reduction-ledger obligation (matched by node_id or by goal),
+                # mark it DISCHARGED so the conjecture-distance assessment moves.
+                _discharge_reduction_obligation(run, str(pkt["node_id"]), goal, rid)
         else:
             lean_statement, imports, formalization = _formalization_payload(reply if isinstance(reply, dict) else {})
             normalized, was_normalized, norm_note = _normalize_lean_statement(lean_statement)
@@ -535,7 +719,9 @@ def apply(run: Path, lake_dir: Path | None = None) -> dict:
             formalizations.append(rec)
             if _apply_formalization_to_dag(run, req, rec, dag):
                 dag_changed = True
-        if role == "literature_search":
+        if role in {"seed_lemmas", "coverage_audit", "verify_reduction"}:
+            applied_status = seed_results[-1]["status"]
+        elif role == "literature_search":
             applied_status = literature[-1]["status"]
         elif role == "skeptic":
             applied_status = skeptic_reviews[-1]["verdict"]
@@ -553,7 +739,7 @@ def apply(run: Path, lake_dir: Path | None = None) -> dict:
             "status": applied_status,
         })
 
-    if packets or formalizations or extractions or skeptic_reviews or literature or dag_changed:
+    if packets or formalizations or extractions or skeptic_reviews or literature or seed_results or dag_changed:
         replace = {(p["node_id"], p["worker_type"]) for p in packets}
         worker_results = [
             w for w in worker_results
@@ -579,7 +765,8 @@ def apply(run: Path, lake_dir: Path | None = None) -> dict:
     return {
         "schema": "witsoc.bus_apply_replies.v1",
         "run_dir": str(run),
-        "applied": len(packets) + len(formalizations) + len(extractions) + len(skeptic_reviews) + len(literature),
+        "applied": (len(packets) + len(formalizations) + len(extractions)
+                    + len(skeptic_reviews) + len(literature) + len(seed_results)),
         "checked": sum(1 for p in packets if p["status"] == "CHECKED"),
         "failed": sum(1 for p in packets if p["status"] == "FAILED_ATTEMPT"),
         "formalized": sum(1 for r in formalizations if r["status"] == "FORMALIZED"),
@@ -591,12 +778,16 @@ def apply(run: Path, lake_dir: Path | None = None) -> dict:
         "skeptic_pass": sum(1 for r in skeptic_reviews if r["verdict"] == "pass"),
         "skeptic_refute": sum(1 for r in skeptic_reviews if r["verdict"] == "refute"),
         "literature_recorded": sum(r.get("sources_recorded", 0) for r in literature),
+        "seed_obligations_admitted": sum(r.get("obligations_admitted", 0) for r in seed_results),
+        "seed_open_core_added": sum(r.get("open_core_added", 0) for r in seed_results),
+        "seed_rejected_applicability": sum(r.get("rejected_applicability", 0) for r in seed_results),
         "skipped": skipped,
         "packets": packets,
         "formalizations": formalizations,
         "extractions": extractions,
         "skeptic_reviews": skeptic_reviews,
         "literature": literature,
+        "seed_results": seed_results,
     }
 
 
