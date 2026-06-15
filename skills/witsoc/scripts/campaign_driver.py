@@ -6,22 +6,18 @@ closures lived as separate gates the agent had to remember to connect; the
 driver connects them:
 
   witsoc run <run_dir> [--loops N] [--search]
-    1. BUDGET     campaign_budget_gate.check — exhausted or HONEST_STOP ends
-                  the turn honestly (nothing dispatched)
-    2. DISPATCH   the kernel prover per DAG node, IN-PROCESS (R3) — one
+    1. DISPATCH   the kernel prover per DAG node, IN-PROCESS (R3) — one
                   process, one Lean cache for the whole batch
-    3. FEEDBACK   proof_gap_to_barrier_feedback — failures classified, one
+    2. FEEDBACK   proof_gap_to_barrier_feedback — failures classified, one
                   one-axis mutation proposed each, .soc updated
-    4. RE-IDEATE  L2: when more than half the nodes failed, re-run the sketch
+    3. RE-IDEATE  L2: when more than half the nodes failed, re-run the sketch
                   tournament SEEDED with the gap classifications; the winner's
                   fresh nodes (carrying mutation provenance) merge into the
                   DAG so the next loop attacks a different decomposition
-    5. SERENDIPITY L6: audit the lemma queue's serendipity lane against the
+    4. SERENDIPITY L6: audit the lemma queue's serendipity lane against the
                   20% cap; excess entries are flagged DEFERRED (never deleted,
                   never dispatched ahead of target work)
-    6. PROGRESS   budget charge + record-progress; an escalation
-                  recommendation is APPLIED (one ladder level, reason logged)
-    7. LEDGER     run_ledger ingest + the single-pane summary
+    5. LEDGER     run_ledger ingest + the single-pane summary
 
   witsoc run <run_dir> --finalize
     The production-gate sequence (score, summarize, validate, report, grade,
@@ -43,7 +39,6 @@ from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
-import campaign_budget_gate as bg  # noqa: E402
 import proof_gap_to_barrier_feedback as gf  # noqa: E402
 import run_ledger  # noqa: E402
 import witcore  # noqa: E402
@@ -52,9 +47,15 @@ REIDEATE_FAILURE_FRACTION = 0.5
 SERENDIPITY_CAP = 0.2
 
 FINALIZE_SEQUENCE = [
+    ("validate_lovasz_worker_quality.py", ["{run}/worker_results.json", "--out", "{run}/lovasz_worker_quality.json"]),
     ("score_lovasz_results.py", ["{run}/worker_results.json", "--out", "{run}/lovasz_result_scores.json"]),
     ("summarize_lovasz_run.py", ["{run}"]),
     ("formalization_feasibility.py", ["{run}", "--out", "{run}/formalization_feasibility.json"]),
+    ("lovasz_mutation_ranker.py", ["{run}", "--out", "{run}/lovasz_mutation_ranking.json"]),
+    ("lovasz_loop_health.py", ["{run}", "--out", "{run}/lovasz_loop_health.json"]),
+    ("lovasz_campaign_state.py", ["{run}", "--out", "{run}/lovasz_campaign_state.json"]),
+    ("lovasz_doctor.py", ["{run}", "--out", "{run}/lovasz_doctor.json"]),
+    ("lovasz_synthesis_audit.py", ["{run}", "--out", "{run}/lovasz_synthesis_audit.json"]),
     ("open_problem_report.py", ["{run}"]),
     ("grade_witsoc_report.py", ["{run}", "--out", "{run}/report_quality_grade.json"]),
     ("explorer_return_packet.py", ["{run}", "--out", "{run}/explorer_return_packet.json"]),
@@ -69,7 +70,7 @@ def _load(path: Path, default):
         return default
 
 
-def dispatch_nodes(run: Path, search: bool, limit: int, workers: int) -> dict:
+def dispatch_nodes(run: Path, search: bool, limit: int, workers: int | None) -> dict:
     """In-process prover dispatch via lovasz_prover_dispatch's machinery (its
     run_prover is close_goal since R3), keeping the skeptic gate and result
     merging exactly as the standalone command does them.
@@ -78,6 +79,7 @@ def dispatch_nodes(run: Path, search: bool, limit: int, workers: int) -> dict:
     on the committed attack before breadth on side nodes."""
     import lovasz_prover_dispatch as lpd
     nodes = lpd.collect_nodes(run, limit)
+    workers = witcore.local_prover_worker_count(workers)
     dag = _load(run / "proof_dependency_dag.json", [])
     types = {str(n.get("node_id")): str(n.get("type") or "") for n in dag if isinstance(n, dict)}
     nodes.sort(key=lambda n: 0 if types.get(n["node_id"]) == "actual_barrier_lemma" else 1)
@@ -96,6 +98,26 @@ def dispatch_nodes(run: Path, search: bool, limit: int, workers: int) -> dict:
     for p in packets:
         counts[p["status"]] = counts.get(p["status"], 0) + 1
     return {"dispatched": len(packets), "status_counts": counts}
+
+
+def adaptive_stop(turn: dict) -> tuple[bool, str]:
+    """Stop adaptive mode only when the last turn produced no useful next step."""
+    if turn.get("stopped"):
+        return True, str(turn["stopped"])
+    dispatch = turn.get("dispatch") if isinstance(turn.get("dispatch"), dict) else {}
+    if int(dispatch.get("dispatched") or 0) == 0:
+        return True, "no eligible DAG nodes dispatched"
+    bus = turn.get("bus") if isinstance(turn.get("bus"), dict) else {}
+    if int(bus.get("pending") or 0) > 0:
+        return True, "pending intelligence bus requests require orchestration"
+    if turn.get("reideation", {}).get("triggered"):
+        return False, "re-ideation produced a new planning/evolution step"
+    if turn.get("theory", {}).get("updated"):
+        return False, "problem theory changed"
+    progress = turn.get("progress") if isinstance(turn.get("progress"), dict) else {}
+    if int(progress.get("closed_nodes") or 0) > 0:
+        return False, "new checked/verified node progress"
+    return True, "no new planning, evolution, or evidence signal"
 
 
 def reideate_if_stuck(run: Path, feedback: dict, force: bool = False) -> dict:
@@ -167,7 +189,7 @@ def serendipity_audit(run: Path) -> dict:
         keep_ids = {id(k) for k in keep}
         for l in serendipity:
             if id(l) not in keep_ids and not l.get("deferred"):
-                l["deferred"] = "L6 serendipity cap (20% of dispatch budget)"
+                l["deferred"] = "L6 serendipity cap (20% of dispatch width)"
                 deferred += 1
         (run / "actual_lemma_queue.json").write_text(
             json.dumps(queue, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
@@ -196,12 +218,6 @@ def one_loop(run: Path, search: bool, limit: int, workers: int) -> dict:
 
     turn["barrier_attack"] = barrier_attack_prepare(run)
 
-    budget = bg.check(run)
-    turn["budget"] = {k: budget[k] for k in ("dispatch_allowed", "escalation_level", "required_action")}
-    if not budget["dispatch_allowed"]:
-        turn["stopped"] = "budget gate blocks dispatch"
-        return turn
-
     try:
         import bus_apply_replies as bar
         turn["bus_apply"] = {k: v for k, v in bar.apply(run).items() if k != "packets"}
@@ -209,7 +225,6 @@ def one_loop(run: Path, search: bool, limit: int, workers: int) -> dict:
         turn["bus_apply"] = {"error": str(exc)}
 
     turn["dispatch"] = dispatch_nodes(run, search, limit, workers)
-    bg.charge(run, attempts=turn["dispatch"]["dispatched"])
 
     feedback, new_failures = gf.build_feedback(run)
     gf.record_soc_failures(run, new_failures)
@@ -261,8 +276,8 @@ def one_loop(run: Path, search: bool, limit: int, workers: int) -> dict:
     try:
         import problem_theory as pt
         pt.init_theory(run)
-        absorb = pt.absorb_gap_feedback(run, feedback, loop_label=f"driver loop (spent="
-                                        f"{bg.load_campaign(run)['spent'].get('attempts', 0)})")
+        absorb = pt.absorb_gap_feedback(run, feedback,
+                                        loop_label=f"driver loop (dispatched={turn['dispatch']['dispatched']})")
         turn["theory"] = absorb
         if not absorb.get("updated"):
             turn["theory"]["warning"] = "no theory diff this loop — nothing was learned"
@@ -294,7 +309,7 @@ def one_loop(run: Path, search: bool, limit: int, workers: int) -> dict:
         turn["depth"] = {"main_attack": "unknown"}
 
     # Ω2: the lemma pool — mine bridging lemmas from this loop's failed goals'
-    # REAL residual diagnostics (Prover-Agent style), then a budgeted
+    # REAL residual diagnostics (Prover-Agent style), then a bounded
     # prove-pending pass; PROVED lemmas harvest into the library so every
     # later attempt (this run or any other) can reuse them.
     try:
@@ -328,23 +343,10 @@ def one_loop(run: Path, search: bool, limit: int, workers: int) -> dict:
 
     counts = turn["dispatch"]["status_counts"]
     closed = sum(v for k, v in counts.items() if k in ("VERIFIED_LEAN", "CHECKED"))
-    rung = "L5" if counts.get("VERIFIED_LEAN") else ("L2" if closed else "L0")
-    progress = bg.record_progress(run, rung)
-    turn["progress"] = progress
-    if progress.get("escalation_recommended"):
-        esc = bg.escalate(run, reason=f"driver: {progress['stall_count']} stalled loops at {progress['best_rung']}")
-        turn["escalated"] = esc
-        # P4 decision auto-recording: known decision sites log themselves so
-        # the learning loop accumulates data without relying on agent diligence.
-        try:
-            import decision_ledger as dl
-            manifest = _load(run / "lovasz_run.json", {})
-            dl.record("escalation", str(manifest.get("source_target_text") or str(run)),
-                      ["stay", esc.get("escalation_level", "escalate")],
-                      esc.get("escalation_level", "escalate"),
-                      esc.get("reason", "stall threshold"), run_dir=str(run))
-        except Exception:
-            pass
+    turn["progress"] = {
+        "best_rung": "L5" if counts.get("VERIFIED_LEAN") else ("L2" if closed else "L0"),
+        "closed_nodes": closed,
+    }
 
     run_ledger.auto_ingest(run)
     turn["ledger"] = run_ledger.status_summary(run)
@@ -416,10 +418,13 @@ def finalize(run: Path) -> dict:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("run_dir", type=Path)
-    ap.add_argument("--loops", type=int, default=1)
+    ap.add_argument("--loops", type=int, default=0,
+                    help="number of campaign loops; 0 means adaptive until stop conditions")
     ap.add_argument("--search", action="store_true")
-    ap.add_argument("--limit", type=int, default=20, help="max nodes per dispatch")
-    ap.add_argument("--workers", type=int, default=12)
+    ap.add_argument("--limit", type=int, default=0,
+                    help="max nodes per dispatch; 0 means all currently eligible nodes")
+    ap.add_argument("--workers", type=int, default=None,
+                    help="local prover thread fanout, not Lovasz subagent fanout (default: WITSOC_PROVER_WORKERS or 4; capped at 10)")
     ap.add_argument("--finalize", action="store_true",
                     help="run the production-gate sequence instead of campaign loops")
     args = ap.parse_args()
@@ -430,13 +435,20 @@ def main() -> int:
         return 0 if result["all_ok"] else 1
 
     turns = []
-    for _ in range(args.loops):
+    loop_count = args.loops if args.loops > 0 else 100
+    for _ in range(loop_count):
         turn = one_loop(args.run_dir, args.search, args.limit, args.workers)
         turns.append(turn)
         if turn.get("stopped"):
             break
+        if args.loops == 0:
+            stop, reason = adaptive_stop(turn)
+            turn["adaptive_stop"] = {"stop": stop, "reason": reason}
+            if stop:
+                break
     print(json.dumps({"schema": "witsoc.campaign_driver.v1", "turns": turns},
                      indent=2, ensure_ascii=False))
+    return 0
     return 0
 
 

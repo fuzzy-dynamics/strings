@@ -45,8 +45,8 @@ Everything else below is advisory: defaults with track records, not mandates.
   serious prove/show requests with quantifiers, named structures,
   inequalities, or nontrivial case structure; olympiad/competition problems;
   any target where Explorer's triage finds a real barrier.
-- **Cost**: highest; mitigated by budget gates, the escalation ladder, and
-  the olympiad fast lane (bounded kernel-gated closure attempt before a full
+- **Cost**: highest; mitigated by the olympiad fast lane (bounded
+  kernel-gated closure attempt before a full
   campaign — if the fast lane closes the exact frozen target, Explorer may
   report that mechanism and skip the campaign, recording the decision).
 - **Risks**: campaign machinery on a target that a cheap kernel check would

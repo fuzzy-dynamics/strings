@@ -24,6 +24,32 @@ GENERATOR = "witsoc-generator"
 DIRECT = "witsoc-direct"
 OLYMPIAD_FAST = "witsoc-olympiad-fast-lane"
 
+REQUIRED_LOVASZ_ARTIFACTS = [
+    "lovasz_run.json",
+    "proof_dependency_dag.json",
+    "actual_lemma_queue.json",
+    "worker_results.json",
+    "gap_feedback.json",
+    "lovasz_result_scores.json",
+    "formalization_feasibility.json",
+    "lovasz_campaign_state.json",
+    "lovasz_doctor.json",
+    "lovasz_synthesis_audit.json",
+    "open_problem_report.md",
+    "explorer_return_packet.json",
+]
+
+REQUIRED_LOVASZ_COMMANDS = [
+    "lovasz-manifest",
+    "synthesize-ledgers",
+    "validate-open-problem",
+    "validate-dag-integrity",
+    "campaign run",
+    "campaign finalize",
+    "validate-lovasz-run",
+    "explorer-return",
+]
+
 
 UNSOLVED_PATTERNS = [
     r"\bunsolved\b",
@@ -179,10 +205,10 @@ def any_match(patterns: list[str], text: str) -> str | None:
 
 def research_mode(text: str, *, open_style: bool) -> tuple[str, str]:
     if any_match(CAMPAIGN_PATTERNS, text):
-        return "campaign", "unbounded within runtime/budget"
+        return "campaign", "expand only when independent DAG nodes justify it"
     if any_match(DEEP_RUN_PATTERNS, text) or open_style:
-        return "deep", "8-20 agents by default; more if independent DAG nodes justify it"
-    return "quick", "2-4 agents when worker spawning is useful"
+        return "deep", "adaptive planning/evolution; spawn every justified independent DAG node"
+    return "quick", "spawn only when useful; no fixed Lovasz planning cap"
 
 
 def artifact_paths(prompt: str) -> list[dict[str, object]]:
@@ -227,6 +253,10 @@ def route_state(prompt: str, result: dict[str, object]) -> dict[str, object]:
         "lovasz_required": LOVASZ in chain or result.get("required_followup") == LOVASZ,
         "generator_authorized": result.get("route") == GENERATOR and not result.get("requires_explorer_handoff", False),
         "requires_explorer_review_after_lovasz": result.get("requires_explorer_review_after_lovasz", False),
+        "immediate_followup_after_explorer_triage": result.get("immediate_followup_after_explorer_triage"),
+        "required_lovasz_artifacts": result.get("required_lovasz_artifacts", []),
+        "required_lovasz_commands": result.get("required_lovasz_commands", []),
+        "lovasz_step_policy": result.get("lovasz_step_policy"),
         "blockers": result.get("blockers", []),
         "must_not_skip": result.get("must_not_skip", []),
         "completion_guard": result.get("completion_guard"),
@@ -283,9 +313,13 @@ def explorer_then_lovasz(*, prompt: str, reason: str, mode: str, worker_policy: 
             blockers=[],
             must_not_skip=must_not_skip,
             required_followup=LOVASZ,
+            immediate_followup_after_explorer_triage=LOVASZ,
+            required_lovasz_artifacts=REQUIRED_LOVASZ_ARTIFACTS,
+            required_lovasz_commands=REQUIRED_LOVASZ_COMMANDS,
+            lovasz_step_policy="adaptive_unbounded_until_stop_conditions",
             requires_explorer_review_after_lovasz=True,
             generator_after_explorer_authorization=include_generator,
-            completion_guard="status-only report is incomplete; Explorer must dispatch Lovasz immediately after triage, then Explorer must review Lovasz output before Generator or final reporting unless the target is solved/false/routine or Lovasz is operationally blocked",
+            completion_guard="status-only report is incomplete; at the instant Explorer classifies the frozen target as OPEN/UNSOLVED/UNCONFIRMED/frontier/blocked, Explorer must create the Lovasz barrier packet and dispatch Lovasz before any final report or Generator handoff unless Lovasz is operationally blocked; Explorer must review Lovasz output afterward",
         )
     }
 
@@ -357,7 +391,7 @@ def route(prompt: str) -> dict[str, object]:
                    "closure before falling back to Lovasz solved-class mode",
             chain=chain,
             research_mode_value="deep" if mode == "quick" else mode,
-            worker_policy="local-first fast lane; if it fails, Lovasz solved-class campaign with 8-20 agents by default",
+            worker_policy="local-first fast lane; if it fails, Lovasz solved-class campaign expands over every justified independent DAG node",
             confidence="high",
             blockers=[],
             must_not_skip=must_not_skip,

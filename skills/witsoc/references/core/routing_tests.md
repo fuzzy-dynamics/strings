@@ -15,9 +15,9 @@ is Explorer -> Lovasz -> Explorer; Generator appears only after Explorer
 reviews Lovasz output and accepts a narrow artifact target.
 The returned `research_mode` controls default worker spawning:
 
-- `quick`: 2-4 agents when worker spawning is useful.
-- `deep`: 8-20 agents by default; more if independent DAG nodes justify it.
-- `campaign`: unbounded within runtime/budget.
+- `quick`: spawn only when worker spawning is useful.
+- `deep`: adaptive planning/evolution; spawn every justified independent DAG node.
+- `campaign`: expand only when independent DAG nodes justify it.
 
 ## Explorer First
 
@@ -58,7 +58,7 @@ Olympiad and competition problems, and serious prove/show requests with mathemat
 
 ## Lovasz Chain
 
-When Explorer determines the target is open, unsolved, unconfirmed, frontier-level, or blocked, it must announce the chain:
+When Explorer determines the target is open, unsolved, unconfirmed, frontier-level, or blocked, it must immediately create the Lovasz barrier packet, invoke Lovasz, and announce the chain:
 
 ```text
 Using witsoc with witsoc-explorer -> witsoc-research-lovasz -> witsoc-explorer.
@@ -75,7 +75,7 @@ Using witsoc with witsoc-explorer -> witsoc-research-lovasz -> witsoc-explorer -
 Explorer-first guards outrank artifact requests. If the user asks for WIT/Lean on an unsolved, open, Erdős, or problem-list item, the first route is still Explorer:
 
 ```text
-Using witsoc with witsoc-explorer.
+Using witsoc with witsoc-explorer -> witsoc-research-lovasz -> witsoc-explorer.
 ```
 
 Generator may not decide open-problem truth or upgrade claim status.

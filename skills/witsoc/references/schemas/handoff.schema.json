@@ -22,7 +22,6 @@
     "open_product_target",
     "conjectures",
     "proof_objects",
-    "search_budget",
     "proof_compression",
     "target",
     "artifact_target",
@@ -172,17 +171,6 @@
     "proof_objects": {
       "type": "array",
       "items": { "$ref": "#/$defs/proof_object" }
-    },
-    "search_budget": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["time_budget", "attempt_budget", "computation_budget", "stop_conditions"],
-      "properties": {
-        "time_budget": { "type": "string" },
-        "attempt_budget": { "type": "integer", "minimum": 0 },
-        "computation_budget": { "type": "string" },
-        "stop_conditions": { "type": "array", "items": { "type": "string" } }
-      }
     },
     "proof_compression": {
       "type": "object",

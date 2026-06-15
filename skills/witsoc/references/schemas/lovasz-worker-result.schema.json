@@ -36,22 +36,31 @@
     "status": {
       "type": "string",
       "enum": [
-        "VERIFIED",
-        "VERIFIED_WIT",
-        "VERIFIED_LEAN",
-        "VERIFIED_EXTERNAL",
-        "CHECKED",
-        "CHECKED_BOUNDED",
-        "CHECKED_SYMBOLIC",
-        "PROVED_SKETCH",
-        "PARTIAL",
-        "CONDITIONAL",
-        "CONJECTURE",
+        "ATTACK_CANDIDATE",
+        "PROOF_SKETCH_CANDIDATE",
+        "LEMMA_CANDIDATE",
+        "REDUCTION_CANDIDATE",
+        "COUNTEREXAMPLE_CANDIDATE",
+        "OPEN_UNFALSIFIED",
+        "PROPOSED",
+        "REFUTED",
+        "BLOCKED",
+        "NEEDS_FORMALIZATION",
+        "FORMALIZED",
+        "REVIEWED",
+        "MUTATE",
         "FAILED_ATTEMPT",
         "REJECTED",
-        "GAP",
-        "OPEN"
+        "GAP"
       ]
+    },
+    "claim_scope": {
+      "type": "string",
+      "enum": ["candidate_only", "planning_only", "refutation_candidate"]
+    },
+    "trust_boundary": {
+      "type": "string",
+      "enum": ["lovasz_candidate_only", "downstream_gate_required"]
     },
     "target_hash": { "type": "string", "minLength": 8 },
     "dependencies": {

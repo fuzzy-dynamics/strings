@@ -49,10 +49,12 @@ freeze, status discipline, handoff validation) and are not skippable.
    conclusion, quantifier order, task kind. Flag ambiguity; never silently
    change quantifiers. Classify status: solved / open / unsolved /
    unconfirmed / false / under-specified / partially solved / formalizable.
-   Solved → Solved Problem Reconstruction; open-class → the Open Problem
+   Solved -> Solved Problem Reconstruction; open-class -> the Open Problem
    Barrier Engine and a Lovasz packet. A prove/disprove request must not end
-   at "open by literature" — that classification TRIGGERS Lovasz (the only
-   exception is a recorded operational blocker).
+   at "open by literature" — at the instant Explorer classifies the frozen
+   target as open/unsolved/unconfirmed/frontier/blocked, Explorer must create
+   the Lovasz barrier packet and invoke a complete Lovasz pass. The only
+   exception is a recorded operational blocker.
 3. **Attack before proving** — the falsification hierarchy: trivial/degenerate
    cases, symmetry/parity, asymptotic extremes, missing
    positivity/finiteness/compactness assumptions. Every asymptotic claim goes
@@ -116,25 +118,57 @@ syntax/Lean friction → back to Generator unchanged.
 }
 ```
 
-Reject a Lovasz return that attacks only convenient weaker products without
-an actual-barrier-lemma queue, target-fidelity scores, skeptic review for
-accepted nodes, retry ledger, and final synthesis audit — and reject a bare
-"equivalent to a known open conjecture" without campaign ledgers. Review every
-return and choose exactly one: `LOVASZ_AGAIN` (new packet) | `DEMOTE` |
+Treat every Lovasz return as a candidate bundle until downstream gate artifacts
+support a status. Reject a Lovasz return that attacks only convenient weaker
+products without an actual-barrier-lemma queue, target-fidelity scores, skeptic
+review for accepted nodes, retry ledger, and final synthesis audit — and reject
+a bare "equivalent to a known open conjecture" without campaign ledgers. Review
+every return and choose exactly one: `LOVASZ_AGAIN` (new packet) | `DEMOTE` |
 `GENERATOR_READY` | `HONEST_STOP`. Generator runs only from
 `GENERATOR_READY`; `HONEST_STOP` on a prove/disprove run requires recorded
 barrier attacks or a concrete inability to dispatch.
+Validate the arbitration packet before any Generator handoff:
+
+```bash
+python3 ../scripts/validate_explorer_review.py runs/<task>
+```
+
+This gate rejects candidate-only accepted products, missing target dependency
+paths, weak formalization readiness, open-core reductions, and multi/no-product
+`GENERATOR_READY` decisions.
+For serious runs, also materialize and validate the derived research state:
+
+```bash
+python3 ../scripts/research_state.py runs/<task>
+python3 ../scripts/validate_research_state.py runs/<task> --mode balanced
+python3 ../scripts/explorer_approach_tournament.py runs/<task>
+```
+
+The approach tournament allocates search priority only; it never upgrades claim
+status.
+
+A Lovasz-required run is not complete unless Explorer can point to the Lovasz
+return packet plus the core campaign artifacts:
+`lovasz_run.json`, `proof_dependency_dag.json`, `actual_lemma_queue.json`,
+`worker_results.json`, `gap_feedback.json`, `lovasz_result_scores.json`,
+`formalization_feasibility.json`, `lovasz_campaign_state.json`,
+`lovasz_doctor.json`, `lovasz_synthesis_audit.json`,
+`open_problem_report.md`, and `explorer_return_packet.json`. Missing artifacts
+are repair/blocker output, not final Explorer status.
 
 When the surrounding orchestrator does not enforce Witsoc phases directly,
 Explorer should rely on the skill-local controller:
 
 ```bash
 WITSOC="$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/witsoc.py)"
-python3 "$WITSOC" run-open runs/<task> --prompt "<frozen target>" --loops 1
+python3 "$WITSOC" run-open runs/<task> --prompt "<frozen target>" --loops 0 --limit 0
 python3 "$WITSOC" finalize runs/<task> --require-route
 ```
 
-Use `witsoc_run_controller.json` as the final gate ledger. If it reports
+`run-open` performs the Lovasz manifest, open-ledger synthesis, DAG validation,
+adaptive campaign loop, production finalization, research-state validation, Explorer
+review validation, report grading, and final status synthesis. Use
+`witsoc_run_controller.json` as the final gate ledger. If it reports
 `FAILED_GATE`, return the first failing gate and repair target instead of a
 mathematical conclusion.
 
@@ -151,7 +185,7 @@ status against authoritative sources — build the dated source ledger with
 `../scripts/literature_engine.py` (`witsoc literature triage`; ledgers older
 than 90 days fail the staleness gate); treat OEIS/Wikipedia/forums/raw arXiv
 hits as pointers unless they cite a primary source; run falsification; decide
-what counts as useful progress under budget. Keep the research ledger
+what counts as useful progress under the current stop conditions. Keep the research ledger
 (problem state, known facts/variants, conjectures, obstruction map, approach
 log, partial results, failed attempts, next experiments) as auditable,
 claim-focused notes. Approach portfolio: direct attack, special case,
@@ -210,7 +244,7 @@ research state, `../references/schemas/handoff.schema.json`) and
 `../scripts/validate_handoff.py` before `HANDOFF_READY`. The blueprint
 `lemma_plan` must be a DAG (`depends_on` references earlier steps; every
 external theorem in `external_dependencies`). Required content: problem
-profile, budget/stop conditions, sources for status claims, ontology map,
+profile, stop conditions, sources for status claims, ontology map,
 ranked + rejected theorem candidates, backward chains, falsification results,
 obstructions, barrier map + selected open product, conjectures, frozen target
 + hashes, proof objects and sketches with EV, selected sketch, lemma arrays

@@ -98,7 +98,7 @@ Rules for the serendipity lane:
   never appears in `explorer_return_packet.json` accepted products unless a
   later loop records a real dependency path;
 - the lane is capped: serendipity dispatch must not exceed the configured
-  fraction of the loop's worker budget.
+  fraction of the loop's dispatched workers.
 
 ## Anti-patterns
 

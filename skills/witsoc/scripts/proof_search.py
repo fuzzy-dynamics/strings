@@ -708,10 +708,11 @@ def _inject_have(proof: str, subgoal: str, subproof: str, idx: int) -> str:
 
 
 def search(statement: str, preamble: str, lake_dir: Path | None, policy: dict | None,
-           library: Path | None, max_nodes: int, workers: int, name: str = "obligation",
+           library: Path | None, max_nodes: int, workers: int | None, name: str = "obligation",
            repair: bool = True, repair_budget: int = 48, rounds: int = 3,
            time_budget: float | None = None) -> dict[str, Any]:
     import time as _time
+    workers = witcore.local_prover_worker_count(workers)
     # P-economics (data-justified): a deterministic goal that closes, closes
     # FAST (battery: every closure ≤20s); one still grinding past the budget
     # will not close — so cap the WHOLE search wall-clock and let the bus take
@@ -825,8 +826,8 @@ def search(statement: str, preamble: str, lake_dir: Path | None, policy: dict | 
 
     for round_no in range(1, max(1, rounds) + 1):
         # Round 1 always runs (the historical repair ply ran even when the
-        # flat portfolio consumed the whole node budget); later rounds are
-        # budget-gated.
+        # flat portfolio consumed the whole node limit); later rounds are
+        # limit-gated.
         if not frontier or (round_no > 1 and total_nodes >= max_nodes):
             break
         if deadline is not None and __import__("time").monotonic() >= deadline:
@@ -909,7 +910,8 @@ def main() -> int:
     ap.add_argument("--policy", default=None)
     ap.add_argument("--library", type=Path, default=None)
     ap.add_argument("--max-nodes", type=int, default=300)
-    ap.add_argument("--workers", type=int, default=12)
+    ap.add_argument("--workers", type=int, default=None,
+                    help="local prover thread fanout (default: WITSOC_PROVER_WORKERS or 4; capped at 10)")
     args = ap.parse_args()
     policy = witcore.load_json(Path(args.policy), None) if args.policy and not args.policy.startswith("cmd:") else None
     lib = args.library or (witcore.global_library() if witcore.global_library().exists() else None)

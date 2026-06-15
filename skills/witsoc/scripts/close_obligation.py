@@ -319,7 +319,8 @@ def main() -> int:
     ap.add_argument("--premise-query", default=None)
     ap.add_argument("--portfolio", default=None, help="comma-separated proofs (overrides policy)")
     ap.add_argument("--max-candidates", type=int, default=24)
-    ap.add_argument("--workers", type=int, default=12)
+    ap.add_argument("--workers", type=int, default=None,
+                    help="local prover thread fanout (default: WITSOC_PROVER_WORKERS or 4; capped at 10)")
     ap.add_argument("--search", action="store_true",
                     help="if the flat portfolio fails, escalate to verifier-guided compound proof search")
     ap.add_argument("--no-minimize", action="store_true",
@@ -535,7 +536,7 @@ def _close(args: argparse.Namespace) -> dict:
 
 
 def close_goal(statement: str, *, name: str = "obligation", imports: str = "",
-               lake_dir: Path | None = None, search: bool = False, workers: int = 12,
+               lake_dir: Path | None = None, search: bool = False, workers: int | None = None,
                emit: Path | None = None, max_candidates: int = 24,
                use_library: bool = False, record_library: bool = False,
                library: Path | None = None, search_max_nodes: int = 300,
@@ -545,6 +546,7 @@ def close_goal(statement: str, *, name: str = "obligation", imports: str = "",
     shape as the CLI. Batch callers (lovasz_prover_dispatch, blueprint
     dispatch, prove_many) share this process's module imports, atlas
     discovery, and the Lean verification cache."""
+    workers = witcore.local_prover_worker_count(workers)
     ns = argparse.Namespace(
         lean_statement=statement, name=name, wit=None, imports=imports,
         lake_dir=lake_dir, policy=None, atlas=None, no_mathlib_atlas=False,

@@ -140,17 +140,16 @@ the only honest meaning of "top tier".
 
 ## Orchestration & Memory
 
-- **Campaign driver** (`campaign_driver.py`) — one crank of the gated loop:
-  preflight, budget gate, dispatch, skeptic, gap feedback, theory update,
+- **Campaign driver** (`campaign_driver.py`) — one crank of the loop:
+  preflight, dispatch, skeptic, gap feedback, theory update,
   dialectic, re-ideation, ledgers; `--finalize` for the production-gate
   sequence. *Applies*: sustained campaigns where turn discipline, not math,
   is the historical failure mode.
 - **Problem theory** (`problem_theory.py`) — the living causal model:
   equivalent formulations, example zoo, enemy profile, failure mechanisms,
   main attack + stall point; embedded in every fleet prompt.
-- **Budget gate / escalation ladder** (`campaign_budget_gate.py`) and
-  **gap feedback** (`proof_gap_to_barrier_feedback.py`) — **contract** floors
-  for spend and mutation-before-retry.
+- **Gap feedback** (`proof_gap_to_barrier_feedback.py`) — **contract** floor
+  for mutation-before-retry.
 - **Barrier machinery** (`barrier_attack.py`, `rung_saturation`,
   `lovasz_top_tier.py`) — depth spine + breadth ladder + readiness audit.
 - **Run ledger** (`run_ledger.py`, `run.sqlite3`), **trace harvester**

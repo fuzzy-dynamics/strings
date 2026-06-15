@@ -44,6 +44,24 @@ UNUSABLE = {"CONJECTURE", "REJECTED", "FAILED_ATTEMPT", "GAP", "OPEN"}
 # Foundation-aware outcomes (Tier D): legitimate terminal states for a target
 # that cannot simply be proved or disproved in the working foundation.
 FOUNDATION_OUTCOMES = {"INDEPENDENT", "RELATIVE_CONSISTENCY", "INFEASIBLE"}
+LOCAL_PROVER_MIN_WORKERS = 1
+LOCAL_PROVER_MAX_WORKERS = 10
+LOCAL_PROVER_DEFAULT_WORKERS = 4
+
+
+def local_prover_worker_count(value: Any = None) -> int:
+    """Validate local prover thread fanout. Orchestrator subagent fanout is external."""
+    if value is None:
+        value = os.environ.get("WITSOC_PROVER_WORKERS", LOCAL_PROVER_DEFAULT_WORKERS)
+    try:
+        count = int(value)
+    except Exception:
+        count = LOCAL_PROVER_DEFAULT_WORKERS
+    if count < LOCAL_PROVER_MIN_WORKERS:
+        count = LOCAL_PROVER_MIN_WORKERS
+    if count > LOCAL_PROVER_MAX_WORKERS:
+        count = LOCAL_PROVER_MAX_WORKERS
+    return count
 
 
 # --- JSON IO -----------------------------------------------------------------

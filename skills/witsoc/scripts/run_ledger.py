@@ -15,7 +15,7 @@ verbatim in `raw` columns, so nothing is lossy.
 
 Commands:
   ingest <run>        read every legacy ledger into run.sqlite3
-  status <run>        the single-pane view (phase, budget, nodes, frontier,
+  status <run>        the single-pane view (phase, escalation, nodes, frontier,
                       gaps, claim) that used to require reading ten files
   nodes <run>         node-centric joined view: node + attempts + reviews +
                       gap + blueprint state in one record
@@ -251,7 +251,6 @@ def status_summary(run: Path) -> dict:
         "phase": _meta(con, "phase"),
         "target_hash": _meta(con, "target_hash"),
         "escalation_level": campaign.get("escalation_level"),
-        "budget_spent": campaign.get("spent"),
         "nodes_by_status": by_status,
         "blueprint_by_status": bp_status,
         "ready_frontier": [r[0] for r in con.execute(

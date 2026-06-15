@@ -33,7 +33,7 @@ query it, what grade its results carry.
 Recursive expansion: a retrieved resource that names a further skill,
 reference, or technique you don't have loaded is a lead, not a dead end —
 read it, and expand again if it points further. Bound the recursion with the
-recorded search budget, not with reluctance.
+current stop conditions, not with reluctance.
 
 ## Transfer Checklist (run for hard or stuck steps)
 

@@ -3,6 +3,8 @@
 
 Packets are coordination artifacts, not mathematical evidence. A packet can
 propose, refute, reduce, formalize, or summarize, but it cannot promote trust.
+Lovasz is outside the honesty loop: it emits candidates, and downstream gates
+decide whether any candidate becomes evidence.
 """
 
 from __future__ import annotations
@@ -13,8 +15,33 @@ from pathlib import Path
 from typing import Any
 
 ROLES = {"Builder", "Destroyer", "Reducer", "Formalizer", "Historian", "Strategist", "Skeptic"}
-STATUSES = {"PROPOSED", "REFUTED", "BLOCKED", "NEEDS_FORMALIZATION", "FORMALIZED", "REVIEWED", "MUTATE"}
-FORBIDDEN_STATUSES = {"VERIFIED", "CHECKED", "PROVED", "PROVED_SKETCH", "SOLVED", "MATHEMATICAL_SOLVE", "FORMAL_SOLVE"}
+CANDIDATE_STATUSES = {
+    "ATTACK_CANDIDATE",
+    "PROOF_SKETCH_CANDIDATE",
+    "LEMMA_CANDIDATE",
+    "REDUCTION_CANDIDATE",
+    "COUNTEREXAMPLE_CANDIDATE",
+    "OPEN_UNFALSIFIED",
+}
+PROCESS_STATUSES = {"PROPOSED", "REFUTED", "BLOCKED", "NEEDS_FORMALIZATION", "FORMALIZED", "REVIEWED", "MUTATE"}
+STATUSES = CANDIDATE_STATUSES | PROCESS_STATUSES
+FORBIDDEN_STATUSES = {
+    "VERIFIED",
+    "VERIFIED_WIT",
+    "VERIFIED_LEAN",
+    "VERIFIED_EXTERNAL",
+    "CHECKED",
+    "CHECKED_SYMBOLIC",
+    "CHECKED_BOUNDED",
+    "PROVED",
+    "PROVED_SKETCH",
+    "PARTIAL",
+    "CONDITIONAL",
+    "SOLVED",
+    "MATHEMATICAL_SOLVE",
+    "FORMAL_SOLVE",
+    "SOLVE_ACCEPTED",
+}
 
 ROLE_REQUIRED = {
     "Builder": {"candidate_statement", "evidence_plan"},
@@ -36,8 +63,9 @@ def template(role: str) -> dict[str, Any]:
         "target_hash": "<frozen target hash>",
         "node_id": "<node or rung id>",
         "barrier_id": "<barrier id or null>",
-        "status": "PROPOSED",
-        "claim_scope": "planning_only",
+        "status": "ATTACK_CANDIDATE",
+        "claim_scope": "candidate_only",
+        "trust_boundary": "lovasz_candidate_only",
         "evidence": [],
         "repro": {"commands": [], "artifacts": []},
     }
@@ -64,6 +92,10 @@ def validate_packet(packet: dict[str, Any]) -> dict[str, Any]:
         errors.append(f"status is not in the Lovasz packet vocabulary: {status}")
     if not isinstance(packet.get("evidence"), list):
         errors.append("evidence must be a list")
+    if packet.get("claim_scope") not in {"candidate_only", "planning_only", "refutation_candidate"}:
+        errors.append("claim_scope must be candidate_only/planning_only/refutation_candidate")
+    if status in CANDIDATE_STATUSES and packet.get("trust_boundary") not in {"lovasz_candidate_only", "downstream_gate_required"}:
+        errors.append("candidate packets must declare trust_boundary=lovasz_candidate_only or downstream_gate_required")
     repro = packet.get("repro")
     if not isinstance(repro, dict) or not isinstance(repro.get("commands", []), list) or not isinstance(repro.get("artifacts", []), list):
         errors.append("repro must contain commands/artifacts lists")

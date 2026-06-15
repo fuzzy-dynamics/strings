@@ -84,7 +84,6 @@ Research-state required top-level fields include:
 - `source_citations`
 - `theorem_candidates`
 - `rejected_theorem_candidates`
-- `search_budget`
 - `proof_compression`
 - `sketches`
 - `selected_sketch_id`

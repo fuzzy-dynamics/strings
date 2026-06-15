@@ -392,25 +392,17 @@ def main() -> int:
                     help="explicit opt-out of the Lovasz run context (recorded in output)")
     args = ap.parse_args()
 
-    # Ownership gate (references/core/services.md): the dispatcher is SOLVER
-    # machinery — it runs inside a Lovasz campaign, not bare. The named run's
-    # budget gate decides whether dispatch may proceed; charges land there too.
+    # Ownership gate (references/core/services.md): the dispatcher is solver
+    # machinery — it runs inside a Lovasz campaign, not bare.
     if args.lovasz_run is None and not args.standalone:
         print(json.dumps({"error": "engine_dispatch is Lovasz-owned: pass --lovasz-run <dir> "
                                    "(with lovasz_run.json) or an explicit --standalone"}), file=sys.stderr)
         return 2
-    import campaign_budget_gate as bg
     if args.lovasz_run is not None:
         if not (args.lovasz_run / "lovasz_run.json").exists():
             print(json.dumps({"error": f"no lovasz_run.json in {args.lovasz_run}; "
                                        "run lovasz_run_manifest.py first"}), file=sys.stderr)
             return 2
-        gate = bg.check(args.lovasz_run)
-        if not gate["dispatch_allowed"]:
-            print(json.dumps({"error": "campaign budget gate blocks dispatch",
-                              "required_action": gate["required_action"],
-                              "escalation_level": gate["escalation_level"]}, indent=2))
-            return 1
 
     # Campaigns (the deep-run entry point) default to MATHLIB MODE when a built
     # mathlib4 is on the host — the reach unlock for ring/nlinarith/decide.
@@ -421,8 +413,6 @@ def main() -> int:
     st = campaign(disp, args.lean_target, args.max_steps, st)
     if args.state:
         rs.save(args.state, st)
-    if args.lovasz_run is not None:
-        bg.charge(args.lovasz_run, attempts=1)
     print(json.dumps({"status": st["status"], "best_rung": st["best_rung"],
                       "dead_ends": st["dead_ends"], "partial_results": st["partial_results"],
                       "lovasz_run": str(args.lovasz_run) if args.lovasz_run else None,

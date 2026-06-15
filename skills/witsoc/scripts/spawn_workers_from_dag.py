@@ -29,20 +29,9 @@ def load(path: Path, default):
 
 
 from witcore import slug  # noqa: E402  -- shared substrate, was a local copy
-from lovasz_run_manifest import default_campaign  # noqa: E402
 
 def sha(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
-
-
-def worker_budget(run: Path) -> dict:
-    """Per-worker budget comes from the campaign block in lovasz_run.json
-    (campaign_budget_gate owns it); packets never carry their own numbers."""
-    manifest = load(run / "lovasz_run.json", {})
-    campaign = manifest.get("campaign") if isinstance(manifest, dict) else None
-    if isinstance(campaign, dict) and isinstance(campaign.get("budget", {}).get("worker"), dict):
-        return dict(campaign["budget"]["worker"])
-    return dict(default_campaign()["budget"]["worker"])
 
 
 def main() -> int:
@@ -50,7 +39,8 @@ def main() -> int:
     parser.add_argument("run_dir", type=Path)
     parser.add_argument("--out-dir", type=Path, default=None)
     parser.add_argument("--session-id", default="manual")
-    parser.add_argument("--limit", type=int, default=20)
+    parser.add_argument("--limit", type=int, default=0,
+                        help="maximum DAG nodes to packetize; 0 means all currently eligible nodes")
     args = parser.parse_args()
 
     run = args.run_dir
@@ -59,10 +49,13 @@ def main() -> int:
     dag = load(run / "proof_dependency_dag.json", [])
     lemmas = load(run / "actual_lemma_queue.json", [])
     lemma_by_statement = {str(l.get("statement")): l for l in lemmas if isinstance(l, dict)}
-    budget = worker_budget(run)
     packets = []
 
-    for node in [n for n in dag if isinstance(n, dict)][: args.limit]:
+    eligible_nodes = [n for n in dag if isinstance(n, dict)]
+    if args.limit and args.limit > 0:
+        eligible_nodes = eligible_nodes[:args.limit]
+
+    for node in eligible_nodes:
         node_id = str(node.get("node_id") or node.get("id") or slug(str(node.get("statement", "node"))))
         statement = str(node.get("statement") or node.get("exact_statement") or "")
         if not statement:
@@ -91,9 +84,13 @@ def main() -> int:
                 "hypotheses_sha256": str(node.get("hypotheses_sha256") or target_hash),
                 "conclusion_sha256": str(node.get("conclusion_sha256") or target_hash),
             },
-            "budget": budget,
             "proof_worktree": proof_worktree,
             "dependency_path_to_target": node.get("dependency_path_to_target") or [],
+            "orchestrator_contract": {
+                "witsoc_role": "math_skill_packet_author",
+                "launch_decision": "external_orchestrator",
+                "fanout_policy": "orchestrator_selects_concurrency",
+            },
         }
         if node.get("mutation_applied"):
             packet["mutation_applied"] = str(node["mutation_applied"])

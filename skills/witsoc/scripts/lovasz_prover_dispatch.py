@@ -67,7 +67,7 @@ def sha(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def collect_nodes(run: Path, limit: int) -> list[dict]:
+def collect_nodes(run: Path, limit: int = 0) -> list[dict]:
     """Merge proof-DAG nodes with actual-lemma-queue entries, preferring a
     `lean_statement` field wherever it appears."""
     dag = load(run / "proof_dependency_dag.json", [])
@@ -92,15 +92,16 @@ def collect_nodes(run: Path, limit: int) -> list[dict]:
             "target_hash": str(n.get("target_hash") or sha(statement or "node")),
             "dependency_path_to_target": n.get("dependency_path_to_target") or [],
         })
-    return nodes[:limit]
+    return nodes[:limit] if limit and limit > 0 else nodes
 
 
-def run_prover(lean_statement: str, imports: str, search: bool, emit: Path | None, workers: int) -> dict:
+def run_prover(lean_statement: str, imports: str, search: bool, emit: Path | None, workers: int | None) -> dict:
     """R3: the prover runs IN-PROCESS (close_obligation.close_goal) — no per-node
     python spawn, shared module imports and Lean verification cache across the
     whole dispatch batch. Search budgets bound the work; any failure is an
     honest OBLIGATION_OPEN."""
     import close_obligation as co
+    workers = witcore.local_prover_worker_count(workers)
     try:
         if emit:
             emit.parent.mkdir(parents=True, exist_ok=True)
@@ -110,13 +111,14 @@ def run_prover(lean_statement: str, imports: str, search: bool, emit: Path | Non
         return {"label": "OBLIGATION_OPEN", "discharged": False, "_error": str(exc)}
 
 
-def split_and_recombine(lean_statement: str, imports: str, search: bool, workers: int) -> dict | None:
+def split_and_recombine(lean_statement: str, imports: str, search: bool, workers: int | None) -> dict | None:
     """GAP-GRANULARITY actuator: a node whose conclusion is a top-level
     conjunction is two (or more) obligations. Prove each conjunct separately,
     then recombine with the anonymous constructor — and kernel-re-check the
     COMBINED proof against the ORIGINAL statement, so nothing is trusted that
     the kernel did not see whole. Returns None when the statement is not
     conjunctive; a result dict (discharged or honest failure detail) otherwise."""
+    workers = witcore.local_prover_worker_count(workers)
     subs = gs.conjunction_split(lean_statement)
     if not 2 <= len(subs) <= 4:
         return None
@@ -139,7 +141,8 @@ def split_and_recombine(lean_statement: str, imports: str, search: bool, workers
             "sub_proofs": proofs, "recombination_failed": True}
 
 
-def packet_for_node(node: dict, search: bool, emit_dir: Path | None, workers: int, session_id: str, run: Path) -> dict:
+def packet_for_node(node: dict, search: bool, emit_dir: Path | None, workers: int | None, session_id: str, run: Path) -> dict:
+    workers = witcore.local_prover_worker_count(workers)
     node_id = node["node_id"]
     target_hash = node["target_hash"]
     proof_worktree = str(run / "worktrees" / f"witsoc-proof-{session_id}-{slug(node_id)}")
@@ -295,11 +298,13 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("run_dir", type=Path)
     ap.add_argument("--search", action="store_true", help="Escalate to compound proof search per node.")
-    ap.add_argument("--limit", type=int, default=20)
+    ap.add_argument("--limit", type=int, default=0,
+                    help="maximum DAG nodes to dispatch; 0 means all currently eligible nodes")
     ap.add_argument("--session-id", default="manual")
     ap.add_argument("--out", type=Path, default=None, help="Worker-results path (default <run_dir>/worker_results.json).")
     ap.add_argument("--emit-dir", type=Path, default=None, help="Directory to emit per-node Lean (default <run_dir>/prover_lean).")
-    ap.add_argument("--workers", type=int, default=12)
+    ap.add_argument("--workers", type=int, default=None,
+                    help="local prover thread fanout, not Lovasz subagent fanout (default: WITSOC_PROVER_WORKERS or 4; capped at 10)")
     ap.add_argument("--record-library", action="store_true",
                     help="harvest kernel-verified nodes into the lemma library (cross-run compounding)")
     ap.add_argument("--library", type=Path, default=None, help="lemma library dir (default: global)")
@@ -310,7 +315,8 @@ def main() -> int:
     emit_dir = args.emit_dir or (run / "prover_lean")
 
     nodes = collect_nodes(run, args.limit)
-    packets = [packet_for_node(n, args.search, emit_dir, args.workers, args.session_id, run) for n in nodes]
+    workers = witcore.local_prover_worker_count(args.workers)
+    packets = [packet_for_node(n, args.search, emit_dir, workers, args.session_id, run) for n in nodes]
 
     # Deterministic skeptic gate: drift / circularity / counterexample /
     # citation audit on every packet. Demote-only; results land in the packet.
@@ -318,7 +324,6 @@ def main() -> int:
 
     # Phase E harvest: kernel-verified nodes compound into the lemma library.
     if args.record_library:
-        import witcore  # noqa: E402
         library = args.library if args.library is not None else witcore.global_library()
         tier_for = {"VERIFIED_LEAN": "LEAN_VERIFIED", "CHECKED": "WIT_STRUCTURE"}
         for node, pkt in zip(nodes, packets):

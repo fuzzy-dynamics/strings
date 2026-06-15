@@ -41,11 +41,6 @@ def main() -> int:
         allowed = ALLOWED_NEXT.get(phase, [])
         if args.to_phase not in allowed:
             errors.append(f"illegal phase transition {phase} -> {args.to_phase}; allowed next: {allowed}")
-        if args.to_phase == "WORKERS_DISPATCHED":
-            import campaign_budget_gate as bg
-            budget = bg.check(run)
-            if not budget["dispatch_allowed"]:
-                errors.append(f"campaign budget gate blocks dispatch: {budget['required_action']}")
     result = {"valid": not errors, "phase": phase, "errors": errors}
     if args.json:
         print(json.dumps(result, indent=2))

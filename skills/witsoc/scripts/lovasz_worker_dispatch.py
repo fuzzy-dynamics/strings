@@ -2,9 +2,6 @@
 """Create an auditable worker dispatch manifest from Lovasz spawn packets.
 
 Enforced before any packet is READY:
-  - campaign budget gate (L3): exhausted run budget or HONEST_STOP blocks the
-    whole dispatch; a barrier at its per-barrier attempt cap blocks that node
-    until it is converted to an obstruction target or the gate is re-budgeted.
   - gap feedback contract (L1): a node that failed before may be re-dispatched
     only after its statement changed or its packet carries `mutation_applied`
     (set on the DAG node, copied in by spawn_workers_from_dag).
@@ -24,7 +21,6 @@ from typing import Any
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
-import campaign_budget_gate as bg  # noqa: E402
 
 
 def load(path: Path, default: Any) -> Any:
@@ -56,7 +52,8 @@ def soc_query(run: Path, packet: dict[str, Any]) -> dict[str, Any]:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("run_dir", type=Path)
-    parser.add_argument("--limit", type=int, default=20)
+    parser.add_argument("--limit", type=int, default=0,
+                        help="maximum DAG nodes to dispatch; 0 means all currently eligible nodes")
     parser.add_argument("--session-id", default="manual")
     parser.add_argument("--write", action="store_true")
     args = parser.parse_args()
@@ -65,8 +62,6 @@ def main() -> int:
     run_helper("lovasz_soc_memory.py", ["init", str(run)])
     run_helper("spawn_workers_from_dag.py", [str(run), "--limit", str(args.limit), "--session-id", args.session_id])
 
-    budget = bg.check(run)
-    blocked_barriers = set(budget.get("exhausted_barriers", []))
     gap_feedback = load(run / "gap_feedback.json", {})
     gap_nodes = gap_feedback.get("nodes", {}) if isinstance(gap_feedback, dict) else {}
 
@@ -85,12 +80,7 @@ def main() -> int:
                                 and gap_entry.get("failed_statement_sha") == statement_sha
                                 and not packet.get("mutation_applied"))
 
-        if not budget["dispatch_allowed"]:
-            status, required = "BLOCKED_BUDGET", budget["required_action"]
-        elif node_id in blocked_barriers:
-            status = "BLOCKED_BARRIER_BUDGET"
-            required = "per-barrier attempt cap reached; convert to obstruction target or re-budget the gate"
-        elif unmutated_refail:
+        if unmutated_refail:
             status = "BLOCKED_NO_MUTATION"
             required = (f"apply the one-axis mutation from gap_feedback.json before retry: "
                         f"{gap_entry.get('proposed_mutation')}")
@@ -125,20 +115,13 @@ def main() -> int:
     manifest = {
         "schema": "witsoc.lovasz_worker_dispatch.v1",
         "run_dir": str(run),
-        "budget_check": {k: budget[k] for k in ("escalation_level", "dispatch_allowed", "required_action",
-                                                "exhausted_barriers", "spent")},
         "dispatches": dispatches,
         "ready_count": len(ready),
         "blocked_repeat_count": sum(1 for d in dispatches if d["dispatch_status"] == "BLOCKED_REPEAT_RISK"),
         "blocked_no_mutation_count": sum(1 for d in dispatches if d["dispatch_status"] == "BLOCKED_NO_MUTATION"),
-        "blocked_budget_count": sum(1 for d in dispatches
-                                    if d["dispatch_status"] in ("BLOCKED_BUDGET", "BLOCKED_BARRIER_BUDGET")),
     }
     if args.write:
         (run / "worker_dispatch_manifest.json").write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-        if ready:
-            # Charge the run budget for what is actually being dispatched.
-            bg.charge(run, attempts=len(ready), barriers=[str(d["target_node_id"]) for d in ready])
         import run_ledger
         run_ledger.auto_ingest(run)  # R1.5: the unified ledger stays fresh
     print(json.dumps(manifest, indent=2, ensure_ascii=False))

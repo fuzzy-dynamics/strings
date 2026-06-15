@@ -33,10 +33,11 @@ matter of agent preference:
 - every status word backed by a named mechanism (kernel, receipt, checker),
 - calibration sentinels stay unsolved; a "solve" there fails the run,
 - Generator authorization and the separation of powers: Explorer arbitrates
-  status, Lovasz attacks barriers, Generator writes artifacts and never
-  upgrades mathematical truth,
+  status, Lovasz attacks barriers and emits candidates, acceptance gates
+  promote or reject claims, Generator writes artifacts and never upgrades
+  mathematical truth,
 - production gates before a final answer (`references/core/production_gates.md`),
-- gate-enforced floors (budgets, mutation-before-retry, skeptic minima,
+- gate-enforced floors (per-barrier caps, mutation-before-retry, skeptic minima,
   ideation quotas): floors, not ceilings.
 
 **Strategy — advisory.** Which route, technique, tool, decomposition,
@@ -64,7 +65,7 @@ named but not described — actively discover further resources: nested
 references, sibling skills, plugins, memory stores. Recursive expansion
 (problem → relevant skill → its references → its subskills → further
 techniques → expand promising branches) is the intended usage pattern,
-bounded by the recorded search budget.
+bounded by recorded stop conditions and safety limits.
 
 When a task routes through Lovasz, the user-facing progress message must include:
 
@@ -83,7 +84,7 @@ conditions, tradeoffs, and historical failure cases live in
 |---|---|---|
 | Direct answer (`L0_DIRECT`/`L1_SKETCH`) | small routine calculation or proof | overclaiming on a target that deserved adversarial pressure |
 | Explorer only | lookup, premise search, exploration, counterexample hunting | stopping at literature status when the user asked for progress |
-| Explorer -> Lovasz -> Explorer | serious prove/show, open, blocked, frontier, olympiad | cost; mitigated by budget gates and the olympiad fast lane |
+| Explorer -> Lovasz -> Explorer | serious prove/show, open, blocked, frontier, olympiad | cost; mitigated by the olympiad fast lane |
 | Generator-first | inspection/repair of an existing `.wit`/Lean artifact | masking a mathematical blocker as a syntax issue |
 | Explorer -> Generator | routine accepted target needing artifacts | skipping Lovasz on a target that was not actually routine |
 
@@ -113,7 +114,7 @@ decision points.
 For serious mathematical work, load and follow only the relevant contracts:
 
 - Architecture map (groups, run ledger, migration path): `references/core/architecture.md`; `witsoc map` prints it.
-- Service boundary (witsoc supports, Lovasz solves): `references/core/services.md`.
+- Service boundary (Witsoc supports, Lovasz generates candidates, gates accept): `references/core/services.md`.
 - Target freeze and mutations: `references/core/target_freeze.md`.
 - Claim acceptance and legal status transitions: `references/core/claim_acceptance.md`.
 - Status labels and verification discipline: `references/core/status.md`.
@@ -154,6 +155,14 @@ attack, an Explorer review of every Lovasz return, authorization before
 Generator, validation before report — not the order or choice of exploratory
 moves within a phase. Within phases, technique selection, branching, and
 ordering belong to the agent.
+Explorer review is auditable: `scripts/validate_explorer_review.py` validates
+`explorer_return_packet.json` and blocks `GENERATOR_READY` unless one selected
+product has downstream evidence, a dependency path to the target, formalization
+readiness, acceptable report quality, and no open-core reduction blocker.
+The cross-phase state is also auditable: `scripts/research_state.py` derives
+`witsoc_research_state.json` from existing ledgers, and
+`scripts/validate_research_state.py` checks target hashes, open/research
+coverage, Lovasz review, and Generator authorization before final reporting.
 
 Explorer owns target freezing, status triage, proof-plan arbitration, Lovasz
 packet creation, Generator authorization, and final arbitration. Lovasz
@@ -169,9 +178,13 @@ counterexample/obstruction, or a documented honest stop.
 
 If the user asks to prove, disprove, solve, make progress on, or deep-run an open-style target, do not stop at literature/status classification alone.
 
-If Explorer classifies the target as `OPEN`, `UNSOLVED`, `UNCONFIRMED`, unsupported by known results, blocked by a structural gap, or requiring a new theorem, create a Lovasz barrier packet and run Lovasz unless there is a concrete operational blocker.
+If Explorer classifies the target as `OPEN`, `UNSOLVED`, `UNCONFIRMED`, unsupported by known results, blocked by a structural gap, or requiring a new theorem, create a Lovasz barrier packet and run a complete Lovasz pass immediately unless there is a concrete operational blocker. A status-only Explorer report is incomplete at that point.
 
-A complete Lovasz campaign should include the actual lemma queue, proof-DAG or barrier records, worker evidence when available, skeptic review, retry/failure memory, and Explorer review. A prose-only barrier summary is not enough for a claimed deep run.
+A complete Lovasz campaign must include the actual lemma queue, proof-DAG or barrier records, worker evidence when available, failure memory/gap feedback, result scoring, formalization feasibility, synthesis audit, report grading, Explorer return packet, and Explorer review. A prose-only barrier summary is not enough for a claimed deep run.
+The Lovasz production gates also materialize `lovasz_campaign_state.json`,
+`lovasz_doctor.json`, `lovasz_loop_health.json`, and
+`lovasz_synthesis_audit.json`; these are the operational health record for the
+barrier campaign.
 
 ## Claim Status
 
@@ -217,7 +230,7 @@ For open, unsolved, frontier, or deep-research targets, the self-enforcing Witso
 
 ```bash
 WITSOC="$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/witsoc.py)"
-python3 "$WITSOC" run-open runs/<task> --prompt "<frozen target or user request>" --loops 1
+python3 "$WITSOC" run-open runs/<task> --prompt "<frozen target or user request>" --loops 0 --limit 0
 python3 "$WITSOC" finalize runs/<task> --require-route
 ```
 
@@ -233,7 +246,7 @@ For serious finalization, run the applicable validators when the scripts are ava
 - handoffs: `scripts/validate_handoff.py`, `scripts/validate_generator_handoff.py`
 - Generator outputs: `scripts/lint_wit_quality.py`, `scripts/generator_manifest.py`
 - Lovasz runs: `scripts/validate_lovasz_phase.py`, `scripts/validate_proof_dag_integrity.py`, `scripts/validate_lovasz_run.py`, `scripts/validate_open_problem_run.py`
-- Lovasz campaign loops: `scripts/campaign_budget_gate.py` (budget + escalation ladder), `scripts/proof_gap_to_barrier_feedback.py` (failure classification + re-dispatch contract)
+- Lovasz campaign loops: `scripts/proof_gap_to_barrier_feedback.py` (failure classification + re-dispatch contract)
 - reports: `scripts/open_problem_report.py`, `scripts/grade_witsoc_report.py`, `scripts/explorer_return_packet.py`
 - controller/final status: `scripts/witsoc_controller.py` via `python3 scripts/witsoc.py run-open|finalize|validate-all`
 - Lean receipts: `scripts/validate_lean_receipt.py`; placeholder/environment-only Lean output is `ENV_CHECK_ONLY`, never `VERIFIED_LEAN`
@@ -244,7 +257,7 @@ Register generated WIT, Lean, SOC, receipt, Lake log, proof-worktree record, and
 
 If the user explicitly asks for WIT code, `.wit`, or WIT plus Lean, WIT generation is mandatory unless blocked by an exact reason. Do not satisfy that request with only prose or Lean.
 
-Generator may run only after Explorer authorization for nontrivial targets. It is forbidden when the target is open/blocked without a Lovasz return packet, the accepted product is only speculative, target hashes disagree without a mutation record, formalization feasibility is poor, or required proof-DAG dependencies remain open.
+Generator may run only after Explorer authorization for nontrivial targets. It is forbidden when the target is open/blocked without a Lovasz return packet, the accepted product is only speculative, target hashes disagree without a mutation record, formalization feasibility is poor, or required proof-DAG dependencies remain open. New artifacts should pass `scripts/generator_preflight.py` before writing and `scripts/generator_receipt_gate.py` before any status-bearing report.
 
 When Lean is requested, generate Lean from the frozen WIT target, attempt final `lake build` when feasible, and report `LEAN_VERIFIED` only when Lean and target-freeze/SafeVerify checks pass. A backend/tool result that auto-generates a placeholder theorem or only checks that Lean is operational must be classified `ENV_CHECK_ONLY`; run `scripts/validate_lean_receipt.py` before using any Lean result as claim evidence. If Lean repair is blocked, say `Lean code generation failed` and name the blocker.
 

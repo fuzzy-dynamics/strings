@@ -18,7 +18,7 @@ the grouping.
 | Group | Role | Boundary rule |
 |---|---|---|
 | `engines` | Strategy-free services: input in, certificate/result out | Never assign trust, never choose the next move |
-| `campaign` | Lovasz-owned solver machinery: loops, dispatch, budgets, evolution, scheduling | Campaign entry points need a run context or explicit `--standalone` |
+| `campaign` | Lovasz-owned candidate machinery: loops, dispatch, evolution, scheduling | Campaign entry points need a run context or explicit `--standalone`; gates decide trust |
 | `knowledge` | The stores: atlases, libraries, ledgers, registries | Trust tiers + provenance mandatory; metadata never upgrades a claim |
 | `gates` | Honesty: validators, skeptics, audits, claim protocols | Demote-only; a gate never upgrades |
 | `core` | Run substrate: WIT cycle, routing, artifacts, the run ledger | Deterministic; no LLM |
@@ -42,7 +42,7 @@ to nodes; "blueprint status" and "gap class" are computed views, not files.
 - `ingest <run>` — read every legacy JSON ledger into the database
   (idempotent upserts; safe to re-run after any tool writes).
 - `status <run>` — the single-pane view that previously required reading ten
-  files: phase, budget, node counts, ready frontier, gaps, attempts.
+  files: phase, escalation, node counts, ready frontier, gaps, attempts.
 - `consistency <run>` — the cross-ledger validators as QUERIES: accepted
   nodes need reviews and evidence, dependencies resolve to accepted nodes,
   no cycles, failed nodes carry gap feedback, statuses legal.

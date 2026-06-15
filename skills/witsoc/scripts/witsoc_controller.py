@@ -36,6 +36,14 @@ def records(path: Path) -> list[dict]:
     return [x for x in value if isinstance(x, dict)] if isinstance(value, list) else []
 
 
+def has_generator_artifacts(run: Path) -> bool:
+    registry = load(run / "witsoc_artifacts.json", {})
+    artifacts = registry.get("artifacts", []) if isinstance(registry, dict) else []
+    if any(isinstance(a, dict) and str(a.get("type") or "").lower() in {"wit", "lean"} for a in artifacts):
+        return True
+    return (run / "generator_package.json").exists()
+
+
 def command_for(script: str, args: list[str]) -> list[str]:
     path = SCRIPT_DIR / script
     if script.endswith(".py"):
@@ -135,9 +143,18 @@ def finalize(run: Path, *, require_route: bool = False) -> dict:
         run_gate(run, "dag_integrity", "validate_proof_dag_integrity.py", [str(run)]),
         run_gate(run, "status_lattice", "status_lattice.py", [str(run)]),
         run_gate(run, "campaign_finalize", "campaign_driver.py", [str(run), "--finalize"]),
+        run_gate(run, "research_state", "research_state.py",
+                 [str(run), "--out", str(run / "witsoc_research_state.json")]),
+        run_gate(run, "validate_research_state", "validate_research_state.py",
+                 [str(run), "--out", str(run / "research_state_validation.json")]),
+        run_gate(run, "explorer_review", "validate_explorer_review.py",
+                 [str(run), "--out", str(run / "explorer_review_validation.json")]),
         run_gate(run, "lovasz_run", "validate_lovasz_run.py", [str(run), "--mode", "deep"]),
         run_gate(run, "report_grade", "grade_witsoc_report.py", [str(run), "--out", str(run / "report_quality_grade.json")]),
     ])
+    if has_generator_artifacts(run):
+        gates.append(run_gate(run, "generator_receipt", "generator_receipt_gate.py",
+                              [str(run), "--out", str(run / "generator_artifact_receipt.json")]))
     status = synthesize_status(run, gates)
     result = {
         "schema": "witsoc.controller.finalize.v1",
@@ -167,9 +184,11 @@ def run_open(args: argparse.Namespace) -> dict:
     gates.append(run_gate(run, "validate_open_problem", "validate_open_problem_run.py", [str(run)]))
     gates.append(run_gate(run, "validate_dag_integrity", "validate_proof_dag_integrity.py", [str(run)]))
     if all(g["ok"] for g in gates[-2:]) and args.loops > 0:
+        campaign_args = [str(run), "--loops", str(args.loops), "--limit", str(args.limit)]
+        if args.workers is not None:
+            campaign_args.extend(["--workers", str(args.workers)])
         gates.append(run_gate(run, "campaign_loop", "campaign_driver.py",
-                              [str(run), "--loops", str(args.loops), "--limit", str(args.limit), "--workers", str(args.workers)],
-                              timeout=args.timeout))
+                              campaign_args, timeout=args.timeout))
     else:
         gates.append({
             "gate": "campaign_loop",
@@ -202,6 +221,10 @@ def run_open(args: argparse.Namespace) -> dict:
 def validate_all(args: argparse.Namespace) -> dict:
     run = args.run_dir
     gates = [
+        run_gate(run, "research_state", "research_state.py",
+                 [str(run), "--out", str(run / "witsoc_research_state.json")]),
+        run_gate(run, "validate_research_state", "validate_research_state.py",
+                 [str(run), "--out", str(run / "research_state_validation.json")]),
         run_gate(run, "lovasz_phase", "validate_lovasz_phase.py", [str(run)]),
         run_gate(run, "open_problem", "validate_open_problem_run.py", [str(run)]),
         run_gate(run, "dag_integrity", "validate_proof_dag_integrity.py", [str(run)]),
@@ -226,9 +249,12 @@ def main() -> int:
     p_run = sub.add_parser("run-open")
     p_run.add_argument("run_dir", type=Path)
     p_run.add_argument("--prompt", required=True)
-    p_run.add_argument("--loops", type=int, default=1)
-    p_run.add_argument("--limit", type=int, default=20)
-    p_run.add_argument("--workers", type=int, default=12)
+    p_run.add_argument("--loops", type=int, default=0,
+                       help="0 means adaptive Lovasz loop until stop conditions")
+    p_run.add_argument("--limit", type=int, default=0,
+                       help="0 means all currently eligible Lovasz DAG nodes")
+    p_run.add_argument("--workers", type=int, default=None,
+                       help="local prover thread fanout, not Lovasz subagent fanout (default: WITSOC_PROVER_WORKERS or 4; capped at 10)")
     p_run.add_argument("--timeout", type=int, default=600)
 
     p_final = sub.add_parser("finalize")

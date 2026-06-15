@@ -104,8 +104,6 @@ python3 "$CAMPAIGN" --template divisor-sum-asymptotic
 
 WITSOC="$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/witsoc.py)"
 python3 "$WITSOC" services                                   # the witsoc/Lovasz service boundary registry
-python3 "$WITSOC" budget-gate check runs/task                # L3: may dispatch proceed? (exit 1 = no)
-python3 "$WITSOC" budget-gate escalate runs/task --reason "3 stalled passes"
 python3 "$WITSOC" gap-feedback runs/task                     # L1: classify failures, propose one-axis mutations
 python3 "$WITSOC" barrier-attack init runs/task --target "..." --domain number_theory
 python3 "$WITSOC" barrier-attack mutate runs/task

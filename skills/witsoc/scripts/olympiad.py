@@ -21,6 +21,8 @@ from pathlib import Path
 from typing import Any
 
 SCRIPT_DIR = Path(__file__).resolve().parent
+sys.path.insert(0, str(SCRIPT_DIR))
+import witcore  # noqa: E402
 
 DOMAIN_KEYWORDS = {
     "number_theory": ["divisible", "congruence", "mod", "prime", "integer", "nat", "%", "gcd", "lcm"],
@@ -89,8 +91,9 @@ def _run_json(cmd: list[str], timeout: int = 600) -> dict[str, Any]:
 
 
 def prove(statement: str, preamble: str = "", domain: str = "auto", lake_dir: str | None = None,
-          max_nodes: int = 180, workers: int = 12) -> dict[str, Any]:
+          max_nodes: int = 180, workers: int | None = None) -> dict[str, Any]:
     prof = profile(statement, preamble, domain)
+    workers = witcore.local_prover_worker_count(workers)
     # Keep the fast lane bounded. D3 induction/function/combinatorics gets a bit
     # more search; simple D2 goals should close early or fail quickly.
     styles = set(prof["styles"])
@@ -182,7 +185,8 @@ def main() -> int:
     p_prove.add_argument("--domain", default="auto")
     p_prove.add_argument("--lake-dir", default=None)
     p_prove.add_argument("--max-nodes", type=int, default=180)
-    p_prove.add_argument("--workers", type=int, default=12)
+    p_prove.add_argument("--workers", type=int, default=None,
+                         help="local prover thread fanout (default: WITSOC_PROVER_WORKERS or 4; capped at 10)")
     p_eval = sub.add_parser("eval")
     p_eval.add_argument("--suite", type=Path, default=SCRIPT_DIR.parent / "benchmarks" / "olympiad_suite.json")
     p_eval.add_argument("--mode", choices=["profile", "fast"], default="fast")

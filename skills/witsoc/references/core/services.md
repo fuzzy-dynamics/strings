@@ -1,13 +1,14 @@
 # Witsoc Service Boundary
 
-Witsoc is the support platform; Lovasz is the solver. One rule resolves every
-boundary question:
+Witsoc is the support platform; Lovasz is the candidate generator and barrier
+attacker. One rule resolves every boundary question:
 
 > **Witsoc never decides strategy; Lovasz never verifies itself.**
 
 Witsoc exposes deterministic, certificate-emitting, strategy-free SERVICES.
-Lovasz — the research director — decides what to call, when, with what budget,
-and what to try after a failure. Print the machine-readable registry with:
+Lovasz — the research director — decides what to call, when, and with what stop condition,
+and what to try after a failure. Gates decide what to trust. Print the
+machine-readable registry with:
 
 ```bash
 python3 "$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/witsoc.py)" services
@@ -18,10 +19,11 @@ python3 "$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/witsoc.py)" services
 - `service`: a callable engine. Input in, certificate/result out. No service
   ever assigns trust, upgrades a status, or chooses the next move.
 - `validator`: an honesty or audit gate. Demote-only; never upgrades.
-- `solver`: Lovasz-owned campaign machinery. Solver entry points refuse bare
-  invocation: they require a Lovasz run context (`--lovasz-run <dir>` with a
-  `lovasz_run.json`) or an explicit `--standalone` opt-out, which is recorded
-  in their output. Tests and module-level callers are unaffected.
+- `candidate_generator`: Lovasz-owned campaign machinery. Candidate-generator
+  entry points refuse bare invocation: they require a Lovasz run context
+  (`--lovasz-run <dir>` with a `lovasz_run.json`) or an explicit `--standalone`
+  opt-out, which is recorded in their output. Tests and module-level callers
+  are unaffected.
 - `scheduler`: portfolio-level launcher (`research-campaign`). It prepares
   per-problem Lovasz run contexts and launches campaigns; it does not drive
   engines directly.
@@ -33,7 +35,7 @@ python3 "$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/witsoc.py)" services
 | `prove` | `close_obligation.py` | Kernel-gated prover. Emits a proof or an honest `OBLIGATION_OPEN`; statuses only via `validate-prover`. |
 | `ledger` | `run_ledger.py` | R1 unified run ledger: one `run.sqlite3` per run with the DAG node as the single entity. `ingest` (idempotent, reads every legacy JSON ledger), `status` (single-pane), `nodes` (joined view), `consistency` (cross-ledger validators as queries), `export` (regenerate legacy files). Writers auto-ingest (R1.5). See `references/core/architecture.md`. |
 | `memory` | `knowledge_store.py` | R4 knowledge substrate (`~/.witsoc/knowledge.sqlite3`): global cross-run failure memory (L4 — `sync-run` on Explorer return, consulted by dispatch automatically) and bandit priors by goal signature (L5 — campaigns read/write automatically). Attention only, never trust. |
-| `run` | `campaign_driver.py` | R5 campaign driver: one Lovasz loop turn as one command — budget gate → in-process prover dispatch → gap feedback → **theory update (A1: a loop with no theory diff is flagged)** → L2 re-ideation (>50% failed ⇒ tournament seeded with gap classes + theory, kernel-probed) → L6 serendipity cap → progress/escalation → ledger. `--finalize` runs the whole production-gate sequence. |
+| `run` | `campaign_driver.py` | R5 campaign driver: one Lovasz candidate loop turn as one command — in-process prover dispatch → gap feedback → **theory update (A1: a loop with no theory diff is flagged)** → L2 re-ideation (>50% failed => tournament seeded with gap classes + theory, kernel-probed) → L6 serendipity cap → ledger. `--finalize` runs the whole production-gate sequence; Lovasz emits candidates, gates accept. |
 | `theory` | `problem_theory.py` | A1 problem theory: the living causal model per run — formulations, example zoo, enemy profile (counterexample structure theory), per-method failure MECHANISMS, main attack + stall point, versioned theory log. `prompt-context` is embedded in every fleet request. Attention machinery; asserts nothing. |
 | `nexus` | `nexus_loop.py` | A3 Nexus loop: fleet proposals iterate up to N rounds against REAL Lean compiler diagnostics (`prove` for goals, `formalize` for statements); deterministic saturation runs first so models are spent only on what survives; the kernel replay is the only acceptance. |
 | `dialectic` | `dialectic.py` | A2 Lakatos engine: every gap-feedback node with a `∀ n : Nat` form gets kernel-gated instance refutation — witnesses mark the node REFUTED_INSTANCE (repair, never re-prove) and feed the enemy profile; exhausted searches record bounded negative evidence. The driver runs it every loop. |
@@ -46,6 +48,12 @@ python3 "$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/witsoc.py)" services
 | `barrier-attack` | `barrier_attack.py` | Lovasz V2 barrier campaign prep: writes `barrier_attacks.json`, `rung_saturation.json`, DAG nodes, and lemma-queue entries for named barriers and partial rungs. It never upgrades trust; driver loops attack the generated obligations. |
 | `lovasz-top-tier` | `lovasz_top_tier.py` | Top-tier Lovasz preparation/audit for items 2-12: barrier core, saturated rungs, hole-free Lean, strict roles, failure memory, novelty/literature discipline, solve protocol, engine portfolio, self-improving loops, rediscovery, and explicit success metrics. |
 | `lovasz-agent-packets` | `lovasz_agent_packets.py` | Strict coordination packet templates/validation for Builder, Destroyer, Reducer, Formalizer, Historian, Strategist, and Skeptic roles. Packets may propose or critique; they cannot assert `CHECKED`/`VERIFIED`/solve statuses. |
+| `lovasz-state` | `lovasz_campaign_state.py` | Derived Lovasz campaign health state across barrier, rung, DAG, worker, feedback, mutation, score, theory, and Explorer ledgers. |
+| `lovasz-doctor` | `lovasz_doctor.py` | Campaign doctor that reports `GREEN`/`YELLOW`/`RED`, blockers, warnings, and exact next actions for barrier-depth campaigns. |
+| `lovasz-loop-health` | `lovasz_loop_health.py` | Detects stuck Lovasz loops with no theory diff, mutation, score improvement, or learning signal. |
+| `lovasz-mutation-ranker` | `lovasz_mutation_ranker.py` | Ranks one-axis mutations from gap class and prior mutation history; attention only. |
+| `validate-lovasz-worker-quality` | `validate_lovasz_worker_quality.py` | Checks worker results for target hash, dependency path, candidate/process status discipline, evidence on accepted statuses, failure class, and next mutation. |
+| `lovasz-synthesis-audit` | `lovasz_synthesis_audit.py` | Final synthesis gate before Explorer return; blocks solve language and Generator-ready claims beyond evidence. |
 | `open-frontier` | `open_frontier.py` | Open-problem novelty and full-solve workbench: packages candidate products, records novelty bundles, registers checked evidence, and reports solve-claim gate status. |
 | `retrieve` | `retrieval_v2.py` | Ω3 retrieval v2 (the LeanSearch-v2 recipe; Tao: "lemma search is the bottleneck"): hierarchy-informalized corpus (`build-corpus`, optional fleet enrichment), two-stage retrieve + fleet rerank (optional `WITSOC_EMBED_CMD` embedder with cached vectors), GLOBAL strategy-level premise sets, `reflect` (sketch-retrieve-reflect; unsupported needs are first-class signals). The prover consumes it automatically when a corpus exists; candidates only — the kernel rejects wrong ones. |
 | `pool` | `lemma_pool.py` | Ω2 lemma pool (Seed-Prover's paradigm): per-campaign conjecture/lemma pool — `propose` (deduped), `mine` (residual `⊢` goals from REAL probe diagnostics become bridging-lemma proposals), `prove-pending` (kernel-gated; PROVED harvests into the library + proof bank for cross-attempt reuse; `INTRACTABLE` after 3 attempts with evidence). The driver mines + proves every loop. |
@@ -69,36 +77,25 @@ python3 "$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/witsoc.py)" services
 | `blueprint` | `blueprint_campaign.py` | F3 blueprint formalization campaign: a proof DAG becomes a persistent obligation ledger (`blueprint.json`) — dependency-ordered `next`/`dispatch`/`record`, resumable across sessions; unknown-identifier failures auto-create prerequisite THEORY obligations (library-campaign mode). An all-VERIFIED blueprint is FORMAL_SOLVE evidence, reported only via `solve-claim`. |
 | `novelty` | `novelty_triage.py` | Is-it-new verdicts (live library, reference atlas, external checker). Metadata only. Default external checker (no `WITSOC_NOVELTY_CMD`) is the literature engine's arXiv probe: a match is KNOWN with sources to read; no match stays honestly `LOCALLY_NEW_UNCHECKED`. |
 | `literature` | `literature_engine.py` | F4 literature loop: arXiv Atom search (no dependencies), dated per-problem source ledgers under `~/.witsoc/literature/`, a ≤90-day staleness gate before re-campaigning, and the novelty probe. Offline → honest `network_unavailable`, never a guess. |
-| `attackability` | `attackability.py` | F4 strategic problem selection: rank portfolio entries by finite-reduction signature, formalization readiness, technique-atlas density, literature freshness, computation-domain fit. Allocates attention/budget only; every low score names how to raise it. |
+| `attackability` | `attackability.py` | F4 strategic problem selection: rank portfolio entries by finite-reduction signature, formalization readiness, technique-atlas density, literature freshness, computation-domain fit. Allocates attention only; every low score names how to raise it. |
 | `atlas` / `library` | `theorem_atlas.py` / `lemma_library.py` | Two-part knowledge DB. `promote` is the only live→reference path. |
 | `skeptic-check` | `refute_deterministic.py` | Deterministic adversarial refutation (drift, circularity, counterexample, citations). Demote-only. |
 | `validate-prover` | `validate_prover_result.py` | Maps prover labels to legal statuses. |
 | `discoveries` | `discovery_ledger.py` | Durable claim ledger; `publishable` requires kernel-grade AND novel AND human-gated. |
-| `budget-gate` | `campaign_budget_gate.py` | L3: campaign budget + one-way escalation ladder. Owns the `campaign` block in `lovasz_run.json`. |
 | `gap-feedback` | `proof_gap_to_barrier_feedback.py` | L1: classifies worker failures, proposes one one-axis mutation, enforces the re-dispatch contract. |
 | `validate-math-solve` | `validate_mathematical_solve.py` | F0 stage-1 audit: every DAG node closed, skeptic fleet (≥3/node), no gaps, preconditions audited. Precondition for a solve claim — never itself a solve. |
 | `solve-claim` | `solve_claim_protocol.py` | F0 frontier solve gate: audit + formal receipt for `FORMAL_SOLVE` + independent re-derivation + `NOVEL_CANDIDATE` novelty. Only `SOLVE_ACCEPTED` is reportable. |
+| `validate-explorer-review` | `validate_explorer_review.py` | Explorer arbitration gate for Lovasz returns: candidates stay candidates; `GENERATOR_READY` requires one selected product, accepted downstream evidence, dependency path to target, formalization readiness, report quality, and no open-core reduction blocker. |
+| `research-state` | `research_state.py` | Derived cross-phase run state assembled from existing route, handoff, Lovasz, Explorer, Generator, and artifact ledgers. View only; not a competing source of truth. |
+| `validate-research-state` | `validate_research_state.py` | Explorer state gate for target hash consistency, open/research coverage, Lovasz review, and Generator authorization legality. |
+| `generator-preflight` | `generator_preflight.py` | Generator entry gate: wraps handoff, Explorer review, DAG, and research-state checks; emits blocker owners. |
+| `generator-receipt` | `generator_receipt_gate.py` | Generator exit gate for WIT/Lean artifacts, package status, target-freeze evidence, and status ceilings. |
+| `generator-repair-packet` | `generator_repair_packet.py` | Normalizes Generator diagnostics into repair classes and owners. |
+| `explorer-approach-tournament` | `explorer_approach_tournament.py` | Explorer search-priority scoring over handoff sketches. Attention only, never acceptance. |
 
-## The campaign block (budget truth)
-
-`lovasz_run.json.campaign` is the single budget truth for a run. Per-worker
-numbers in spawn packets are derived from `campaign.budget.worker` by
-`spawn_workers_from_dag.py` — never hardcoded, never authoritative on their
-own. Mutations go through `witsoc budget-gate` only:
-
-- `check` — may dispatch proceed? (exit 1 = no)
-- `charge` — record spent attempts/time and per-barrier attempts
-- `escalate` — one level down the one-way ladder
-  `DIRECT_ATTACK → PRODUCT_LADDER → OBSTRUCTION_CONVERSION → HONEST_STOP`,
   with a recorded reason
 - `record-progress` — rung tracking; 3 stalled passes ⇒ escalation
   *recommended* (never auto-applied)
-
-The research_protocol.md rule "three loops on the same barrier → convert it to
-an obstruction result" is enforced as the per-barrier attempt counter
-(`max_attempts_per_barrier`, default 3): an exhausted barrier blocks that
-node's dispatch (`BLOCKED_BARRIER_BUDGET`) until it is converted or
-re-budgeted.
 
 ## The re-dispatch contract (gap feedback)
 

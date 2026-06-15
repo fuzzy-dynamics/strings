@@ -45,7 +45,9 @@ plan-only answers, or Lean alone. Required sequence:
 2. For nontrivial targets, get or create the Explorer handoff; execute ONLY
    `handoff_v1.json` (treat `handoff.json` as context). Validate first:
    `../scripts/validate_handoff.py` on both files, then
-   `../scripts/validate_generator_handoff.py` with route state. Validation
+   `../scripts/generator_preflight.py` (which wraps
+   `../scripts/validate_generator_handoff.py`, Explorer review, DAG, and
+   research-state gates). Validation
    failure returns to Explorer with the exact errors. Do not invent helper
    lemmas unless a structural check fails; cite nothing outside
    `external_dependencies`. A full-open-problem handoff without adversarial
@@ -70,6 +72,10 @@ plan-only answers, or Lean alone. Required sequence:
 7. Final response includes worktree path/status, `.wit` path (or inline code
    when explicitly requested), plugin status, check/lint/Lean statuses, and
    hash provenance.
+8. Before reporting any artifact-bearing result, run
+   `../scripts/generator_receipt_gate.py runs/<task>`. If generation fails,
+   normalize the diagnostic with `../scripts/generator_repair_packet.py` and
+   return the repair owner instead of retrying blindly.
 
 ## Script surface
 
@@ -80,6 +86,9 @@ Prefer typed API tools (`run_wit_check`, `run_wit_cycle`,
 audit), `context.sh` / `verify.sh` (verifier context; no LLM), `cycle.sh`
 (full prep cycle), `receipt.sh --from verifier.txt`, `status.sh`. Native
 fallback: `wit check|verify|context|receipt`.
+Additional Witsoc gates: `generator_preflight.py` before new artifact writing,
+`generator_receipt_gate.py` before status-bearing reporting, and
+`generator_repair_packet.py` for structured failure routing.
 
 ## Writing WIT
 

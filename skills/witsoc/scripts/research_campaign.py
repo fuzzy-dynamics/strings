@@ -41,7 +41,6 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
 import autonomous_campaign as ac  # noqa: E402
-import campaign_budget_gate as bg  # noqa: E402
 import discovery_ledger as dl     # noqa: E402
 import formula_synthesis as fs    # noqa: E402
 import lovasz_run_manifest as lrm  # noqa: E402
@@ -197,12 +196,8 @@ def run_campaign(portfolio_path: Path, iterations: int, max_steps: int,
     before = dl.load_entries()
 
     # Phase 0 boundary: the scheduler prepares a persistent Lovasz run context
-    # per lean problem (lovasz_run.json whose campaign block — budget,
-    # escalation ladder, stall counters — survives across nightly passes) and
-    # launches the campaign inside it. A problem at HONEST_STOP is skipped and
-    # reported, never silently dropped. Calibration sentinels are exempt from
-    # charging and escalation: their honesty role is permanent, so they are
-    # always attacked.
+    # per lean problem and launches the campaign inside it. Calibration
+    # sentinels are always attacked because their honesty role is permanent.
     runs_root = witcore.witsoc_home() / "lovasz-runs"
     lean_problems = pf.emit_campaign(data)
     lovasz_runs: dict[str, dict] = {}
@@ -218,42 +213,21 @@ def run_campaign(portfolio_path: Path, iterations: int, max_steps: int,
         m = lrm.manifest(run_dir, lrm.infer_phase(run_dir), p["lean_target"], lrm.sha256_text(p["lean_target"]))
         witcore.save_json(run_dir / "lovasz_run.json", m)
         frontier = p.get("tier") == "frontier_attack"
-        if new_context and frontier:
-            # Frontier attacks are week-scale programs, not nightly slots: 10x
-            # the default run budget. The per-barrier cap (three loops ->
-            # obstruction) stays — it is doctrine, not budget.
-            bg.set_budget(run_dir, max_attempts=600, max_time_minutes=4800.0)
         sentinel = p.get("tier") == "frozen_calibration"
-        level = bg.load_campaign(run_dir)["escalation_level"]
-        lovasz_runs[p["id"]] = {"run_dir": str(run_dir), "escalation_level": level,
+        lovasz_runs[p["id"]] = {"run_dir": str(run_dir),
                                 "calibration_sentinel": sentinel,
                                 "frontier_attack": frontier}
-        if sentinel or level != "HONEST_STOP":
-            active.append(p)
-        else:
-            lovasz_runs[p["id"]]["status"] = "SKIPPED_HONEST_STOP"
+        active.append(p)
 
     lean_track = ac.run(active, library, iterations, max_steps, lake,
                         closure_ledger=library / "closures.json")
 
-    # Charge each problem's run budget and walk the escalation ladder when the
-    # gate recommends it (3 stalled passes) — the script-driven part of nightly
-    # steering the docs used to leave to the chat agent.
     best_rungs = lean_track.get("best_rung_per_problem", {})
     for p in active:
-        if p.get("tier") == "frozen_calibration":
-            continue
         run_dir = Path(lovasz_runs[p["id"]]["run_dir"])
-        bg.charge(run_dir, attempts=iterations)
         rung = best_rungs.get(p["id"])
         if rung:
-            progress = bg.record_progress(run_dir, rung)
-            lovasz_runs[p["id"]]["best_rung"] = progress["best_rung"]
-            if progress["escalation_recommended"]:
-                esc = bg.escalate(run_dir, reason=f"{progress['stall_count']} stalled passes at {progress['best_rung']}")
-                lovasz_runs[p["id"]]["escalation_level"] = esc.get("escalation_level",
-                                                                   lovasz_runs[p["id"]]["escalation_level"])
-                lovasz_runs[p["id"]]["escalated"] = esc.get("reason")
+            lovasz_runs[p["id"]]["best_rung"] = rung
 
     # A frontier_attack L6 is only an INTERNAL result until the solve-claim
     # protocol reaches SOLVE_ACCEPTED; surface what each claim still needs.

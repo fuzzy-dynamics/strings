@@ -7,7 +7,7 @@ external `skill-which witsoc/scripts/<name>.py` resolution contract depends on
 it); the grouping is the authoritative logical layout:
 
   engines    strategy-free services: input in, certificate/result out
-  campaign   Lovasz-owned solver machinery: loops, dispatch, budgets, evolution
+  campaign   Lovasz-owned candidate machinery: loops, dispatch, evolution
   knowledge  the stores: atlases, libraries, ledgers, registries
   gates      honesty: validators, skeptics, audits, claim protocols
   core       run substrate: WIT cycle, routing, artifacts, the run ledger
@@ -67,7 +67,6 @@ GROUPS: dict[str, dict[str, str]] = {
         "curriculum-portfolio": "curriculum_portfolio.py",
         "attackability": "attackability.py",
         "lovasz-manifest": "lovasz_run_manifest.py",
-        "budget-gate": "campaign_budget_gate.py",
         "gap-feedback": "proof_gap_to_barrier_feedback.py",
         "spawn-workers": "spawn_workers_from_dag.py",
         "worker-dispatch": "lovasz_worker_dispatch.py",
@@ -91,6 +90,11 @@ GROUPS: dict[str, dict[str, str]] = {
         "rung-saturation": "rung_saturation.py",
         "barrier-attack": "barrier_attack.py",
         "lovasz-top-tier": "lovasz_top_tier.py",
+        "lovasz-state": "lovasz_campaign_state.py",
+        "lovasz-doctor": "lovasz_doctor.py",
+        "lovasz-loop-health": "lovasz_loop_health.py",
+        "lovasz-mutation-ranker": "lovasz_mutation_ranker.py",
+        "lovasz-synthesis-audit": "lovasz_synthesis_audit.py",
         "lovasz-agent-packets": "lovasz_agent_packets.py",
         "open-frontier": "open_frontier.py",
         "result-ladder": "result_ladder.py",
@@ -98,6 +102,7 @@ GROUPS: dict[str, dict[str, str]] = {
         "blueprint": "blueprint_campaign.py",
         "synthesize-ledgers": "synthesize_open_ledgers.py",
         "explorer-return": "explorer_return_packet.py",
+        "explorer-approach-tournament": "explorer_approach_tournament.py",
         "open-problem-report": "open_problem_report.py",
         "summarize-lovasz": "summarize_lovasz_run.py",
     },
@@ -123,10 +128,16 @@ GROUPS: dict[str, dict[str, str]] = {
         "validate-open-problem": "validate_open_problem_run.py",
         "validate-dag-integrity": "validate_proof_dag_integrity.py",
         "validate-lovasz-phase": "validate_lovasz_phase.py",
+        "validate-lovasz-worker-quality": "validate_lovasz_worker_quality.py",
         "validate-prover": "validate_prover_result.py",
         "validate-math-solve": "validate_mathematical_solve.py",
         "validate-lean-receipt": "validate_lean_receipt.py",
         "solve-claim": "solve_claim_protocol.py",
+        "validate-explorer-review": "validate_explorer_review.py",
+        "validate-research-state": "validate_research_state.py",
+        "generator-preflight": "generator_preflight.py",
+        "generator-receipt": "generator_receipt_gate.py",
+        "generator-repair-packet": "generator_repair_packet.py",
         "refute-deterministic": "refute_deterministic.py",
         "status-lattice": "status_lattice.py",
         "score-lovasz": "score_lovasz_results.py",
@@ -144,15 +155,17 @@ GROUPS: dict[str, dict[str, str]] = {
         "artifacts": "artifacts.py",
         "package": "generator_package.py",
         "generator-manifest": "generator_manifest.py",
+        "research-state": "research_state.py",
         "ledger": "run_ledger.py",
     },
 }
 
 # Boundary contract (references/core/services.md): witsoc exposes SERVICES —
 # deterministic, certificate-emitting, strategy-free engines — and Lovasz is
-# the solver that decides what to call and when. `witsoc services` prints this
-# registry. role: service = callable engine; solver = Lovasz-owned campaign
-# machinery (requires a Lovasz run context or an explicit --standalone);
+# the candidate generator that decides what to try. Gates decide what to trust.
+# `witsoc services` prints this registry. role: service = callable engine;
+# candidate_generator = Lovasz-owned campaign machinery (requires a Lovasz run
+# context or an explicit --standalone);
 # validator = honesty/audit gate; scheduler = portfolio-level launcher.
 SERVICES = {
     "prove": {"script": "close_obligation.py", "role": "service",
@@ -176,29 +189,29 @@ SERVICES = {
                               "attention-only attackability; portfolio emission is review-gated, never "
                               "auto-merged"},
     "next": {"script": "next_action.py", "role": "service",
-             "contract": "THE one next action for an orchestrator (bus -> gate -> seed -> crank -> "
+             "contract": "THE one next action for an orchestrator (bus -> seed -> crank -> "
                          "finalize, with the exact command); sequencing advice only, never truth — "
                          "the answer to the turn-discipline failure mode"},
-    "run": {"script": "campaign_driver.py", "role": "solver",
-            "contract": "R5 campaign driver: one turn of the Lovasz crank (budget -> in-process "
+    "run": {"script": "campaign_driver.py", "role": "candidate_generator",
+            "contract": "R5 campaign driver: one turn of the Lovasz candidate crank (in-process "
                         "dispatch -> gap feedback -> theory update -> L2 re-ideation -> L6 "
-                        "serendipity cap -> escalation -> ledger); --finalize = production gates"},
-    "theory": {"script": "problem_theory.py", "role": "solver",
+                        "serendipity cap -> ledger); --finalize = production gates"},
+    "theory": {"script": "problem_theory.py", "role": "candidate_generator",
                "contract": "A1 problem theory: the living causal model (formulations, example zoo, "
                            "enemy profile, failure mechanisms, main attack); every loop must diff it; "
                            "prompt-context feeds every fleet request"},
-    "nexus": {"script": "nexus_loop.py", "role": "solver",
+    "nexus": {"script": "nexus_loop.py", "role": "candidate_generator",
               "contract": "A3 Nexus loop: fleet proposals iterate against real Lean compiler "
                           "diagnostics (prove + formalize); deterministic saturation first; kernel "
                           "replay is the only acceptance"},
-    "dialectic": {"script": "dialectic.py", "role": "solver",
+    "dialectic": {"script": "dialectic.py", "role": "candidate_generator",
                   "contract": "A2 Lakatos engine: failed nodes become kernel-gated refutation "
                               "targets; witnesses and exhausted searches both feed the enemy profile"},
     "evolve": {"script": "program_evolve.py", "role": "service",
                "contract": "A4 program-space construction evolution: fleet-mutated construct(n) "
                            "programs, exploit-hardened exact evaluators, parametric scoring, "
                            "independent re-verification of records"},
-    "cluster": {"script": "cluster_campaign.py", "role": "solver",
+    "cluster": {"script": "cluster_campaign.py", "role": "candidate_generator",
                 "contract": "A6 cluster campaigns: pose variants, attack the family under one "
                             "shared theory, transfer every outcome (proved rungs, refutations)"},
     "rediscovery": {"script": "rediscovery_benchmark.py", "role": "validator",
@@ -214,7 +227,7 @@ SERVICES = {
     "rung-saturation": {"script": "rung_saturation.py", "role": "service",
                         "contract": "deterministic open-problem rung saturation: expands seed rungs, "
                                     "domain barriers, and formal probes into scored OPEN obligations"},
-    "barrier-attack": {"script": "barrier_attack.py", "role": "solver",
+    "barrier-attack": {"script": "barrier_attack.py", "role": "candidate_generator",
                        "contract": "Lovasz V2 barrier campaign prep: named barriers + saturated rungs "
                                    "merged into the DAG/lemma queue; mutations are one-axis and untrusted"},
     "lovasz-top-tier": {"script": "lovasz_top_tier.py", "role": "validator",
@@ -226,7 +239,26 @@ SERVICES = {
                              "contract": "strict packet templates/validation for Builder, Destroyer, "
                                          "Reducer, Formalizer, Historian, Strategist, and Skeptic roles; "
                                          "coordination only, never trust promotion"},
-    "open-frontier": {"script": "open_frontier.py", "role": "solver",
+    "lovasz-state": {"script": "lovasz_campaign_state.py", "role": "service",
+                     "contract": "derived Lovasz campaign health state from barrier, rung, DAG, worker, "
+                                 "feedback, mutation, score, theory, and Explorer ledgers"},
+    "lovasz-doctor": {"script": "lovasz_doctor.py", "role": "validator",
+                      "contract": "Lovasz campaign doctor: GREEN/YELLOW/RED health, blockers, warnings, "
+                                  "and exact next actions for barrier-depth campaigns"},
+    "lovasz-loop-health": {"script": "lovasz_loop_health.py", "role": "validator",
+                           "contract": "detects stuck Lovasz loops with no theory diff, mutation, score, "
+                                       "or learning signal"},
+    "lovasz-mutation-ranker": {"script": "lovasz_mutation_ranker.py", "role": "service",
+                               "contract": "ranks one-axis Lovasz mutations from gap class and prior "
+                                           "mutation history; attention only"},
+    "lovasz-synthesis-audit": {"script": "lovasz_synthesis_audit.py", "role": "validator",
+                               "contract": "final Lovasz synthesis gate before Explorer return; blocks "
+                                           "solve language and Generator-ready claims beyond evidence"},
+    "validate-lovasz-worker-quality": {"script": "validate_lovasz_worker_quality.py", "role": "validator",
+                                       "contract": "validates Lovasz worker results as candidate/process "
+                                                   "packets with target hash, dependency path, failure class, "
+                                                   "and next mutation"},
+    "open-frontier": {"script": "open_frontier.py", "role": "candidate_generator",
                       "contract": "open-problem novelty and solve-escalation workbench: packages "
                                   "candidate products, records novelty bundles, registers checked "
                                   "evidence, and reports solve-claim gate status"},
@@ -234,18 +266,18 @@ SERVICES = {
                  "contract": "Ω3 retrieval v2: hierarchy-informalized corpus, two-stage "
                              "retrieve+rerank, GLOBAL premise sets, sketch-retrieve-reflect; the "
                              "prover consumes it automatically when a corpus exists"},
-    "pool": {"script": "lemma_pool.py", "role": "solver",
+    "pool": {"script": "lemma_pool.py", "role": "candidate_generator",
              "contract": "Ω2 lemma pool: propose/mine (real residual diagnostics)/prove-pending/"
                          "reuse; PROVED = kernel verdict, harvested into the library; intractable "
                          "abandoned with evidence"},
     "tiered-prove": {"script": "prover_tiers.py", "role": "service",
                      "contract": "Ω1 tiered proving: light/medium/heavy budgets; external SOTA "
                                  "adapters via WITSOC_PROVER_FLEET, every adapter proof kernel-replayed"},
-    "narrative": {"script": "informal_proof.py", "role": "solver",
+    "narrative": {"script": "informal_proof.py", "role": "candidate_generator",
                   "contract": "Ω4 dual informal/formal proving (Rethlas/Archon shape): compose the "
                               "informal narrative, ground it step-by-step (formalize + tiered prove), "
                               "gaps feed the lemma pool; PROVED_SKETCH-grade scaffolding"},
-    "self-play": {"script": "self_play.py", "role": "solver",
+    "self-play": {"script": "self_play.py", "role": "candidate_generator",
                   "contract": "Ω5/Ω9 self-play: frontier-calibrated conjecture rounds (STP band "
                               "steering) + the prover/attacker formalization game generating "
                               "verified corpus; kernel verdicts on both sides"},
@@ -319,8 +351,6 @@ SERVICES = {
                 "contract": "live read-write lemma store with trust tiers"},
     "discoveries": {"script": "discovery_ledger.py", "role": "validator",
                     "contract": "durable claim ledger; publishable = kernel-grade AND novel AND human-gated"},
-    "budget-gate": {"script": "campaign_budget_gate.py", "role": "validator",
-                    "contract": "L3 campaign budget + one-way escalation ladder; owns the campaign block"},
     "gap-feedback": {"script": "proof_gap_to_barrier_feedback.py", "role": "validator",
                      "contract": "L1 failure classification + one-axis mutation contract for re-dispatch"},
     "validate-math-solve": {"script": "validate_mathematical_solve.py", "role": "validator",
@@ -329,14 +359,36 @@ SERVICES = {
     "solve-claim": {"script": "solve_claim_protocol.py", "role": "validator",
                     "contract": "F0 frontier solve gate: audit + formal receipt + independent "
                                 "re-derivation + novelty; only SOLVE_ACCEPTED is reportable"},
+    "validate-explorer-review": {"script": "validate_explorer_review.py", "role": "validator",
+                                 "contract": "Explorer arbitration gate for Lovasz returns: candidates "
+                                             "stay candidates; GENERATOR_READY requires selected product, "
+                                             "evidence, target dependency path, formalization readiness, "
+                                             "and no open-core reduction blocker"},
+    "research-state": {"script": "research_state.py", "role": "service",
+                       "contract": "derived Explorer/Generator run state assembled from existing ledgers; "
+                                   "cross-file view only, not a competing source of truth"},
+    "validate-research-state": {"script": "validate_research_state.py", "role": "validator",
+                                "contract": "Explorer state gate: target hashes, open/research coverage, "
+                                            "Lovasz review, and Generator authorization legality"},
+    "generator-preflight": {"script": "generator_preflight.py", "role": "validator",
+                            "contract": "Generator entry gate: wraps handoff, Explorer review, DAG, and "
+                                        "research-state checks; emits repair owners for blockers"},
+    "generator-receipt": {"script": "generator_receipt_gate.py", "role": "validator",
+                          "contract": "Generator exit gate: validates WIT/Lean artifacts, package status, "
+                                      "target-freeze evidence, and status ceilings"},
+    "generator-repair-packet": {"script": "generator_repair_packet.py", "role": "validator",
+                                "contract": "normalizes Generator failures into repair-owner packets"},
+    "explorer-approach-tournament": {"script": "explorer_approach_tournament.py", "role": "service",
+                                     "contract": "Explorer search-priority scoring over handoff sketches; "
+                                                 "attention only, never acceptance"},
     "validate-lean-receipt": {"script": "validate_lean_receipt.py", "role": "validator",
                               "contract": "rejects Lean ENV_CHECK_ONLY/placeholder output; "
                                           "VERIFIED_LEAN requires explicit theorem code, hashes, "
                                           "and SafeVerify/faithfulness evidence"},
-    "engine-dispatch": {"script": "engine_dispatch.py", "role": "solver",
-                        "contract": "research-director actuator; Lovasz-owned, needs run context or --standalone"},
-    "campaign": {"script": "autonomous_campaign.py", "role": "solver",
-                 "contract": "portfolio flywheel; Lovasz-owned, needs run context or --standalone"},
+    "engine-dispatch": {"script": "engine_dispatch.py", "role": "candidate_generator",
+                        "contract": "research-director actuator; Lovasz-owned candidate generation, needs run context or --standalone"},
+    "campaign": {"script": "autonomous_campaign.py", "role": "candidate_generator",
+                 "contract": "portfolio flywheel for candidate generation; Lovasz-owned, needs run context or --standalone"},
     "research-campaign": {"script": "research_campaign.py", "role": "scheduler",
                           "contract": "nightly portfolio pass; launches Lovasz-context campaigns per problem"},
 }
@@ -382,7 +434,7 @@ def main() -> int:
     if argv and argv[0] == "services":
         import json
         print(json.dumps({"schema": "witsoc.services.v1",
-                          "boundary": "witsoc never decides strategy; Lovasz never verifies itself",
+                          "boundary": "witsoc never decides strategy; Lovasz emits candidates; gates verify",
                           "reference": "references/core/services.md",
                           "services": SERVICES}, indent=2, ensure_ascii=False))
         return 0

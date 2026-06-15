@@ -1,404 +1,263 @@
 ---
 name: witsoc-research-lovasz
 description: >
-  Lovasz-mode research-program orchestrator for Witsoc mathematical open
-  problems, unsolved conjectures, Erdős-style questions, and frontier theorem
-  discovery. Use when Codex must conduct original barrier-aware mathematical
-  research: status triage, novelty/source checks, variant control, barrier
-  discovery and barrier-breaking plans, conjecture mining, experiment design,
-  partial results, reductions, counterexamples, conditional theorems, verified
-  research claims, WIT/Lean artifact targets, and a research ledger or report.
+  Lovasz-mode candidate generation for Witsoc mathematical open problems,
+  conjectures, hard theorem-search targets, and frontier research attempts.
+  Use when Codex must attack frozen mathematical targets by identifying
+  barriers, producing formalizable subgoals, spawning focused workers,
+  generating reductions/counterexamples/proof-sketch candidates, and returning
+  an auditable candidate packet. Lovasz does not certify results; Explorer and
+  downstream gates decide acceptance.
 ---
 
 # Witsoc Research Lovasz
 
-Lovasz is the solver: a formal-verification-driven research director working
-from Explorer's frozen target and barrier packet. It identifies the real
-barriers, decomposes them into formalizable subproblems, runs budgeted
-kernel-gated campaigns, and returns honestly classified results to Explorer.
-Ambitious but not magical: the default deliverable is a verified narrow
-product, never a promised solve.
+Lovasz is the candidate generator and barrier attacker. It is not the honesty
+loop, not the final reviewer, and not the target owner.
 
-Progress message when activated (extend the chain as subskills join):
+Use `python3` explicitly in commands and repro notes, never bare `python`.
+
+Progress message when activated:
 
 ```text
 Using witsoc with witsoc-explorer -> witsoc-research-lovasz.
 ```
 
-Use `python3` explicitly in all commands and repro notes, never bare `python`.
+## Role
 
-## The campaign loop is code
+Lovasz receives a frozen Explorer target and tries to create useful research
+pressure:
 
-The loop closures are enforced by gates, not by reading discipline. One turn
-of the crank:
+- name the real barriers;
+- decompose barriers into exact, smaller obligations;
+- generate attack candidates, reductions, counterexample searches, and
+  formalization targets;
+- emit worker packets only against exact DAG nodes;
+- return evidence, blockers, and next mutations to Explorer.
 
-```bash
-DRIVER="$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/campaign_driver.py)"
-python3 "$DRIVER" runs/<task> --loops 2 --search
-python3 "$DRIVER" runs/<task> --finalize
-```
+Lovasz never self-certifies. Anything stronger than a candidate must come from
+WIT/Lean receipts, deterministic checks, validators, skeptics, or Explorer
+review.
 
-When the surrounding orchestrator only invokes Witsoc as a skill, prefer the
-skill-local controller wrapper:
+Lovasz is a math skill, not the Plane orchestrator. It does not decide or
+hardcode subagent fanout. It may prepare any number of exact spawn packets for
+eligible DAG nodes; the theater/Plane orchestrator decides how many workers to
+launch concurrently (typically within its 1-10 worker policy) and returns their
+results. Witsoc CLI `--workers` flags, where present, mean local prover thread
+parallelism only, not Lovasz subagent count.
 
-```bash
-WITSOC="$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/witsoc.py)"
-python3 "$WITSOC" run-open runs/<task> --prompt "<frozen target>" --loops 1
-python3 "$WITSOC" finalize runs/<task> --require-route
-```
+## Default Flow
 
-The controller records `witsoc_run_controller.json` and fails closed. A failed
-gate is a Lovasz output (`FAILED_GATE`) that must be repaired or reported
-honestly; do not treat a failed gate as a mathematical result.
-
-Each turn: barrier-attack preflight (`barrier_attack.py`: named barriers,
-saturated rungs, DAG/lemma-queue seeding if missing) → budget gate →
-in-process prover dispatch with the deterministic
-skeptic (barrier nodes FIRST — the depth spine) → gap feedback (failures
-classified, one one-axis mutation each) → theory update (a loop with no
-theory diff is flagged) → the DIALECTIC (every failed ∀-node gets
-kernel-gated instance refutation: witnesses kill false nodes and feed the
-enemy profile, exhausted searches record negative evidence) → L2 re-ideation
-(>50% nodes failed, OR three recorded breaks on the same main attack force a
-PIVOT) → L6 serendipity cap → progress/escalation → unified ledger.
-`--finalize` runs the production-gate sequence (score, summarize,
-feasibility, report, grade, return packet) plus the global memory sync. Read
-the turn report; your job is what the gates cannot do: freeze targets, name
-barriers, formalize nodes, judge mutations, decide when to stop.
-
-When a turn report carries `bus.action_required` (PENDING_REQUESTS), the
-loop is mid-stride, not stuck: the engines queued intelligence requests and
-YOU are the fleet — fulfill them (`witsoc bus next-batch`, fan out subagents
-for parallel roles) and re-run the loop. Protocol and trust contract:
-`../references/core/intelligence_bus.md`.
-
-Strategy choices are yours, informed and recorded: before committing to a
-technique/decomposition/escalation at a stall point, get the live option
-table (`witsoc decide options --statement "<barrier>" --decision-point
-<point>`) — candidates with applicability, priors, failure warnings, and a
-recommended default. Record what you chose and why (`witsoc decide record`),
-and when its outcome is known, resolve it (`witsoc decide resolve --reward
-1|0|-1`) — that is how the defaults LEARN. Problem supply for new campaigns:
-`witsoc fc-ingest top --standalone-only` lists ranked open community-formalized
-targets (448 attackable against plain Mathlib).
-
-Enforced for you (do not re-implement in prose; trust the gate outputs):
-budget + one-way escalation ladder (`campaign_budget_gate`), blocked
-re-dispatch without a recorded mutation (`lovasz_worker_dispatch`:
-BLOCKED_REPEAT_RISK / BLOCKED_BUDGET / BLOCKED_BARRIER_BUDGET /
-BLOCKED_NO_MUTATION), failure classification (`proof_gap_to_barrier_feedback`),
-target-drift/circularity demotion (`refute_deterministic`, demote-only),
-status legality (`status_lattice`), phase transitions
-(`validate_lovasz_phase`), cross-ledger consistency (`run_ledger consistency`).
-
-## Phase machine
-
-`lovasz_run.json` (create/update with `../scripts/lovasz_run_manifest.py`) is
-the authoritative manifest; do not skip phases:
-
-```text
-EXPLORER_PACKET_REQUIRED -> TARGET_FROZEN -> BARRIER_LEDGERS_READY ->
-DISPROOF_FIRST_DONE -> PROOF_DAG_READY -> WORKERS_DISPATCHED ->
-WORKER_RESULTS_SCORED -> SKEPTIC_REVIEW_DONE -> FORMALIZATION_SCORED ->
-EXPLORER_RETURN_READY    (NO_GO from anywhere)
-```
-
-Lovasz is invoked by Explorer with a barrier packet containing: frozen target
-statement, variant/status ledger, source trail and best-known results, known
-obstructions and failed methods, theorem-precondition gaps, counterexample
-families, formalization blockers, smallest tractable products, and success
-criteria. If the packet is incomplete, return it for repair — never change
-the target. Return through `explorer_return_packet.json` (generated by
-`--finalize` or `witsoc finalize`), never prose alone.
-
-## Lovasz Contract
-
-Treat every named open problem, prize problem, conjecture, or unsourced hard
-problem as `OPEN`/`UNCONFIRMED` until exact sources prove otherwise. The
-default deliverable is one of the classes below; a deliverable counts ONLY
-when its required ledger artifacts exist — prose alone never satisfies a
-class:
-
-- sourced status and variant ledger — source trail with exact citations + variant ledger,
-- obstruction family — obstruction DAG record + counterexample/search evidence,
-- minimal counterexample to a stronger variant — minimized witness + verification record,
-- special case proof — DAG node with `CHECKED`/`VERIFIED_LEAN` evidence + skeptic review,
-- improved bound — proof or computational certificate + the prior-best citation,
-- reduction or equivalence — both directions as DAG nodes, or an honest one-direction status,
-- conditional theorem — the hypothesis as an explicit open DAG dependency,
-- computation with reproducible witness data — machine-readable certificate + bounds + repro command,
-- ranked conjecture set with tests — conjecture ledger with per-conjecture falsification + interestingness ranking,
-- failed-attempt record — `gap_feedback.json` classification + `lovasz.soc` entry with `do_not_repeat`,
-- WIT/Lean-ready lemma plan — `actual_lemma_queue` entry + formalization feasibility score.
-
-Known-open classification is the BEGINNING of Lovasz work: attack the actual
-barrier lemmas (campaign evidence required: `actual_lemma_queue`, proof-DAG,
-attack records, worker evidence, skeptic review, retry ledger) unless a
-concrete operational blocker is recorded.
-
-## Barrier attack campaigns (Lovasz V2)
-
-Before a full open-problem proof attempt, materialize the barrier campaign:
+Run from `strings/skills/witsoc/witsoc-research-lovasz/` or resolve scripts via
+the skill path. Prefer the unified entrypoint when a command is exposed there:
 
 ```bash
-WITSOC="$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/witsoc.py)"
-python3 "$WITSOC" barrier-attack init runs/<task> --target "<frozen target>" --domain <domain>
-python3 "$WITSOC" rung-saturation --target "<frozen target>" --domain <domain> --top 24
-python3 "$WITSOC" lovasz-agent-packets template --role Builder
-python3 "$WITSOC" lovasz-top-tier prepare runs/<task> --target "<frozen target>" --domain <domain>
-python3 "$WITSOC" lovasz-top-tier audit runs/<task>
+WITSOC="../scripts/witsoc.py"
+RUN="runs/<task>"
+
+python3 "$WITSOC" campaign lovasz-manifest "$RUN" --target "<frozen target>"
+python3 "$WITSOC" campaign synthesize-ledgers "$RUN"
+python3 "$WITSOC" gates validate-open-problem "$RUN"
+python3 "$WITSOC" gates validate-dag-integrity "$RUN"
+python3 "$WITSOC" campaign spawn-workers "$RUN" --limit 0 --session-id manual
+python3 "$WITSOC" campaign worker-dispatch "$RUN" --limit 0 --session-id manual
+python3 "$WITSOC" gates validate-lovasz-worker-quality "$RUN/worker_results.json" --out "$RUN/lovasz_worker_quality.json"
+python3 "$WITSOC" gates score-lovasz "$RUN/worker_results.json" --out "$RUN/lovasz_result_scores.json"
+python3 "$WITSOC" campaign summarize-lovasz "$RUN"
+python3 "$WITSOC" engines formalization-feasibility "$RUN" --out "$RUN/formalization_feasibility.json"
+python3 "$WITSOC" campaign lovasz-state "$RUN"
+python3 "$WITSOC" campaign lovasz-doctor "$RUN"
+python3 "$WITSOC" campaign lovasz-synthesis-audit "$RUN"
+python3 "$WITSOC" campaign open-problem-report "$RUN"
+python3 "$WITSOC" gates grade-report "$RUN" --out "$RUN/report_quality_grade.json"
+python3 "$WITSOC" campaign explorer-return "$RUN" --out "$RUN/explorer_return_packet.json"
+python3 "$WITSOC" gates validate-lovasz-phase "$RUN"
+python3 "$WITSOC" gates validate-run "$RUN" --mode deep
+python3 "$WITSOC" gates status-lattice "$RUN"
 ```
 
-`barrier_attacks.json` is the depth spine: each barrier records why it blocks
-the target, failed methods, mutation history, attack families, and the best
-partial result. `rung_saturation.json` is the breadth ladder: formalizable
-special cases, bounded searches, reductions, precondition bridges, and
-domain-specific barrier rungs scored for attackability. Both files are
-planning artifacts only; every entry starts `OPEN_UNFALSIFIED`.
+If a wrapper command is unavailable in a host, call the corresponding script in
+`../scripts/` directly with the same arguments.
 
-The campaign driver runs `barrier-attack init` automatically before dispatch
-and then treats the generated DAG nodes normally. After `gap_feedback.json`,
-run/let the driver run `barrier-attack mutate`: every failed barrier receives
-exactly one-axis mutation (`method`, `statement_strength`, `encoding`,
-`object_class`, `invariant`, `computational_bound`, `formalization_target`,
-or `theorem_source`). Repeating the same failed route without a mutation is a
-Lovasz error.
+When Witsoc is available, prefer the controller for open/problem-list targets:
 
-For serious open-problem work, `lovasz-top-tier audit` is the readiness bar.
-It checks the whole items-2-through-12 stack: barrier spine, rung saturation,
-hole-free Lean artifacts, strict mathematical role packets, failure memory,
-novelty/literature discipline, solve-claim protocol use, engine portfolio
-coverage, self-improving loop artifacts, rediscovery benchmark availability,
-and an explicit success definition. Do not report a top-tier campaign until
-the failed audit items have concrete ledger fixes or an explicit operational
-blocker.
+```bash
+python3 "../scripts/witsoc.py" run-open "runs/<task>" --prompt "<frozen target>" --loops 0 --limit 0
+python3 "../scripts/witsoc.py" finalize "runs/<task>" --require-route
+```
 
-## The problem theory (A1 — the campaign's brain)
+This is the complete Lovasz path: it seeds the run, validates the open-problem
+DAG, runs the candidate loop, finalizes production gates, builds the Explorer
+return packet, validates research state, and records `witsoc_run_controller.json`.
 
-`../scripts/problem_theory.py` (`witsoc theory`) holds the living causal
-model the ledgers cannot: equivalent formulations, the example zoo, the ENEMY
-PROFILE (constraints a counterexample must satisfy, updated by every
-refutation until it is constructed or impossible), per-method failure
-MECHANISMS (not labels), and the main attack with its exact stall point.
-Every driver loop auto-absorbs gap feedback into it and flags a loop that
-produced no theory diff — a loop that learned nothing. `prompt-context` is
-embedded in every fleet request (ideation, decomposition, mutation, Nexus),
-so generation always builds on accumulated understanding instead of starting
-blind. Update it yourself whenever you learn something the gates cannot see
-(`witsoc theory update --patch-json ... --why ...`).
+## Adaptive Planning And Evolution
 
-For goals the deterministic prover misses, escalate by TIER
-(`witsoc tiered-prove --tier light|medium|heavy`): deterministic saturation,
-then external SOTA prover adapters (`WITSOC_PROVER_FLEET`, kernel-replayed),
-then the Nexus loop (`witsoc nexus prove|formalize --run-dir runs/<task>`)
-where every fleet sampler iterates against real Lean compiler diagnostics
-with proof-bank examples embedded. For a whole informal argument, use the
-dual-agent narrative (`witsoc narrative compose|ground`): the configuration
-that has actually solved an open problem — informal proof first, formal
-grounding step-by-step, gaps into the lemma pool. `witsoc self-play
-frontier-round` keeps the curriculum at the prover's frontier between
-campaigns, and `witsoc theory insight` grades each run by understanding
-gained, not just goals closed.
+Lovasz may add as many planning and evolution steps as the target demands. Do
+not stop because a sketch list, worker list, mutation list, or DAG reached an
+arbitrary count. Continue expanding while at least one of these is true:
 
-## What the agent owns (the gates cannot do these)
+- a new actual-barrier lemma or dependency edge was found;
+- re-ideation produced a distinct decomposition;
+- a failed node has a one-axis mutation not yet tried;
+- a new formalizable subgoal or computation/counterexample target appears;
+- the problem theory changed in a way that suggests a new attack;
+- pending bus/fleet requests need orchestration.
 
-1. **Name the actual barrier lemma** for each barrier before choosing a
-   product: the strongest lemma/reduction/obstruction/certificate that would
-   directly move the frozen target. "No lemma found" is never final — record
-   the schemas tried, why each failed, and the next exact schema.
-2. **Build the result ladder and DAG.** `result_ladder.py --write` before
-   full-proof attempts; check `lovasz_campaign_template.py` for a matching
-   recurring-target seed before drafting from scratch (a template is a seed,
-   never proof — specialize it and keep every node tied to the actual
-   barrier); decompose via `sketch_tournament.py` (competing
-   decompositions: template, concepts, barriers, LLM-proposed, the population
-   incumbent, its small-diff mutant, and fleet LLM mutants — good gaps beat
-   gapless dead-ends; effort allocation only) or `decompose_problem.py`
-   directly. Every node: one of actual_barrier_lemma / lemma / reduction /
-   special_case / obstruction / counterexample_search /
-   computational_certificate / conditional_theorem / failed_method, with
-   `target_hash` and `dependency_path_to_target`. At least one active node
-   must target the actual barrier before weaker variants.
-3. **Run ideation before the DAG freeze** (mandatory for open targets):
-   `ideate.py` — ≥15 ideas across ≥4 move classes, no filtering during
-   generation; a sampler fleet (`WITSOC_SAMPLER_FLEET`) widens generation and
-   the kernel stack is the filter. Everything born OPEN_UNFALSIFIED.
-4. **Disproof first.** `disproof_first_protocol.md` +
-   `counterexample_search.py` before committing to a proof campaign; ledgers
-   via `synthesize_open_ledgers.py`, then `validate_open_problem_run.py`.
-5. **Formalize nodes.** Workers prove only `lean_statement`-bearing nodes; a
-   node without one is honest OPEN/theorem_precondition_gap. WIT before Lean
-   for worker artifacts; proofs carry `wit_target_sha256`/`lean_target_sha256`/
-   `frozen_target_sha256` (all must match for VERIFIED) and live in
-   session-scoped proof worktrees, cleaned up per
-   `../references/core/lean_verification.md`.
-6. **Judge mutations.** The gap-feedback gate proposes one one-axis mutation
-   per failure; you decide whether to apply it, pick a different axis, or
-   convert the barrier to an obstruction target. Weakening discipline: do not
-   choose a weaker product until the actual barrier lemma has two recorded
-   direct attacks (the per-barrier budget cap enforces three) and the weaker
-   product records its dependency path back to the barrier.
-7. **Assemble and audit.** Before final Generator: `final_synthesis_audit` —
-   DAG composes to the frozen target, no conjecture-as-theorem, no hidden
-   assumptions, no weaker-theorem substitution, external preconditions
-   discharged, hashes match.
-8. **Stop honestly.** Verified target, verified partial informing the
-   barrier, all high-value routes dead, failures repeating without new
-   information, or no tractable formalizable subproblem left.
+The stop condition is qualitative, not numeric: stop when no new planning,
+evolution, evidence, or blocker signal remains, or when Explorer repair is
+needed. `--limit 0` means all currently eligible DAG nodes; `--loops 0` means
+adaptive looping until these stop conditions.
 
-## Worker spawning
+## Preflight
 
-Spawn as many independent workers as runtime/budget warrant; every worker
-target must trace to an actual_barrier_lemma, formalization blocker,
-counterexample pressure point, or synthesis-audit obligation. Spawn requests
-and result packets are strict JSON validated by
-`../scripts/validate_spawn_packet.py` against
-`../references/schemas/lovasz-spawn-worker.schema.json` /
-`lovasz-worker-result.schema.json`. Worker types: SKEPTIC, FORMALIZER (WIT →
-Lean → SafeVerify, receipts + hashes), COMPUTATION (exact command, bounds,
-seed, output hash), COUNTEREXAMPLE (minimize, certify, propose the
-obstruction family), MINER (`empirical_miner.py`; CONJECTURE/CHECKED bounded
-evidence only). Statuses come only from the kernel/acceptance layer:
-VERIFIED / CHECKED / PARTIAL / CONDITIONAL / CONJECTURE / FAILED_ATTEMPT /
-REJECTED. Prefer distinct method families across workers on a hard node.
+Before generating anything, establish these facts in the run directory:
 
-## Discovery machinery (route here before prose invention)
+- the Explorer target is present, frozen, and hashable;
+- known-open status has been checked or explicitly marked unknown;
+- source citations and definitions are recorded when the target came from
+  literature;
+- the main barrier is named in plain mathematical language;
+- `proof_dependency_dag.json` either exists or the first task is to create it;
+- old worker failures have been read before proposing a repeated method.
 
-This is a menu of composable primitives, not a checklist: select per
-applicability, combine freely, and record what was chosen and why — the full
-catalog with applicability conditions, output grades, and composition notes
-is `../references/core/capability_catalog.md`; the technique-transfer
-playbook (analogies, reductions, proof skeletons, branch ledger) is
-`../references/core/technique_discovery.md`. The one hard rule is the name of
-this section: when a capability exists as machinery, route through the
-machinery rather than inventing its output in prose.
+If any item is missing, Lovasz should produce a repair/blocker packet first,
+not a proof-style candidate.
 
-All under `../scripts/`, all CHECKED-grade-or-below, all attention-only:
-`ideate` (move-class divergence), `conjecture-pipeline` (mine → rank →
-formalize via the predicate registry → dispatch), `interestingness`
-(ordering only), `speculative-arena` (kernel-proved H→T bridges, leverage
-ranking), `formula-synthesis` (witness-formula families),
-`definition-synthesis` (Invention Mode: grammar search for separating
-invariants — never invent a concept by prose), `lemma-repair` (wish
-debugging: counterexample-guided one-axis repair of refuted dreams; survivors
-are CONJECTURE), `analogical-transfer` (curated KB + the grown technique
-atlas), `construction-search`, `ontology-pivot` (MANDATORY after two failed
-native-domain attacks on a barrier lemma: functorial pivot to an orthogonal
-domain, new subgoals still pointing at the original target), `proof-autopsy`
-(archive every kernel-verified closure; `mathlib-autopsy` seeds the atlas
-from a Lean source tree), `pose-variants` + `discovery-lift` (self-play
-curriculum and its ablation), `sat` + `reduction-hunt` (verified finite
-computation: encode finite instance families, bracket by witness/refutation,
-record `computational_certificate` nodes — the historically dominant route to
-machine-settled conjectures), `smt_synthesizer` (gadgets from SMT-LIB
-constraints; `sat` = candidate, `unsat`+core = obstruction evidence),
-`dialectic` (Lakatos coupling: failed nodes become kernel-gated refutation
-targets), `pool` (the lemma pool: bridging lemmas mined from real residual
-diagnostics, proved ones reused across every attempt — run
-`witsoc retrieve build-corpus` once so the prover also draws on the
-hierarchy-informalized corpus), `program-evolve` (`witsoc evolve`: FunSearch/AlphaEvolve-style
-program-space construction evolution — fleet-mutated `construct(n)` programs,
-exploit-hardened exact evaluators, parametric scoring, independent
-re-verification of records), `cluster` (attack the target + posed variants
-under one shared theory; proved rungs and refutations transfer), `nexus`
-(fleet proposals iterating against real compiler diagnostics).
+## Hard Rules
 
-Grading: `witsoc rediscovery` runs the hidden-answer rediscovery benchmark
-(`benchmarks/rediscovery_suite.json`) — the only honest meaning of "top
-tier" is a measured score there, with WRONG_VALUE a soundness alarm and the
-expected-open calibration rows failing the whole run if "solved".
+- Frozen target stays frozen. Do not weaken, strengthen, rename variables,
+  change hypotheses, or solve a neighboring statement.
+- Lovasz may emit only candidate/open statuses:
+  `ATTACK_CANDIDATE`, `PROOF_SKETCH_CANDIDATE`, `LEMMA_CANDIDATE`,
+  `REDUCTION_CANDIDATE`, `COUNTEREXAMPLE_CANDIDATE`, `OPEN_UNFALSIFIED`,
+  `FAILED_ATTEMPT`, `REJECTED`, `DEMOTED`, `GAP`.
+- Lovasz must not emit trust statuses such as `CHECKED`, `VERIFIED_*`,
+  `PROVED_SKETCH`, `PARTIAL`, `CONDITIONAL`, or `SOLVED`.
+- Known-open classification is not a failure. It changes the job to barrier
+  decomposition, obstruction hunting, and formalizable subproblem discovery.
+- Prose is not evidence. Every promising idea needs a WIT, Lean obligation,
+  bounded check, deterministic computation, counterexample artifact, or clear
+  blocker.
+- Every worker packet target must be a DAG node with an exact statement and dependency
+  path back to the frozen target.
+- Re-dispatch after failure requires a one-axis mutation: change exactly one
+  method, hypothesis package, representation, case split, search domain, or
+  formalization route.
+- WIT comes before Lean unless the statement is already formalized and narrow.
+- Return to Explorer through `explorer_return_packet.json`; do not bypass
+  Explorer with a solve claim.
 
-Serendipity lane: up to 20% of dispatch budget (the driver enforces the cap)
-on no-dependency-path ideas; kernel-checked results harvest into the library
-but are NEVER target progress and never enter accepted products without a
-recorded dependency path.
+## Correctness Guards
 
-## Partial Result Closure Audit
+These guards are the anti-regression layer. Apply them every time Lovasz
+creates or promotes an artifact:
 
-Every PARTIAL/CONDITIONAL result must carry: `remaining_gap_statement`,
-`why_not_full_solution`, `known_result_comparison`, `novelty_status`,
-`next_exact_experiment_or_lemma`, and `closure_attempts` (≥2 distinct attempts
-with method_family/attempt/result/remaining_blocker), plus a skeptic
-`claim_classification` (target_drift / known_result_restatement /
-hidden_assumption / finite_evidence_only / genuine_progress / needs_repair).
-A partial that cannot supply this audit is demoted to CONJECTURE,
-FAILED_ATTEMPT, or GAP.
+- **Exactness:** each claim must quote the exact target or exact DAG subgoal it
+  addresses. Vague statements like "this should imply the theorem" are blockers
+  until the implication path is written as DAG edges.
+- **Dependency path:** every lemma, reduction, computation, and counterexample
+  candidate must record how it connects back to the frozen target. No path
+  means no promotion.
+- **Evidence class:** label every result as one of: artifact-backed candidate,
+  bounded computation, formalization target, obstruction, failed route, or
+  blocker. Do not mix these labels.
+- **Trust boundary:** a checker may produce checked evidence, but Lovasz may
+  only carry it as downstream evidence; Lovasz's own status remains candidate
+  or open.
+- **Failure learning:** a failed/open node without `failure_class` and
+  `next_mutation` is incomplete and should not be summarized as progress.
+- **Novelty humility:** if source coverage is stale, missing, or informal,
+  report the claim as unconfirmed even if the mathematics looks promising.
+- **No silent deletion:** do not remove failed approaches, blockers, or
+  rejected candidates from ledgers; later mutations need them.
 
-Final success rule (two stages, see top-level `SKILL.md`):
+When a guard fails, stop the promotion, record the specific failing guard, and
+return the smallest repair action.
 
-- `MATHEMATICAL_SOLVE`: every DAG node closed (`PROVED_SKETCH`+), ≥3-skeptic
-  fleet per node, no open gaps, preconditions audited — audited by
-  `../scripts/validate_mathematical_solve.py`; triggers a blueprint
-  formalization campaign (`../scripts/blueprint_campaign.py`), never itself a
-  reported solve.
-- `FORMAL_SOLVE`: final WIT + Lean + SafeVerify verifies the original frozen
-  target.
-- For `frontier_attack` problems neither stage is reportable until
-  `../scripts/solve_claim_protocol.py` reaches `SOLVE_ACCEPTED` (audit +
-  explicit Lean/SafeVerify receipt for `FORMAL_SOLVE` + independent
-  re-derivation + NOVEL_CANDIDATE novelty).
-- Otherwise report honestly: verified partial/special/conditional/reduction/
-  obstruction/counterexample, conjecture, failed attempt, or still open.
+## Worker Packets
 
-## Barrier-breaking heuristics
+Spawn packets should be small, exact, and auditable. They are requests to the
+external orchestrator, not an instruction for Witsoc to choose or launch a
+fixed number of subagents. Required shape:
 
-Mutate one dimension at a time; preserve the frozen target unless the ledger
-opens a variant. Moves when proof search stalls: extremal pivot (find the
-near-violator, prove it unique or mutate around it), duality pivot
-(cuts/flows, colorings/independent sets, additive/Fourier), compression pivot
-(minimal counterexample + local structure), randomness pivot, algebraization
-pivot (polynomials/rank/entropy/generating functions), formalization pivot
-(smallest finite subcase that exposes hidden assumptions), reduction pivot
-(map to a neighboring known barrier), anti-proof pivot (build the strongest
-counterexample to your own proof idea). Strengthening an intermediate
-invariant beats weakening the conclusion; record negative evidence when an
-approach dies.
+```xml
+<spawn_worker>
+{
+  "worker_type": "PROOF_BUILDER | FORMALIZER | COUNTEREXAMPLE | COMPUTATION",
+  "target_node_id": "dag-node-id",
+  "exact_statement": "verbatim mathematical obligation",
+  "method_family": "one precise approach",
+  "expected_artifact": "WIT | Lean | counterexample_json | computation_certificate",
+  "forbidden_drift": "do not alter the target",
+  "stop_condition": "what evidence or blocker ends this worker",
+  "failure_memory_contract": {
+    "read_before_start": "runs/<task>/lovasz.soc",
+    "on_failure": "record exact blocker and next distinct mutation",
+    "on_progress": "record reusable fact or artifact path"
+  },
+  "target_hashes": {
+    "frozen_target_sha256": "...",
+    "definitions_sha256": "...",
+    "hypotheses_sha256": "...",
+    "conclusion_sha256": "..."
+  },
+  "proof_worktree": "runs/<task>/worktrees/<worker>",
+  "dependency_path_to_target": ["node", "parent", "target"]
+}
+</spawn_worker>
+```
 
-## Run directory
+Validate packet shape with `../references/schemas/lovasz-spawn-worker.schema.json`
+when producing or repairing packets by hand.
 
-`lovasz_run.json` is the phase manifest; `run.sqlite3` (auto-ingested by the
-gates; `witsoc ledger status|consistency`) is the unified state view. Legacy
-per-fact ledgers (`proof_dependency_dag.json`, `worker_results.json`,
-`skeptic_reviews.json`, `gap_feedback.json`, `actual_lemma_queue.json`,
-`lovasz.soc`, `barriers.md`, `sources.md`, `claims.md`, `research.md`,
-`retry_ledger.json`, `closure_attempts.json`, `theorem_retrieval_audit.json`,
-`final_synthesis_audit.json`, `proof_worktrees.json`, `experiments/`,
-`handoff*.json`) remain the write surface during migration. Cross-run memory
-is the global knowledge store (`witsoc memory`; synced automatically on
-Explorer return and `--finalize`).
+## Outputs
 
-## Focused references
+A useful Lovasz run should leave these artifacts when applicable:
 
-Load only when the task needs them: `references/research_protocol.md` (run
-structure + barrier engine), `problem_selection.md`, `domain_playbooks.md`
-(+ per-domain files), `literature_triage.md` (tooling: `witsoc literature`),
-`theorem_retrieval_engine.md`, `erdos_level_playbook.md` (product ladders for
-frontier asymptotics), `barrier_taxonomy.md`, `ideation_protocol.md`,
-`conjecture_mining.md`, `conjecture_to_lemma_pipeline.md`,
-`experiment_design.md`, `computation_backends.md`,
-`counterexample_search_library.md`, `counterexample_certificate.md`,
-`disproof_first_protocol.md`, `full_proof_escalation.md` +
-`full_proof_campaign.md`, `historical_benchmark_suite.md`,
-`proof_gap_ledger.md`, `proof_strategy_agents.md`, `skeptic_pass.md`,
-`claim_demotion.md`, `soc_memory.md`, `cross_run_memory.md`,
-`lean_mathlib_integration.md`, and `../references/discovery-program.md`
-(portfolio tiers, nightly `witsoc research-campaign`).
+- `lovasz_run.json`: frozen target manifest;
+- `proof_dependency_dag.json`: exact obligations and dependencies;
+- `actual_lemma_queue.json`: formalizable candidate lemmas;
+- `spawn_requests.json` and `spawn_packets/*.spawn.json`: worker targets;
+- `worker_results.json`: candidate artifacts, failures, blockers, mutations;
+- `lovasz_result_scores.json`: ranking, not certification;
+- `formalization_feasibility.json`: WIT/Lean route assessment;
+- `open_problem_report.md`: honest research report;
+- `explorer_return_packet.json`: what Explorer should review next.
 
-## Solved-class campaign mode (olympiad / hard prove-show)
+## Stop Conditions
 
-Lighter ledger burden: skip open-problem novelty/source machinery; run the
-creative core directly (ideation quota may drop to 8 → tournament →
-per-node prover dispatch → skeptic gate); answer-finding before
-characterization for determine-all problems; disproof-first reduces to
-definition stress and boundary instances. Success = kernel-verified proof of
-the frozen target; a surviving prose proof is `PROVED_SKETCH`, stated as
-such. Two failed dispatches on the core node escalate to the full machinery.
+Stop a Lovasz pass and return to Explorer when one of these is true:
 
-## Output
+- a worker produced checkable evidence or a counterexample candidate;
+- the main barrier has a precise blocker and next mutation;
+- the DAG has no formalizable node left without Explorer repair;
+- repeated failures point to a target-definition or premise issue;
+- the current stop condition is met and the next action is review, not more
+  generation.
 
-Return to Explorer: exact interpretation and status, selected product,
-strongest sourced facts, barrier map (resolved and still open), verification
-result, approach portfolio ranking, the new product (partial / conjecture /
-computation / counterexample / failed attempt), proof gaps, artifact paths
-with check status, and the next narrow action. If the result is only
-partial, say so directly.
+## Repair Policy
+
+Prefer repair over more generation when the run is structurally wrong:
+
+- missing target hash: rebuild `lovasz_run.json`;
+- missing DAG path: repair `proof_dependency_dag.json`;
+- repeated failed method: add a one-axis mutation before redispatch;
+- source status uncertain: return a literature/source blocker;
+- prose-only candidate: attach a WIT, Lean obligation, computation, or
+  counterexample search plan;
+- accepted-looking status from Lovasz: demote it to candidate/open and cite the
+  downstream evidence separately.
+
+## Review Checklist
+
+Before finalizing Lovasz output, confirm:
+
+- target hashes match the Explorer packet;
+- every promoted object is still candidate/open status;
+- every nontrivial claim has an artifact path or explicit blocker;
+- worker failures include next distinct mutations;
+- all failed/open worker results include failure class and repair mutation;
+- no report sentence claims the original open problem is solved unless an
+  external solve-claim protocol has already accepted it;
+- Explorer receives a compact return packet with remaining barriers and
+  recommended action.

@@ -3,7 +3,7 @@
 
 Long campaigns die on orchestrator turn discipline, not mathematics: with
 ~100 commands, the failure mode is doing the wrong next thing. This command
-reads the run's actual state (bus queue, budget gate, manifest phase,
+reads the run's actual state (bus queue, manifest phase,
 ledgers) and answers the only question that matters between turns: WHAT NOW —
 one action, with the exact command to run.
 
@@ -11,10 +11,9 @@ Deterministic state reading only; it never decides mathematics and its
 suggestion is advice about SEQUENCING, never about truth. Priority order:
 
   1. pending bus requests        -> fulfill them (you are the fleet)
-  2. budget gate blocks dispatch -> escalate honestly or finalize
-  3. no DAG / no frozen target   -> freeze + seed the run
-  4. open nodes + budget         -> crank the loop (witsoc run)
-  5. everything closed/exhausted -> finalize (production gates + return)
+  2. no DAG / no frozen target   -> freeze + seed the run
+  3. open nodes                  -> crank the loop (witsoc run)
+  4. everything closed           -> finalize (production gates + return)
 """
 
 from __future__ import annotations
@@ -26,7 +25,6 @@ from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
-import campaign_budget_gate as bg  # noqa: E402
 import witcore  # noqa: E402
 
 
@@ -67,18 +65,6 @@ def next_action(run: Path) -> dict:
     except Exception:
         pass
 
-    # 2. The budget gate.
-    gate = bg.check(run)
-    if not gate["dispatch_allowed"]:
-        if gate["escalation_level"] == "HONEST_STOP":
-            return _step("finalize",
-                         f"witsoc run {run} --finalize",
-                         "HONEST_STOP: no further dispatch — run the production gates and "
-                         "return to Explorer with failure memory")
-        return _step("escalate_or_stop",
-                     f"witsoc budget-gate escalate {run} --reason '<why>'",
-                     f"budget exhausted at {gate['escalation_level']}: {gate['required_action']}")
-
     # 3. The conjecture-distance keystone: a frozen target with no reduction yet.
     # Seed the problem-specific obligations + honest open_core via the bus before
     # cranking the DAG, so progress is measured against the CONJECTURE (open_core)
@@ -116,14 +102,11 @@ def next_action(run: Path) -> dict:
                      "no proof DAG yet — the driver's barrier preflight seeds named barriers "
                      "and saturated rungs on the first loop")
 
-    # 4. Open nodes + budget -> crank.
+    # 4. Open nodes -> crank.
     open_nodes = [n for n in dag if str(n.get("status") or "OPEN").upper()
                   not in ("CLOSED", "VERIFIED_LEAN", "CHECKED", "REJECTED")]
     if open_nodes:
-        exhausted = gate.get("exhausted_barriers") or []
-        why = f"{len(open_nodes)} open nodes, budget allows dispatch"
-        if exhausted:
-            why += f"; NOTE exhausted barriers to convert: {', '.join(exhausted[:3])}"
+        why = f"{len(open_nodes)} open nodes remain"
         return _step("crank_loop", f"witsoc run {run}", why,
                      open_nodes=len(open_nodes))
 
