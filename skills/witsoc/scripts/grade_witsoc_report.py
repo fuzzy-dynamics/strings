@@ -16,7 +16,10 @@ def load(path: Path, default: Any) -> Any:
         return default
 
 
-from witcore import records  # noqa: E402  -- shared substrate, was a local copy
+def records(path: Path) -> list[dict]:
+    data = load(path, [])
+    return [x for x in data if isinstance(x, dict)] if isinstance(data, list) else []
+
 
 def substantive(path: Path) -> bool:
     try:
@@ -36,144 +39,6 @@ def grade(score: int) -> str:
     if score >= 55:
         return "D"
     return "F"
-
-
-# Status vocabularies for the PROGRESS score. A node is "closed" only with
-# kernel/verifier-grade evidence; "partial" is informal-but-real; everything
-# else is unclosed.
-CLOSED_STATUSES = {"CHECKED", "VERIFIED", "LEAN_VERIFIED", "PROOF_DISCHARGED",
-                   "RECEIPT_ACCEPTED"}
-PARTIAL_STATUSES = {"PROVED_SKETCH", "PARTIAL", "CONDITIONAL"}
-
-
-def _node_status(node: dict) -> str:
-    return str(node.get("status") or "").upper()
-
-
-def _skeptic_passes_by_node(skeptic: list) -> dict[str, int]:
-    """Count corroborating (non-refuting) skeptic reviews per node id."""
-    by_node: dict[str, int] = {}
-    for rev in skeptic:
-        if not isinstance(rev, dict):
-            continue
-        node_id = str(rev.get("node_id") or rev.get("target_node") or rev.get("node") or "")
-        refuted = rev.get("refuted")
-        verdict = str(rev.get("verdict") or rev.get("status") or "").upper()
-        # A review corroborates unless it explicitly refutes / demotes.
-        passes = (refuted is False) or (refuted is None and verdict not in
-                                        {"REFUTED", "DEMOTED", "REJECTED", "FAILED"})
-        if passes:
-            by_node[node_id] = by_node.get(node_id, 0) + 1
-    return by_node
-
-
-def progress_evaluate(run: Path) -> dict:
-    """A PROGRESS-weighted score, orthogonal to the structural one.
-
-    The structural grade rewards scaffolding presence (ledgers, dependency
-    paths, a report); a run that proves NOTHING can still score a C there. This
-    score instead measures verifiable mathematical bite: closed proof-DAG nodes
-    dominate, formalization is light credit, and a run with zero closed nodes is
-    hard-capped into the F/D band no matter how complete its scaffolding is.
-    """
-    dag = records(run / "proof_dependency_dag.json")
-    workers = records(run / "worker_results.json")
-    skeptic = records(run / "skeptic_reviews.json")
-    products = records(run / "product_selection.json")
-
-    total = len(dag)
-    closed = [n for n in dag if _node_status(n) in CLOSED_STATUSES]
-    partial = [n for n in dag if _node_status(n) in PARTIAL_STATUSES]
-    formalized = [n for n in dag if str(n.get("lean_statement") or "").strip()]
-    n_closed, n_partial, n_formal = len(closed), len(partial), len(formalized)
-
-    components: dict[str, float] = {}
-
-    # 1. Closure ratio (50) — kernel/verifier-gated nodes of the target DAG.
-    components["closure_ratio"] = (50.0 * n_closed / total) if total else 0.0
-    # 2. Partial informal progress (15) — sketches/special cases.
-    components["partial_progress"] = (15.0 * n_partial / total) if total else 0.0
-    # 3. Formalization readiness (10) — dispatchable goals; formalizing is not
-    #    proving, so this is deliberately light.
-    components["formalization_readiness"] = (10.0 * n_formal / total) if total else 0.0
-    # 4. Skeptic corroboration (15) — only meaningful on closed nodes; ≥3
-    #    independent passing reviews per closed node saturates (Two-Stage rule).
-    passes = _skeptic_passes_by_node(skeptic)
-    if n_closed:
-        closed_ids = {str(n.get("node_id")) for n in closed}
-        depth = sum(min(3, passes.get(nid, 0)) for nid in closed_ids)
-        components["skeptic_corroboration"] = 15.0 * depth / (3 * n_closed)
-    else:
-        components["skeptic_corroboration"] = 0.0
-    # 5. Verified product (10) — a SELECTED product carrying real evidence.
-    verified_product = any(
-        p.get("selected") is True and str(p.get("status") or "").upper() in
-        (CLOSED_STATUSES | PARTIAL_STATUSES)
-        for p in products
-    )
-    components["verified_product"] = 10.0 if verified_product else 0.0
-
-    raw = sum(components.values())
-
-    # Honesty cap: zero closed nodes => no verifiable progress on the target,
-    # regardless of formalization/scaffolding. Cap below the C band.
-    capped = raw
-    cap_applied = False
-    if n_closed == 0 and raw > 25:
-        capped = 25.0
-        cap_applied = True
-
-    notes: list[str] = []
-
-    # P1 — conjecture-distance cap. The closure ratio above is over the SEEDED
-    # DAG; it rewards closing whatever was seeded (e.g. two trivial Erdős–Straus
-    # cases) even when the conjecture is untouched. When a reduction ledger
-    # exists it states `target ⟸ obligations ∧ open_core`, and its assessment
-    # bounds progress toward the actual TARGET: while the open_core is open,
-    # closing easy obligations is not progress on the conjecture. Apply it as a
-    # ceiling on the DAG-derived score. No ledger => unchanged (back-compat).
-    reduction = None
-    try:
-        import reduction_ledger as rl
-        led = rl._load(rl.ledger_path(run), None)
-        if isinstance(led, dict) and led.get("schema") == rl.SCHEMA:
-            reduction = rl.assess(led)
-    except Exception:
-        reduction = None
-    if reduction is not None:
-        red_cap = float(reduction["progress_cap"])
-        if capped > red_cap:
-            capped = red_cap
-            cap_applied = True
-            notes.append(f"reduction cap [{reduction['band']}]: {reduction['cap_note']}")
-
-    score = int(round(max(0.0, min(100.0, capped))))
-    if total == 0:
-        notes.append("no proof DAG: nothing to make progress on")
-    if n_closed == 0:
-        notes.append("ZERO kernel/verifier-closed nodes — no verifiable progress on the target")
-    if cap_applied and reduction is None:
-        notes.append("progress score hard-capped at 25 (no closed nodes)")
-    if n_formal and n_closed == 0:
-        notes.append(f"{n_formal}/{total} nodes formalized but none proved — dispatchable, not progress")
-
-    result = {
-        "progress_score": score,
-        "progress_grade": grade(score),
-        "components": {k: round(v, 2) for k, v in components.items()},
-        "counts": {
-            "dag_nodes": total,
-            "closed_nodes": n_closed,
-            "partial_nodes": n_partial,
-            "formalized_nodes": n_formal,
-            "closure_ratio": round(n_closed / total, 3) if total else 0.0,
-        },
-        "cap_applied": cap_applied,
-        "notes": notes,
-    }
-    if reduction is not None:
-        result["reduction"] = reduction
-    return result
 
 
 def evaluate(run: Path) -> dict:
@@ -286,52 +151,11 @@ def evaluate(run: Path) -> dict:
         gaps.append("human-readable report missing or empty")
 
     score = max(0, min(100, score))
-    progress = progress_evaluate(run)
-
-    # Headline: the structural grade alone is misleading when scaffolding is
-    # complete but nothing is proved — surface BOTH and flag the gap explicitly.
-    gap = score - progress["progress_score"]
-    if progress["progress_score"] >= score - 10:
-        headline = (f"structural {grade(score)}({score}) / "
-                    f"progress {progress['progress_grade']}({progress['progress_score']})")
-    else:
-        headline = (f"structural {grade(score)}({score}) but progress "
-                    f"{progress['progress_grade']}({progress['progress_score']}) — "
-                    f"scaffolding outruns verified math by {gap} pts")
-        gaps.append("structural grade is scaffolding-inflated: progress grade is "
-                    f"{progress['progress_grade']} ({progress['progress_score']}/100)")
-
-    # Surface the conjecture-distance story to the human. The reduction
-    # assessment is the most honest thing the grader knows — without it the
-    # headline only compares scaffolding to seeded-DAG closure and never mentions
-    # the open_core (the real gap to the conjecture). Lead with it when present.
-    reduction = progress.get("reduction")
-    if reduction:
-        disc, tot = reduction["obligations_discharged"], reduction["obligations_total"]
-        oc = reduction["open_core_open"]
-        headline = (f"reduction [{reduction['band']}]: {disc}/{tot} obligations discharged, "
-                    f"{oc} open_core item(s) open — distance to the CONJECTURE | " + headline)
-        if oc:
-            gaps.append(f"reduction: {oc} open_core item(s) still OPEN — the hard part of the "
-                        "conjecture is unreduced; closing seeded obligations is not progress on it")
-        elif not reduction["reduced"]:
-            gaps.append(f"reduction: open_core addressed but {tot - disc} obligation(s) open / "
-                        "reduction unjustified — target not yet reduced")
-
-    result = {
-        "schema": "witsoc.report_quality_grade.v2",
+    return {
+        "schema": "witsoc.report_quality_grade.v1",
         "run_dir": str(run),
-        "headline": headline,
-        # Structural score (scaffolding presence) — kept under the original keys
-        # for back-compat with consumers that read `score`/`grade`.
         "score": score,
         "grade": grade(score),
-        "structural_score": score,
-        "structural_grade": grade(score),
-        # Progress score (verifiable mathematical bite).
-        "progress_score": progress["progress_score"],
-        "progress_grade": progress["progress_grade"],
-        "progress": progress,
         "counts": {
             "actual_lemmas": len(lemmas),
             "products": len(products),
@@ -344,9 +168,6 @@ def evaluate(run: Path) -> dict:
         "strengths": strengths,
         "gaps": gaps,
     }
-    if reduction:
-        result["reduction"] = reduction
-    return result
 
 
 def main() -> int:

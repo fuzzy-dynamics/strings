@@ -11,16 +11,9 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import os
 import re
-import sys
 from pathlib import Path
 from typing import Any
-
-SCRIPT_DIR = Path(__file__).resolve().parent
-sys.path.insert(0, str(SCRIPT_DIR))
-import concept_generator as cg  # noqa: E402
-import domain_barrier_lemmas as dbl  # noqa: E402
 
 
 def load(path: Path, default: Any) -> Any:
@@ -30,7 +23,10 @@ def load(path: Path, default: Any) -> Any:
         return default
 
 
-from witcore import records  # noqa: E402  -- shared substrate, was a local copy
+def records(path: Path) -> list[dict]:
+    data = load(path, [])
+    return [x for x in data if isinstance(x, dict)] if isinstance(data, list) else []
+
 
 def dump(path: Path, value: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -97,70 +93,7 @@ def node(node_id: str, statement: str, node_type: str, deps: list[str], target_h
     }
 
 
-def _concept_nodes(lean_target: str, domain: str, target_hash: str) -> tuple[list[dict], list[dict]]:
-    """Dispatchable concept nodes (K1..Kn): stepping-stone candidates from the
-    concept generator, each carrying a lean_statement the Prover dispatcher can
-    attack plus a bounded falsification descriptor. Born SPECULATIVE/OPEN —
-    decompose proposes, only the kernel gates promote."""
-    sampler = os.environ.get("WITSOC_BARRIER_SAMPLER")
-    cands = cg.deterministic_candidates(lean_target, domain) + cg.llm_candidates(lean_target, domain, 6, sampler)
-    nodes: list[dict] = []
-    lemmas: list[dict] = []
-    i = 0
-    for c in cands:
-        lean = c.get("lean_statement")
-        if not lean or any(t in lean for t in dbl.FORBIDDEN_LEAN):
-            continue
-        i += 1
-        ident = f"K{i}"
-        n = node(ident, c["form"], "concept", ["B"], target_hash, [ident, "B", "T"], 72 - i)
-        n["lean_statement"] = lean
-        n["arena"] = cg.ARENA
-        n["research_status"] = cg.OPEN
-        n["falsification_test"] = dbl.falsification_test(domain, lean)
-        nodes.append(n)
-        lemmas.append({
-            "lemma_id": f"lemma:{ident}", "node_id": ident, "statement": c["form"],
-            "lean_statement": lean, "why_it_matters": f"stepping stone toward the target ({c['kind']})",
-            "unlocks": ["T"],
-            "known_counterexamples_or_boundary_cases": [
-                {"status": "unprobed", "boundary_probe": n["falsification_test"].get("kind"),
-                 "note": "boundary cases to be probed by the falsification_test; no fabricated witness"}],
-            "failed_approaches": [{"method_family": "none_yet", "result": "unattempted",
-                                   "note": "fresh concept node; failures recorded after kernel dispatch"}],
-            "next_mutation": "kernel-dispatch the lean_statement; on failure mutate one axis",
-            "smallest_formalizable_subcase": lean, "status": "OPEN", "arena": cg.ARENA,
-            "target_hash": target_hash, "priority": 72 - i,
-        })
-    return nodes, lemmas
-
-
-def _barrier_nodes(statement: str, lean_target: str | None, domain: str,
-                   target_hash: str) -> tuple[list[dict], list[dict]]:
-    """Domain-specific barrier-lemma nodes via domain_barrier_lemmas (env-gated
-    LLM sampler/formalizer; templates-only by default)."""
-    translators = [t for t in (os.environ.get("WITSOC_FAITHFULNESS_TRANSLATORS") or "").split(",") if t]
-    lemmas = dbl.generate_barrier_lemmas(
-        statement, lean_target=lean_target, domain=domain, target_hash=target_hash,
-        sampler=os.environ.get("WITSOC_BARRIER_SAMPLER"),
-        formalizer=os.environ.get("WITSOC_BARRIER_FORMALIZER"),
-        faithfulness_translators=translators or None)
-    nodes: list[dict] = []
-    for l in lemmas:
-        n = node(l["node_id"], l["statement"], "mined_barrier_lemma", ["B"], target_hash,
-                 l.get("dependency_path_to_target") or [l["node_id"], "T"], l.get("priority", 80))
-        n["barrier_type"] = l["barrier_type"]
-        n["lean_statement"] = l.get("lean_statement")
-        n["arena"] = l.get("arena", "SPECULATIVE")
-        n["research_status"] = l.get("status", "OPEN_UNFALSIFIED")
-        n["status"] = "OPEN"  # node-level status stays in the core vocabulary
-        n["falsification_test"] = l.get("falsification_test")
-        nodes.append(n)
-    return nodes, lemmas
-
-
-def decompose(statement: str, target_hash: str, lean_target: str | None = None,
-              domain: str | None = None) -> tuple[list[dict], list[dict]]:
+def decompose(statement: str, target_hash: str) -> tuple[list[dict], list[dict]]:
     tags = domain_tags(statement)
     nodes: list[dict] = [
         node("T", statement, "target", [], target_hash, ["T"], 100),
@@ -200,22 +133,8 @@ def decompose(statement: str, target_hash: str, lean_target: str | None = None,
         nodes.append(node("L1", "Encoding audit: normalize the logical formula and identify clauses/variables/resolution steps that preserve the frozen target.", "definition_audit", ["D"], target_hash, ["L1", "D", "T"], 78))
         nodes.append(node("L2", "Bounded refutation/search: test small instances or bounded proof objects before claiming a general proof.", "counterexample_search", ["C"], target_hash, ["L2", "C", "T"], 72))
 
-    # Dispatchable layers (restored wiring): concept stepping-stones when the
-    # target is formal, domain barrier lemmas when a domain is declared. Both
-    # arrive SPECULATIVE/OPEN with falsification descriptors — never trusted.
-    extra_lemmas: list[dict] = []
-    if lean_target:
-        knodes, klemmas = _concept_nodes(lean_target, domain or "other", target_hash)
-        nodes.extend(knodes)
-        extra_lemmas.extend(klemmas)
-    if domain:
-        bnodes, blemmas = _barrier_nodes(statement, lean_target, domain, target_hash)
-        nodes.extend(bnodes)
-        extra_lemmas.extend(blemmas)
-
-    skip_projection = {n["node_id"] for n in nodes if n.get("barrier_type") or n["node_id"].startswith("K")}
     for n in nodes:
-        if n["node_id"] == "T" or n["node_id"] in skip_projection:
+        if n["node_id"] == "T":
             continue
         lemmas.append({
             "lemma_id": f"lemma:{n['node_id']}",
@@ -231,7 +150,6 @@ def decompose(statement: str, target_hash: str, lean_target: str | None = None,
             "target_hash": target_hash,
             "priority": n["priority"],
         })
-    lemmas.extend(extra_lemmas)
     return nodes, lemmas
 
 
@@ -248,16 +166,12 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("run_dir", type=Path)
     parser.add_argument("--target", default="")
-    parser.add_argument("--lean-target", default=None,
-                        help="formal Lean goal; enables dispatchable concept nodes (K1..Kn)")
-    parser.add_argument("--domain", default=None,
-                        help="problem domain; enables domain-specific barrier-lemma nodes")
     parser.add_argument("--out", type=Path, default=None)
     parser.add_argument("--write", action="store_true", help="Update proof_dependency_dag.json and actual_lemma_queue.json.")
     args = parser.parse_args()
 
     target, target_hash = infer_target(args.run_dir, args.target)
-    nodes, lemmas = decompose(target, target_hash, lean_target=args.lean_target, domain=args.domain)
+    nodes, lemmas = decompose(target, target_hash)
     result = {
         "schema": "witsoc.problem_decomposition.v1",
         "target_hash": target_hash,

@@ -40,6 +40,7 @@ witsoc check runs/task/artifact.wit
 witsoc cycle runs/task/artifact.wit --handoff runs/task/handoff.json --out runs/task/
 witsoc freeze-check runs/task/artifact.wit --handoff runs/task/handoff.json
 witsoc handoff validate runs/task/handoff.json
+witsoc proof-dag validate runs/task/handoff.json
 witsoc receipt runs/task/artifact.wit --from verifier.txt
 witsoc toolchain check --strict
 witsoc research-search number-theory -- --mode multiperfect --limit 10000
@@ -49,16 +50,6 @@ witsoc smt-synthesize --file runs/task/reduction.smt2
 witsoc lean-tactic-scan --file runs/task/frozen_lean_target.lean
 witsoc mathlib-atlas --query "finite set cardinality" --signature "Finset.card"
 witsoc asymptotic-analyze --expr "log(n) = o(n)" --variable n
-witsoc olympiad profile --statement "∀ n : Nat, n + 0 = n"
-witsoc olympiad prove --statement "∀ n : Nat, n + 0 = n"
-witsoc olympiad eval --suite benchmarks/olympiad_suite.json --mode fast
-witsoc open-rungs build --target "Erdos-Straus conjecture" --domain number_theory
-witsoc rung-saturation --target "Erdos-Straus conjecture" --domain number_theory --top 24
-witsoc barrier-attack init runs/erdos-straus --target "Erdos-Straus conjecture" --domain number_theory
-witsoc lovasz-top-tier prepare runs/erdos-straus --target "Erdos-Straus conjecture" --domain number_theory
-witsoc lovasz-top-tier audit runs/erdos-straus
-witsoc lovasz-agent-packets template --role Builder
-witsoc open-frontier run --target "Erdos-Straus conjecture" --domain number_theory --run-dir runs/erdos-straus --mode both
 ```
 
 Until such a binary exists, report the exact script or CLI command used and its status.
@@ -101,14 +92,6 @@ python3 "$ASYM" --expr "log(n) = o(n)" --variable n
 CAMPAIGN="$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/lovasz_campaign_template.py)"
 python3 "$CAMPAIGN" --template induced-tree-triangle-free
 python3 "$CAMPAIGN" --template divisor-sum-asymptotic
-
-WITSOC="$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/witsoc.py)"
-python3 "$WITSOC" services                                   # the witsoc/Lovasz service boundary registry
-python3 "$WITSOC" gap-feedback runs/task                     # L1: classify failures, propose one-axis mutations
-python3 "$WITSOC" barrier-attack init runs/task --target "..." --domain number_theory
-python3 "$WITSOC" barrier-attack mutate runs/task
-python3 "$WITSOC" lovasz-top-tier prepare runs/task --target "..." --domain number_theory
-python3 "$WITSOC" lovasz-top-tier audit runs/task
 ```
 
 `toolchain_check.py` is diagnostic by default. Use `--strict` only when the run must fail if WIT, Lean/Lake, or local Witsoc scripts are missing.
@@ -118,15 +101,3 @@ python3 "$WITSOC" lovasz-top-tier audit runs/task
 `finite_graph_backend.py` is the exact bounded graph checker for small graph-theory targets. Use it when the barrier concerns chromatic number, triangle-freeness, and induced containment. Its chromatic-number and induced-subgraph tests are exact on the enumerated finite scope, but the output is still only `CHECKED` bounded evidence unless a separate WIT/Lean proof generalizes the result.
 
 `lovasz_campaign_template.py` provides reusable Lovasz campaign seeds for recurring open-problem shapes. Use it to prevent runs from stopping at "known open" without an actual lemma queue, proof-DAG seed, and worker plan.
-
-`barrier_attack.py` is the default open-problem preflight for Lovasz V2. It
-creates named barrier records, saturates partial rungs, merges dispatchable
-obligations into `proof_dependency_dag.json`, and appends corresponding lemma
-queue entries. `campaign_driver.py` runs this preparation automatically before
-dispatch; manual invocation is useful for inspection and review.
-
-`lovasz_top_tier.py` is the high-level readiness bar for serious open-problem
-runs. `prepare` materializes barrier/rung/role/success artifacts; `audit`
-checks items 2-12 as deterministic conditions; `benchmark` runs the
-rediscovery benchmark path. A top-tier run should pass this audit before any
-claim is reported outside the campaign.

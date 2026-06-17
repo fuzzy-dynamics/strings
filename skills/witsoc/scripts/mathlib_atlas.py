@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 import subprocess
 import sys
@@ -42,7 +43,14 @@ def tokens(text: str) -> list[str]:
     return re.findall(r"[A-Za-z0-9_.'-]+", text.lower())
 
 
-from witcore import cosine  # noqa: E402  -- shared substrate, was a local copy
+def cosine(a: Counter[str], b: Counter[str]) -> float:
+    if not a or not b:
+        return 0.0
+    dot = sum(a[k] * b.get(k, 0) for k in a)
+    na = math.sqrt(sum(v * v for v in a.values()))
+    nb = math.sqrt(sum(v * v for v in b.values()))
+    return dot / (na * nb) if na and nb else 0.0
+
 
 def load_atlas(path: Path | None, external_cmd: str | None) -> dict[str, Any]:
     if external_cmd:
@@ -92,39 +100,6 @@ def node_text(node: dict[str, Any]) -> str:
     return " ".join(parts)
 
 
-# Type-aware retrieval: an EXACT symbol-overlap signal. A goal that NAMES
-# `Nat.divisors` must retrieve the divisors module even when doc words point
-# elsewhere; a goal naming no qualified symbol gets overlap 0 everywhere, so
-# ranking reduces to the cosine+pagerank order (no regression on core goals).
-_QUALIFIED_RE = re.compile(r"\b([A-Z][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_']*)+)\b")
-# Goal notation that implies a provider symbol without naming it.
-_NOTATION_SYMBOLS = {"∑": "Finset.sum", "∏": "Finset.prod", "∣": "Dvd.dvd"}
-
-
-def query_symbols(query: str, signature: str = "") -> set[str]:
-    """Qualified declarations a goal names (`Nat.divisors`, `List.reverse`, …),
-    plus symbols implied by notation (∑ -> Finset.sum)."""
-    text = f"{query} {signature}"
-    syms = set(_QUALIFIED_RE.findall(text))
-    for nota, sym in _NOTATION_SYMBOLS.items():
-        if nota in text:
-            syms.add(sym)
-    return syms
-
-
-def symbol_overlap(qsyms: set[str], node: dict[str, Any]) -> float:
-    """Fraction of the goal's named symbols this node PROVIDES. A node symbol
-    counts when it equals the query symbol or is in the same family
-    (`Nat.divisors_eq` provides for `Nat.divisors`) — but NOT the reverse: a
-    generic namespace root (`Nat`) must not match a specific lemma."""
-    if not qsyms:
-        return 0.0
-    provided = [str(s) for s in node.get("symbols", []) or []]
-    hits = sum(1 for q in qsyms
-               if any(s == q or s.startswith(q + "_") or s.startswith(q + ".") for s in provided))
-    return hits / len(qsyms)
-
-
 def query_atlas(atlas: dict[str, Any], query: str, signature: str, limit: int) -> dict[str, Any]:
     nodes = [node for node in atlas.get("nodes", []) if isinstance(node, dict) and node.get("module")]
     if not nodes:
@@ -136,22 +111,18 @@ def query_atlas(atlas: dict[str, Any], query: str, signature: str, limit: int) -
         }
     rank = pagerank(nodes)
     qvec = Counter(tokens(f"{query} {signature}"))
-    qsyms = query_symbols(query, signature)
     scored = []
     for node in nodes:
         module = str(node["module"])
         sim = cosine(qvec, Counter(tokens(node_text(node))))
         centrality = rank.get(module, 0.0)
-        symovl = symbol_overlap(qsyms, node)
-        # exact symbol provision dominates; with no named symbols (symovl 0
-        # everywhere) this reduces to the previous cosine+pagerank ranking.
-        score = 0.55 * symovl + 0.35 * sim + 0.10 * centrality
-        scored.append((score, sim, centrality, symovl, node))
-    scored.sort(key=lambda item: (-item[0], str(item[4].get("module", ""))))
+        score = 0.8 * sim + 0.2 * centrality
+        scored.append((score, sim, centrality, node))
+    scored.sort(key=lambda item: (-item[0], str(item[3].get("module", ""))))
     matches = []
     imports: list[str] = []
     seen: set[str] = set()
-    for score, sim, centrality, symovl, node in scored[:limit]:
+    for score, sim, centrality, node in scored[:limit]:
         module = str(node["module"])
         if module not in seen:
             imports.append(module)
@@ -166,7 +137,6 @@ def query_atlas(atlas: dict[str, Any], query: str, signature: str, limit: int) -
             "score": score,
             "similarity": sim,
             "pagerank": centrality,
-            "symbol_overlap": symovl,
             "symbols": node.get("symbols", []),
             "imports": node.get("imports", []),
         })

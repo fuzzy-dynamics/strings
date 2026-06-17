@@ -22,39 +22,14 @@ LOVASZ = "witsoc-research-lovasz"
 EXPLORER = "witsoc-explorer"
 GENERATOR = "witsoc-generator"
 DIRECT = "witsoc-direct"
-OLYMPIAD_FAST = "witsoc-olympiad-fast-lane"
-
-REQUIRED_LOVASZ_ARTIFACTS = [
-    "lovasz_run.json",
-    "proof_dependency_dag.json",
-    "actual_lemma_queue.json",
-    "worker_results.json",
-    "gap_feedback.json",
-    "lovasz_result_scores.json",
-    "formalization_feasibility.json",
-    "lovasz_campaign_state.json",
-    "lovasz_doctor.json",
-    "lovasz_synthesis_audit.json",
-    "open_problem_report.md",
-    "explorer_return_packet.json",
-]
-
-REQUIRED_LOVASZ_COMMANDS = [
-    "lovasz-manifest",
-    "synthesize-ledgers",
-    "validate-open-problem",
-    "validate-dag-integrity",
-    "campaign run",
-    "campaign finalize",
-    "validate-lovasz-run",
-    "explorer-return",
-]
 
 
 UNSOLVED_PATTERNS = [
     r"\bunsolved\b",
     r"\bopen problem\b",
-    r"\bopen\b",
+    r"\bopen (question|conjecture|target|case|problem)\b",
+    r"\bstill open\b",
+    r"\bremains open\b",
     r"\bunresolved\b",
     r"\bfrontier\b",
     r"\bresearch[- ]level\b",
@@ -97,62 +72,10 @@ NAMED_OPEN_PATTERNS = [
     r"\bmillennium\b",
     r"\bprize problem\b",
     r"\briemann hypothesis\b",
-    r"\brh\b",
     r"\bgoldbach\b",
     r"\btwin prime\b",
     r"\bcollatz\b",
     r"\bp\s*(=|vs\.?|versus)\s*np\b",
-]
-
-OLYMPIAD_PATTERNS = [
-    r"\bimo\b",
-    r"\busamo\b",
-    r"\begmo\b",
-    r"\bapmo\b",
-    r"\bputnam\b",
-    r"\bimc\b",
-    r"\baime\b",
-    r"\bamc\b",
-    r"\bolympiad\b",
-    r"\bshortlist\b",
-    r"\bcompetition (problem|math)\b",
-    r"\bmath(s|ematical)? competition\b",
-    r"\bminif2f\b",
-]
-
-# Serious prove/show requests. These route through Lovasz as proof-campaign
-# director (sketch tournament -> decompose -> prover dispatch -> skeptic) when
-# the statement has mathematical substance — see MATH_SUBSTANCE_PATTERNS.
-HARD_PROOF_PATTERNS = [
-    r"\bprove\b",
-    r"\bdisprove\b",
-    r"\bshow that\b",
-    r"\bdetermine all\b",
-    r"\bfind all\b",
-    r"\bgive a (full |complete |rigorous )?proof\b",
-    r"\bsolve\b.*\b(functional equation|diophantine|congruence|recurrence)\b",
-]
-
-# Triviality guard for HARD_PROOF: a bare "prove 1+1=2" stays on the light
-# Explorer path; anything with real mathematical objects gets the campaign.
-MATH_SUBSTANCE_PATTERNS = [
-    r"[∀∃∑∏≤≥≠∣]",
-    r"\bfor (all|every|each)\b",
-    r"\bthere (exist|is|are)\b",
-    r"\binfinitely many\b",
-    r"\b(positive |natural |real |rational )?(integers?|numbers?|reals?)\b",
-    r"\bprimes?\b",
-    r"\bgraphs?\b",
-    r"\bsequences?\b",
-    r"\bfunctions?\b",
-    r"\bpolynomials?\b",
-    r"\btriangles?\b",
-    r"\binequalit(y|ies)\b",
-    r"\bdivisib(le|ility)\b",
-    r"\btheorems?\b",
-    r"\blemmas?\b",
-    r"\bmodulo\b",
-    r"\bset of\b",
 ]
 
 ARTIFACT_PATTERNS = [
@@ -203,12 +126,150 @@ def any_match(patterns: list[str], text: str) -> str | None:
     return None
 
 
+def rh_problem_context(text: str) -> bool:
+    if not re.search(r"\bRH\b", text):
+        return False
+    return bool(re.search(
+        r"\b(riemann|hypothesis|prove|disprove|solve|formaliz(e|ation)|lean|wit|conjecture)\b",
+        text,
+        flags=re.IGNORECASE,
+    ))
+
+
+def short_title(text: str, limit: int = 72) -> str:
+    compact = " ".join(text.split())
+    if len(compact) <= limit:
+        return compact
+    return compact[: limit - 3].rstrip() + "..."
+
+
+def deep_run_spec(prompt: str, *, mode: str, include_generator: bool = False) -> dict[str, object]:
+    menu: list[dict[str, object]] = [
+        {
+            "name": "statement-freeze",
+            "lane": "intake",
+            "suggested_agent": "scout",
+            "value": "Freeze exact statement, variants, definitions, sources, and target hashes.",
+            "risk": "Freezing the wrong variant wastes downstream work.",
+            "expected_outputs": ["statement-ledger.md", "lovasz_run.json"],
+            "validators": ["validate-route-state"],
+        },
+        {
+            "name": "literature-barriers",
+            "lane": "retrieval",
+            "suggested_agent": "scout",
+            "value": "Separate known results, theorem preconditions, failed methods, and source status.",
+            "risk": "Source coverage can be stale or informal; do not promote without exact statements.",
+            "expected_outputs": ["theorem_precondition_audit.json", "novelty-ledger.md"],
+            "validators": ["validate-open-problem"],
+        },
+        {
+            "name": "counterexample-pressure",
+            "lane": "disproof",
+            "suggested_agent": "worker",
+            "value": "Try definitions, variants, boundary cases, bounded searches, and obstruction families.",
+            "risk": "No bounded witness is not proof.",
+            "expected_outputs": ["disproof_first.json", "computational-search.md"],
+            "validators": ["validate-open-problem"],
+        },
+        {
+            "name": "barrier-dag",
+            "lane": "decomposition",
+            "suggested_agent": "worker",
+            "value": "Name actual barrier lemmas and dependency paths back to the frozen target.",
+            "risk": "A side lemma without a dependency path is not progress on the target.",
+            "expected_outputs": ["proof_dependency_dag.json", "actual_lemma_queue.json", "barrier_attacks.json"],
+            "validators": ["validate-dag-integrity", "validate-open-problem"],
+        },
+        {
+            "name": "idea-generation",
+            "lane": "creative",
+            "suggested_agent": "worker",
+            "value": "Use analogy, conjecture mining, construction search, speculative bridges, and technique transfer.",
+            "risk": "Ideas enter only as OPEN_UNFALSIFIED candidates until checked.",
+            "expected_outputs": ["worker_results.json", "lemma_pool.json"],
+            "validators": ["validate-lovasz-worker-quality"],
+        },
+        {
+            "name": "formalizable-rungs",
+            "lane": "verification",
+            "suggested_agent": "worker",
+            "value": "Select special cases, reductions, conditionals, computations, or counterexamples for checking.",
+            "risk": "A formalizable subgoal can still miss the original target.",
+            "expected_outputs": ["product_selection.json", "formalization_feasibility.json"],
+            "validators": ["validate-explorer-review"],
+        },
+        {
+            "name": "skeptic-synthesis",
+            "lane": "review",
+            "suggested_agent": "reviewer",
+            "value": "Demote weak claims, classify gaps, record one-axis mutations, and decide reportability.",
+            "risk": "Skeptic review may invalidate attractive but unsupported products.",
+            "expected_outputs": ["gap_feedback.json", "mutation_ledger.json", "explorer_return_packet.json"],
+            "validators": ["validate-explorer-review", "validate-lovasz-run"],
+        },
+    ]
+    if include_generator:
+        menu.append({
+            "name": "artifact-package",
+            "lane": "artifact",
+            "suggested_agent": "worker",
+            "value": "After Explorer authorization, package accepted narrow products into WIT/Lean artifacts and receipts.",
+            "risk": "Generator packages mathematics; it does not certify unsupported claims.",
+            "expected_outputs": ["handoff_v1.json", "witsoc_artifacts.json", "generator_artifact_receipt.json"],
+            "validators": ["generator-receipt"],
+        })
+    return {
+        "schema": "witsoc.deep_run_spec.v2",
+        "title": f"Witsoc: {short_title(prompt, 54)}",
+        "prompt": prompt,
+        "mode": mode,
+        "orchestrator_authority": (
+            "The orchestrator owns strategy, fanout, ordering, budget, agent assignment, "
+            "reframing, and which Witsoc recommendations to use. Witsoc gates only police claim honesty."
+        ),
+        "mission_menu": menu,
+        "recommended_start": "statement-freeze",
+        "alternative_strategies": [
+            "counterexample-first",
+            "literature-and-barrier-scouting",
+            "formalization-feasibility-first",
+            "creative-idea-generation",
+            "parallel-lane-tournament",
+        ],
+        "composition_hints": [
+            "Run counterexample pressure early when definitions or variants are fragile.",
+            "Run literature/barrier scouting in parallel with formalization feasibility on named problems.",
+            "Use idea-generation when current barriers have stale method families.",
+            "Run skeptic review before promoting products into a report.",
+            "Artifact packaging is useful only after an accepted narrow product exists.",
+        ],
+        "hard_gates": [
+            "target_freeze_before_serious_claims",
+            "no_status_upgrade_without_evidence",
+            "open_solve_requests_need_barrier_or_gap_evidence",
+            "generator_does_not_arbitrate_truth",
+        ],
+        "required_artifacts": [
+            "statement-ledger.md",
+            "lovasz_run.json",
+            "proof_dependency_dag.json",
+            "actual_lemma_queue.json",
+            "barrier_attacks.json",
+            "worker_results.json",
+            "gap_feedback.json",
+            "mutation_ledger.json",
+            "explorer_return_packet.json",
+        ],
+    }
+
+
 def research_mode(text: str, *, open_style: bool) -> tuple[str, str]:
     if any_match(CAMPAIGN_PATTERNS, text):
-        return "campaign", "expand only when independent DAG nodes justify it"
+        return "campaign", "orchestrator decides fanout and budget; Witsoc supplies candidate lanes and gates"
     if any_match(DEEP_RUN_PATTERNS, text) or open_style:
-        return "deep", "adaptive planning/evolution; spawn every justified independent DAG node"
-    return "quick", "spawn only when useful; no fixed Lovasz planning cap"
+        return "deep", "orchestrator decides fanout and ordering; Witsoc supplies candidate lanes and gates"
+    return "quick", "orchestrator may spawn workers when useful; no fixed Witsoc fanout"
 
 
 def artifact_paths(prompt: str) -> list[dict[str, object]]:
@@ -253,10 +314,7 @@ def route_state(prompt: str, result: dict[str, object]) -> dict[str, object]:
         "lovasz_required": LOVASZ in chain or result.get("required_followup") == LOVASZ,
         "generator_authorized": result.get("route") == GENERATOR and not result.get("requires_explorer_handoff", False),
         "requires_explorer_review_after_lovasz": result.get("requires_explorer_review_after_lovasz", False),
-        "immediate_followup_after_explorer_triage": result.get("immediate_followup_after_explorer_triage"),
-        "required_lovasz_artifacts": result.get("required_lovasz_artifacts", []),
-        "required_lovasz_commands": result.get("required_lovasz_commands", []),
-        "lovasz_step_policy": result.get("lovasz_step_policy"),
+        "deep_run_spec": result.get("deep_run_spec"),
         "blockers": result.get("blockers", []),
         "must_not_skip": result.get("must_not_skip", []),
         "completion_guard": result.get("completion_guard"),
@@ -313,13 +371,10 @@ def explorer_then_lovasz(*, prompt: str, reason: str, mode: str, worker_policy: 
             blockers=[],
             must_not_skip=must_not_skip,
             required_followup=LOVASZ,
-            immediate_followup_after_explorer_triage=LOVASZ,
-            required_lovasz_artifacts=REQUIRED_LOVASZ_ARTIFACTS,
-            required_lovasz_commands=REQUIRED_LOVASZ_COMMANDS,
-            lovasz_step_policy="adaptive_unbounded_until_stop_conditions",
             requires_explorer_review_after_lovasz=True,
             generator_after_explorer_authorization=include_generator,
-            completion_guard="status-only report is incomplete; at the instant Explorer classifies the frozen target as OPEN/UNSOLVED/UNCONFIRMED/frontier/blocked, Explorer must create the Lovasz barrier packet and dispatch Lovasz before any final report or Generator handoff unless Lovasz is operationally blocked; Explorer must review Lovasz output afterward",
+            deep_run_spec=deep_run_spec(prompt, mode=mode, include_generator=include_generator),
+            completion_guard="status-only report is incomplete; Explorer must dispatch Lovasz immediately after triage, then Explorer must review Lovasz output before Generator or final reporting unless the target is solved/false/routine or Lovasz is operationally blocked",
         )
     }
 
@@ -331,10 +386,7 @@ def route(prompt: str) -> dict[str, object]:
     existing_artifacts = [p for p in artifacts if p.get("exists")]
 
     unsolved_hit = any_match(UNSOLVED_PATTERNS, lower)
-    named_hit = any_match(NAMED_OPEN_PATTERNS, lower)
-    olympiad_hit = any_match(OLYMPIAD_PATTERNS, lower)
-    hard_proof_hit = any_match(HARD_PROOF_PATTERNS, lower)
-    substance_hit = any_match(MATH_SUBSTANCE_PATTERNS, text) or len(text) > 120
+    named_hit = any_match(NAMED_OPEN_PATTERNS, lower) or ("bare_RH_math_context" if rh_problem_context(text) else None)
     artifact_hit = any_match(ARTIFACT_PATTERNS, lower)
     repair_hit = any_match(REPAIR_PATTERNS, lower)
     explorer_hit = any_match(EXPLORER_PATTERNS, lower)
@@ -376,48 +428,11 @@ def route(prompt: str) -> dict[str, object]:
             include_generator=bool(artifact_hit),
         )
 
-    if olympiad_hit:
-        chain = [EXPLORER, OLYMPIAD_FAST, EXPLORER]
-        must_not_skip = [EXPLORER, OLYMPIAD_FAST, "explorer_review_after_fast_lane"]
-        if artifact_hit:
-            chain.append(GENERATOR)
-            must_not_skip.append("generator_after_explorer_authorization")
-        return with_common_fields(
-            prompt=text,
-            route_name=EXPLORER,
-            announcement=f"Using witsoc with {EXPLORER} -> {OLYMPIAD_FAST} -> {EXPLORER}.",
-            reason=f"olympiad/competition guard matched {olympiad_hit!r}; Explorer freezes the "
-                   "target, then the local olympiad fast lane attempts bounded kernel-gated "
-                   "closure before falling back to Lovasz solved-class mode",
-            chain=chain,
-            research_mode_value="deep" if mode == "quick" else mode,
-            worker_policy="local-first fast lane; if it fails, Lovasz solved-class campaign expands over every justified independent DAG node",
-            confidence="high",
-            blockers=[],
-            must_not_skip=must_not_skip,
-            conditional_followup=LOVASZ,
-            conditional_followup_when="olympiad fast lane returns OBLIGATION_OPEN, BUDGET_EXHAUSTED, GAP, or non-kernel status",
-            requires_explorer_review_after_lovasz=False,
-            generator_after_explorer_authorization=bool(artifact_hit),
-            completion_guard="fast-lane closure must be kernel-gated; otherwise Explorer must dispatch Lovasz solved-class mode and review its return before final reporting",
-        )
-
     if lovasz_direct_hit:
         return explorer_then_lovasz(
             prompt=text,
             reason=f"direct Lovasz/skip-exploration guard matched {lovasz_direct_hit!r}; Explorer must still freeze the target before Lovasz",
             mode="deep",
-            worker_policy=worker_policy,
-            include_generator=bool(artifact_hit),
-        )
-
-    if hard_proof_hit and substance_hit:
-        return explorer_then_lovasz(
-            prompt=text,
-            reason=f"serious-proof guard matched {hard_proof_hit!r} with mathematical substance "
-                   f"({substance_hit if isinstance(substance_hit, str) else 'long statement'}); "
-                   "Lovasz directs the proof campaign after Explorer freezes the target",
-            mode=mode,
             worker_policy=worker_policy,
             include_generator=bool(artifact_hit),
         )

@@ -31,6 +31,22 @@ def dump(path: Path, value: Any) -> None:
     path.write_text(json.dumps(value, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
+def narrate(result: dict) -> str:
+    """Plain-language 'you are here / what happened / what's next' for a
+    controller result. Pure presentation over the gate records — it can only
+    restate the outcome, never change a gate verdict."""
+    try:
+        sys.path.insert(0, str(SCRIPT_DIR))
+        import witsoc_narrate
+        return witsoc_narrate.controller_human(result)
+    except Exception:
+        status = result.get("status", {}) or {}
+        fail = status.get("failed_gates") or []
+        if fail:
+            return f"Run halted at gate: {fail[0]}. See witsoc_run_controller.json for detail."
+        return f"Final status: {status.get('final_status', '?')}."
+
+
 def records(path: Path) -> list[dict]:
     value = load(path, [])
     return [x for x in value if isinstance(x, dict)] if isinstance(value, list) else []
@@ -163,6 +179,7 @@ def finalize(run: Path, *, require_route: bool = False) -> dict:
         "gates": gates,
         "status": status,
     }
+    result["narration"] = narrate(result)
     dump(run / "witsoc_final_status.json", status)
     dump(run / "witsoc_run_controller.json", result)
     return result
@@ -213,6 +230,7 @@ def run_open(args: argparse.Namespace) -> dict:
         "status": status,
         "next_repair": next((g for g in gates if not g["ok"]), None),
     }
+    result["narration"] = narrate(result)
     dump(run / "witsoc_final_status.json", status)
     dump(run / "witsoc_run_controller.json", result)
     return result
@@ -238,6 +256,7 @@ def validate_all(args: argparse.Namespace) -> dict:
         "gates": gates,
         "status": synthesize_status(run, gates),
     }
+    result["narration"] = narrate(result)
     dump(run / "witsoc_run_controller.json", result)
     return result
 
@@ -272,6 +291,11 @@ def main() -> int:
         result = finalize(args.run_dir, require_route=args.require_route)
     else:
         result = validate_all(args)
+    # Human narration on stderr (so a person sees what happened and what's next);
+    # machine-readable JSON on stdout (the `narration` field is also embedded).
+    if result.get("narration"):
+        print(result["narration"], file=sys.stderr)
+        print("", file=sys.stderr)
     print(json.dumps(result, indent=2, ensure_ascii=False))
     return 0 if result.get("valid") else 1
 

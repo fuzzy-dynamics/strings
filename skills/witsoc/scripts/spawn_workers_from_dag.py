@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 from pathlib import Path
 
 
@@ -28,7 +29,10 @@ def load(path: Path, default):
         return default
 
 
-from witcore import slug  # noqa: E402  -- shared substrate, was a local copy
+def slug(text: str) -> str:
+    s = re.sub(r"[^a-zA-Z0-9_+-]+", "-", text.strip()).strip("-").lower()
+    return s or "node"
+
 
 def sha(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
@@ -39,8 +43,7 @@ def main() -> int:
     parser.add_argument("run_dir", type=Path)
     parser.add_argument("--out-dir", type=Path, default=None)
     parser.add_argument("--session-id", default="manual")
-    parser.add_argument("--limit", type=int, default=0,
-                        help="maximum DAG nodes to packetize; 0 means all currently eligible nodes")
+    parser.add_argument("--limit", type=int, default=20)
     args = parser.parse_args()
 
     run = args.run_dir
@@ -51,11 +54,7 @@ def main() -> int:
     lemma_by_statement = {str(l.get("statement")): l for l in lemmas if isinstance(l, dict)}
     packets = []
 
-    eligible_nodes = [n for n in dag if isinstance(n, dict)]
-    if args.limit and args.limit > 0:
-        eligible_nodes = eligible_nodes[:args.limit]
-
-    for node in eligible_nodes:
+    for node in [n for n in dag if isinstance(n, dict)][: args.limit]:
         node_id = str(node.get("node_id") or node.get("id") or slug(str(node.get("statement", "node"))))
         statement = str(node.get("statement") or node.get("exact_statement") or "")
         if not statement:
@@ -84,16 +83,14 @@ def main() -> int:
                 "hypotheses_sha256": str(node.get("hypotheses_sha256") or target_hash),
                 "conclusion_sha256": str(node.get("conclusion_sha256") or target_hash),
             },
+            "budget": {
+                "time_minutes": 30,
+                "max_tool_calls": 20,
+                "max_tokens": 12000,
+            },
             "proof_worktree": proof_worktree,
             "dependency_path_to_target": node.get("dependency_path_to_target") or [],
-            "orchestrator_contract": {
-                "witsoc_role": "math_skill_packet_author",
-                "launch_decision": "external_orchestrator",
-                "fanout_policy": "orchestrator_selects_concurrency",
-            },
         }
-        if node.get("mutation_applied"):
-            packet["mutation_applied"] = str(node["mutation_applied"])
         path = out_dir / f"{slug(node_id)}.spawn.json"
         path.write_text(json.dumps(packet, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
         packets.append(str(path))

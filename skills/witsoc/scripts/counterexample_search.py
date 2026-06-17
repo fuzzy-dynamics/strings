@@ -114,7 +114,10 @@ def load(path: Path, default: Any) -> Any:
         return default
 
 
-from witcore import records  # noqa: E402  -- shared substrate, was a local copy
+def records(path: Path) -> list[dict]:
+    data = load(path, [])
+    return [x for x in data if isinstance(x, dict)] if isinstance(data, list) else []
+
 
 def infer_domains(run: Path, explicit: list[str]) -> list[str]:
     if explicit:

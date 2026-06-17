@@ -302,7 +302,7 @@ def status(d: Path | None = None) -> dict:
     by_role: dict[str, int] = {}
     for r in pend:
         by_role[str(r.get("role"))] = by_role.get(str(r.get("role")), 0) + 1
-    return {
+    record = {
         "schema": "witsoc.bus_status.v1",
         "dir": str(d),
         "enabled": enabled(),
@@ -314,6 +314,20 @@ def status(d: Path | None = None) -> dict:
         "next": ("fulfill pending requests (witsoc bus next-batch), then re-run "
                  "the command that reported them" if pend else "nothing pending"),
     }
+    record["human"] = _human_status(record)
+    return record
+
+
+def _human_status(record: dict) -> str:
+    """Plain-language header for the bus status (UX layer; never changes state)."""
+    try:
+        import witsoc_narrate
+        return witsoc_narrate.bus_human(record)
+    except Exception:
+        pend = record.get("pending", 0)
+        return (f"Intelligence Bus: {pend} request(s) pending — run `witsoc bus next-batch`, "
+                "answer each, then re-run your last command." if pend
+                else "Intelligence Bus: nothing pending.")
 
 
 def fulfill(rid: str, reply: dict, *, fulfiller: str = "orchestrator",
@@ -337,7 +351,7 @@ def fulfill(rid: str, reply: dict, *, fulfiller: str = "orchestrator",
 def next_batch(d: Path | None = None, role: str | None = None, max_n: int = 10) -> dict:
     """A self-contained fulfillment packet for the orchestrator/subagent."""
     batch = pending(d, role)[:max_n]
-    return {
+    packet = {
         "schema": "witsoc.bus_batch.v1",
         "standing_rules": STANDING_RULES,
         "count": len(batch),
@@ -349,6 +363,12 @@ def next_batch(d: Path | None = None, role: str | None = None, max_n: int = 10) 
             **({"memory_context": r["memory_context"]} if r.get("memory_context") else {}),
         } for r in batch],
     }
+    try:
+        import witsoc_narrate
+        packet["human"] = witsoc_narrate.batch_human(packet)
+    except Exception:
+        pass
+    return packet
 
 
 def gc(d: Path | None = None, max_age_hours: float = 48.0) -> dict:
@@ -398,7 +418,10 @@ def main() -> int:
 
     d = args.dir
     if args.cmd == "status":
-        print(json.dumps(status(d), indent=2, ensure_ascii=False))
+        rec = status(d)
+        if rec.get("human"):
+            print(rec["human"], file=sys.stderr)
+        print(json.dumps(rec, indent=2, ensure_ascii=False))
         return 0
     if args.cmd == "pending":
         for r in pending(d, args.role):
@@ -406,7 +429,10 @@ def main() -> int:
                               "priority": r.get("priority"), "created": r.get("created")}))
         return 0
     if args.cmd == "next-batch":
-        print(json.dumps(next_batch(d, args.role, args.max), indent=2, ensure_ascii=False))
+        packet = next_batch(d, args.role, args.max)
+        if packet.get("human"):
+            print(packet["human"], file=sys.stderr)
+        print(json.dumps(packet, indent=2, ensure_ascii=False))
         return 0
     if args.cmd == "fulfill":
         if (args.reply_json is None) == (args.reply_file is None):

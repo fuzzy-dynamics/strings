@@ -42,7 +42,7 @@ Stop the current branch and report honestly when:
 - a needed external theorem is unavailable or unformalized within budget,
 - counterexample pressure shows the statement is probably false or missing a hypothesis,
 - SafeVerify rejects all building candidates,
-- the configured user or runtime budget is exhausted.
+- the configured user or run budget is exhausted.
 
 Failure output:
 

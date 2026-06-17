@@ -43,7 +43,24 @@ def load(path: Path, default: Any) -> Any:
         return default
 
 
-from witcore import records  # noqa: E402  -- shared substrate, was a local copy
+def records(path: Path) -> list[dict]:
+    data = load(path, [])
+    return [x for x in data if isinstance(x, dict)] if isinstance(data, list) else []
+
+
+def flexible_records(path: Path, keys: tuple[str, ...] = ()) -> list[dict]:
+    data = load(path, [])
+    if isinstance(data, list):
+        return [x for x in data if isinstance(x, dict)]
+    if isinstance(data, dict):
+        for key in keys:
+            value = data.get(key)
+            if isinstance(value, list):
+                return [x for x in value if isinstance(x, dict)]
+        if data:
+            return [data]
+    return []
+
 
 def nonempty(path: Path) -> bool:
     try:
@@ -122,6 +139,46 @@ def validate_product_selection(run: Path, errors: list[str]) -> None:
                 errors.append(f"{label} missing {field}")
 
 
+def validate_barrier_attacks(run: Path, errors: list[str]) -> None:
+    barriers = flexible_records(run / "barrier_attacks.json", ("barriers", "records"))
+    if not barriers:
+        errors.append("barrier_attacks.json must contain at least one named barrier attack")
+        return
+    has_direct_attack = False
+    for i, barrier in enumerate(barriers):
+        label = f"barrier_attacks[{i}]"
+        for field in ("barrier_id", "actual_barrier_lemma", "why_it_blocks_target", "next_exact_attempt", "status"):
+            if barrier.get(field) in (None, "", []):
+                errors.append(f"{label} missing {field}")
+        attacks = barrier.get("direct_attacks")
+        if isinstance(attacks, list) and len(attacks) >= 2:
+            has_direct_attack = True
+        elif int(barrier.get("direct_attack_count") or 0) >= 2:
+            has_direct_attack = True
+        else:
+            errors.append(f"{label} must record at least two direct attacks or direct_attack_count >= 2")
+    if not has_direct_attack:
+        errors.append("barrier_attacks.json must record direct attack pressure on a named barrier")
+
+
+def validate_gap_feedback(run: Path, errors: list[str]) -> None:
+    feedback = load(run / "gap_feedback.json", {})
+    if not isinstance(feedback, dict) or feedback.get("schema") != "witsoc.gap_feedback.v1":
+        errors.append("gap_feedback.json must exist with schema witsoc.gap_feedback.v1")
+        return
+    nodes = feedback.get("nodes")
+    if not isinstance(nodes, dict) or not nodes:
+        errors.append("gap_feedback.json must classify at least one open/failed gap node")
+        return
+    for node_id, gap in nodes.items():
+        if not isinstance(gap, dict):
+            errors.append(f"gap_feedback node {node_id!r} must be an object")
+            continue
+        for field in ("gap_class", "failed_statement_sha", "proposed_mutation"):
+            if gap.get(field) in (None, "", []):
+                errors.append(f"gap_feedback node {node_id!r} missing {field}")
+
+
 def validate_mutations(run: Path, errors: list[str]) -> None:
     mutations = records(run / "mutation_ledger.json")
     if not mutations:
@@ -187,6 +244,19 @@ def validate_dependency_paths(run: Path, errors: list[str]) -> None:
             errors.append(f"proof_dependency_dag node {node_id!r} missing dependency_path_to_target")
 
 
+def validate_closure_evidence(run: Path, errors: list[str]) -> None:
+    workers = records(run / "worker_results.json")
+    products = records(run / "product_selection.json")
+    selected_products = [p for p in products if p.get("selected") is True]
+    barriers = flexible_records(run / "barrier_attacks.json", ("barriers", "records"))
+    evidence_count = len(workers) + len(selected_products) + len(barriers)
+    if evidence_count <= 0:
+        errors.append(
+            "open-problem run has no closure pressure: expected worker_results, "
+            "selected product_selection, or barrier_attacks"
+        )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("run_dir", type=Path)
@@ -203,9 +273,12 @@ def main() -> int:
         validate_disproof_first(run, errors)
     validate_theorem_audit(run, errors)
     validate_product_selection(run, errors)
+    validate_barrier_attacks(run, errors)
+    validate_gap_feedback(run, errors)
     validate_mutations(run, errors)
     validate_failure_memory(run, errors)
     validate_dependency_paths(run, errors)
+    validate_closure_evidence(run, errors)
 
     if errors:
         for error in errors:

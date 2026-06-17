@@ -126,6 +126,12 @@
       "formalization_risk": 0.35
     }
   ],
+  "search_budget": {
+    "time_budget": "short",
+    "attempt_budget": 2,
+    "computation_budget": "none",
+    "stop_conditions": ["domain mismatch", "Hall condition not actually assumed"]
+  },
   "proof_compression": {
     "selected_sketch_id": "sketch_hall",
     "compression_goal": "Use the Hall corollary directly and avoid max-flow machinery.",

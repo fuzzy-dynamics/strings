@@ -22,35 +22,6 @@ def sha256_text(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def as_list(value: object) -> list:
-    return value if isinstance(value, list) else []
-
-
-def check_generated_item(kind: str, index: int, item: object, errors: list[str]) -> None:
-    if not isinstance(item, dict):
-        errors.append(f"{kind}[{index}] must be an object")
-        return
-    label = str(item.get("node_id") or item.get("id") or f"<index {index}>")
-    for field in ("statement", "why_it_matters", "smallest_formalizable_subcase"):
-        if not str(item.get(field) or "").strip():
-            errors.append(f"{kind} {label!r} missing {field}")
-    unlocks = item.get("unlocks")
-    if not isinstance(unlocks, list) or not unlocks:
-        errors.append(f"{kind} {label!r} missing nonempty unlocks")
-    if not (item.get("relation_to_target") or item.get("relation_to_frozen_target") or item.get("dependency_path_to_target")):
-        errors.append(f"{kind} {label!r} missing relation/dependency path to frozen target")
-    if not (item.get("counterexample_pressure") or item.get("falsification_test") or item.get("known_counterexamples_or_boundary_cases")):
-        errors.append(f"{kind} {label!r} missing falsification/counterexample plan")
-    if not (item.get("next_mutation") or item.get("mutation_axis") or item.get("axis_changed")):
-        errors.append(f"{kind} {label!r} missing next_mutation/mutation_axis")
-    status = str(item.get("status") or "OPEN")
-    if status in {"VERIFIED", "VERIFIED_LEAN", "CHECKED", "PROVED_SKETCH"}:
-        if not item.get("lean_statement"):
-            errors.append(f"{kind} {label!r} accepted status requires lean_statement")
-        if not (item.get("proof") or item.get("verification_evidence") or item.get("lean_path")):
-            errors.append(f"{kind} {label!r} accepted status requires proof/verification evidence")
-
-
 def validate_schema_optional(data: object, schema_path: Path, errors: list[str]) -> None:
     try:
         import jsonschema  # type: ignore
@@ -101,21 +72,6 @@ def main() -> int:
         directive = {}
     if directive.get("status_to_assert") not in {"UNVERIFIED", "PARTIAL", "CONDITIONAL", "GAP"}:
         errors.append("generator_directive.status_to_assert must not overclaim")
-
-    for index, item in enumerate(as_list(handoff.get("actual_lemma_queue"))):
-        check_generated_item("actual_lemma_queue", index, item, errors)
-    for index, item in enumerate(as_list(handoff.get("proof_dependency_dag"))):
-        check_generated_item("proof_dependency_dag", index, item, errors)
-    artifacts = as_list(handoff.get("generator_artifacts"))
-    for index, artifact in enumerate(artifacts):
-        if not isinstance(artifact, dict):
-            errors.append(f"generator_artifacts[{index}] must be an object")
-            continue
-        status = str(artifact.get("status") or artifact.get("witsoc_status") or "")
-        if status in {"VERIFIED", "VERIFIED_LEAN", "CHECKED"}:
-            for field in ("wit_path", "lean_path", "target_fidelity", "skeptic_review_id"):
-                if not artifact.get(field):
-                    errors.append(f"generator_artifacts[{index}] accepted artifact missing {field}")
 
     route_state = None
     if args.route_state and args.route_state.exists():

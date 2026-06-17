@@ -96,20 +96,17 @@ Every worker receives target-freeze hashes for the original statement, canonical
 
 Every proof worker also receives a session-scoped dedicated proof worktree path. WIT and Lean files must be generated there, never in the coordinator root or another proof target's worktree. Record the proof worktree in `proof_worktrees.json` and `worker_results.json`, then preserve artifacts/logs/receipts outside the worktree before cleanup.
 
-## DAG-Coverage Spawning
+## Budget-Aware Spawning
 
-Lovasz may prepare independent worker packets when the DAG, target, and
-artifact justify it. Witsoc is the math skill; it does not decide or hardcode
-subagent fanout. The Plane/theater orchestrator chooses how many packets to
-launch concurrently under its worker policy. Use these defaults as lower-bound
-coverage guidance, not hard caps:
+Lovasz may spawn as many independent workers as the runtime, budget, and task
+warrant. Use these defaults as lower-bound guidance, not hard caps:
 
-- `quick`: spawn only when worker spawning is useful.
-- `deep`: expand over every justified independent DAG node.
-- `campaign`: spawn by DAG coverage,
+- `quick`: 2-4 agents when worker spawning is useful.
+- `deep`: 8-20 agents by default, expanding when independent DAG nodes justify it.
+- `campaign`: unbounded within runtime and budget; spawn by DAG coverage,
   falsification need, computation, formalization, and skeptic-review demand.
 
-Every spawned worker packet must still validate as exact with target hashes,
+Every spawned worker must still validate as an exact packet with target hashes,
 forbidden drift, expected artifact, and stop condition. More workers are useful
 only when they cover distinct DAG nodes, method families, counterexample
 pressures, formalization blockers, or skeptic obligations.

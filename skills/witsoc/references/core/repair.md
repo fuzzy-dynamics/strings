@@ -39,8 +39,6 @@ Failure classes:
 - `case_not_closed`
 - `step_too_compressed`
 - `false_statement`
-- `deprecated_syntax` (library version drift, e.g. Mathlib big operators `∑ x in s` rejected in favor of `∑ x ∈ s`)
-- `automation_overreach` (a closing tactic such as `omega`, `interval_cases`, `decide`, or `norm_num` asked to prove a goal outside its decidable fragment, including `interval_cases` with no derivable bounds)
 
 Allowed repairs:
 
@@ -50,8 +48,6 @@ Allowed repairs:
 - replace an unavailable theorem with a local weaker lemma,
 - weaken a false intermediate claim without weakening the final theorem,
 - add a hypothesis only when the original task allows it,
-- modernize deprecated library syntax without changing the statement's meaning (record old/new form in the diagnosis),
-- replace an overreaching closing tactic with explicit intermediate steps the tactic's fragment can actually discharge,
 - mark `GAP`,
 - hand back to Explorer for premise search, theorem replacement, or counterexample hunting.
 

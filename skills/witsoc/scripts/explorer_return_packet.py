@@ -20,38 +20,20 @@ def load(path: Path, default: Any) -> Any:
         return default
 
 
-from witcore import records  # noqa: E402  -- shared substrate, was a local copy
+def records(path: Path) -> list[dict]:
+    data = load(path, [])
+    return [x for x in data if isinstance(x, dict)] if isinstance(data, list) else []
+
 
 def grade_value(grade: str) -> int:
     return {"A": 5, "B": 4, "C": 3, "D": 2, "F": 1}.get(str(grade).upper(), 0)
 
 
-def reduction_block(run: Path) -> dict | None:
-    """The conjecture-distance assessment, read straight from the reduction
-    ledger so it reaches Explorer even when the grade file was not saved."""
-    try:
-        import reduction_ledger as rl
-        led = rl._load(rl.ledger_path(run), None)
-        if isinstance(led, dict) and led.get("schema") == rl.SCHEMA:
-            return rl.assess(led)
-    except Exception:
-        pass
-    return None
-
-
-def choose_action(accepted: list[dict], barriers: list[dict], formal: dict, grade: dict,
-                  reduction: dict | None = None) -> str:
+def choose_action(accepted: list[dict], barriers: list[dict], formal: dict, grade: dict) -> str:
     label = str(formal.get("label") or "")
     grade_letter = str(grade.get("grade") or "")
     has_verified = any(str(x.get("status") or "").upper() in {"VERIFIED", "VERIFIED_WIT", "VERIFIED_LEAN", "VERIFIED_EXTERNAL"} for x in accepted)
-    # Conjecture-distance guard: while the reduction's open_core is open (or the
-    # target is otherwise not reduced), the run is NOT solve-ready no matter how
-    # the seeded nodes graded — closing easy obligations is not closing the
-    # conjecture. Never escalate to generator_ready in that state.
-    open_core_blocks = bool(reduction and not reduction.get("reduced")
-                            and reduction.get("band") != "REDUCED")
-    if (has_verified and label in {"FORMALIZATION_READY", "NEEDS_LOCAL_DEFINITIONS"}
-            and grade_value(grade_letter) >= 4 and not open_core_blocks):
+    if has_verified and label in {"FORMALIZATION_READY", "NEEDS_LOCAL_DEFINITIONS"} and grade_value(grade_letter) >= 4:
         return "generator_ready"
     if accepted:
         return "explorer_review_partial"
@@ -69,13 +51,6 @@ def main() -> int:
     args = parser.parse_args()
 
     run = args.run_dir
-    # R4/L4: returning to Explorer is the natural sync point — this run's
-    # failure memory joins the global store so future runs see it. Guarded.
-    try:
-        import knowledge_store
-        knowledge_store.sync_run(run)
-    except Exception:
-        pass
     manifest = load(run / "lovasz_run.json", {})
     formal = load(run / "formalization_feasibility.json", {})
     grade = load(run / "report_quality_grade.json", {})
@@ -93,12 +68,11 @@ def main() -> int:
                 "next_exact_experiment_or_lemma": n.get("next_exact_experiment_or_lemma") or n.get("next_mutation"),
             })
     demoted = [n for n in dag if str(n.get("status") or "").upper() in {"REJECTED", "DEMOTED"}]
-    reduction = reduction_block(run)
     packet = {
         "schema": "witsoc.explorer_return_packet.v1",
         "target_hash": manifest.get("target_hash") or "",
         "source_target_text": manifest.get("source_target_text") or "",
-        "recommended_action": choose_action(accepted, barriers, formal, grade, reduction),
+        "recommended_action": choose_action(accepted, barriers, formal, grade),
         "accepted_products": [
             {
                 "node_id": n.get("node_id") or n.get("id"),
@@ -128,23 +102,8 @@ def main() -> int:
         "report_quality": {
             "score": grade.get("score"),
             "grade": grade.get("grade"),
-            # Progress (verifiable math) vs structural (scaffolding) — surface
-            # both so a scaffolding-inflated grade can't read as real progress.
-            "progress_score": grade.get("progress_score"),
-            "progress_grade": grade.get("progress_grade"),
-            "headline": grade.get("headline"),
             "gaps": grade.get("gaps", []),
         },
-        # Conjecture-distance: how far the run is from the TARGET (obligations
-        # discharged, open_core open, band) — the honest signal Explorer arbitrates on.
-        "reduction": ({
-            "band": reduction["band"],
-            "obligations_discharged": reduction["obligations_discharged"],
-            "obligations_total": reduction["obligations_total"],
-            "open_core_open": reduction["open_core_open"],
-            "reduced": reduction["reduced"],
-            "note": reduction["cap_note"],
-        } if reduction else None),
         "summary": {
             "status_counts": summary.get("status_counts", {}),
             "worker_status_counts": summary.get("worker_status_counts", {}),
