@@ -1,0 +1,10 @@
+{
+  "version": "1.0",
+  "description": "Full-solve gate fixtures: mock DAGs must pass solve_claim_protocol before any solve is reportable.",
+  "scenarios": [
+    "open_dependency_rejected",
+    "ready_without_rederivation_is_claimed",
+    "known_novelty_rejects",
+    "human_gate_required"
+  ]
+}

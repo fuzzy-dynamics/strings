@@ -12,9 +12,35 @@ Witsoc Generator is the artifact engine inside Witsoc. It converts an Explorer-a
 
 The generator is not a chat-proof mode and not a mathematical truth arbiter. If this subskill is used, create or update a `.wit` artifact unless the user only asks to inspect existing WIT files. For nontrivial new proof tasks, require an Explorer handoff before writing the WIT. For open/unsolved/unconfirmed targets, require that Explorer has accepted Lovasz's verification result for the narrow artifact target.
 
+## Codex/Claude Contract
+
+Generator is the artifact engine for Codex/Claude-style runs. It starts from an
+accepted Explorer handoff, preserves the frozen target, creates or repairs
+WIT/Lean artifacts, runs checks where available, and reports exact artifact
+status. The orchestrator remains in charge of strategy and final reporting.
+
+Preferred commands:
+
+```bash
+python3 ~/.openscientist/skills/witsoc/witsoc.py llm-contract
+python3 ~/.openscientist/skills/witsoc/witsoc.py generator packet runs/<task>
+python3 ~/.openscientist/skills/witsoc/witsoc.py spawn-template generator --target "<problem>"
+```
+
+If the runtime is missing, repair it with:
+
+```bash
+python3 ~/.openscientist/skills/witsoc/bootstrap.py --replace
+```
+
+Do not start new nontrivial artifacts without Explorer handoff. Do not silently
+mutate targets. `wit check` is structural only; verification needs receipts or
+formal evidence plus SafeVerify.
+
 Shared protocols live in the parent skill:
 
 - `../references/core/status.md`
+- `../references/core/llm_contract.md`
 - `../references/core/handoff.md`
 - `../references/core/failure_recovery.md`
 - `../references/core/repair.md`
@@ -23,6 +49,7 @@ Shared protocols live in the parent skill:
 - `../references/core/lean_verification.md`
 - `../references/core/tooling.md`
 - `../references/schemas/handoff.schema.json`
+- `references/algorithmic_generator.md`: advisory algorithms for artifact quality, repair ranking, and Generator decision packets.
 
 If the user explicitly asks for WIT code, `.wit`, or WIT plus Lean, WIT generation is mandatory. Do not return only a plan, prose proof, verifier discussion, or Lean formalization. The generator must either write a `.wit` artifact or report a concrete blocker with status `GAP`, `FAILED_ATTEMPT`, or `REJECTED`.
 

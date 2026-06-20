@@ -1,0 +1,47 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "witsoc"
+version = "0.1.4"
+description = "Witsoc mathematical research orchestration utilities"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "Proprietary"}
+authors = [
+  {name = "Witsoc contributors"}
+]
+dependencies = []
+keywords = ["mathematics", "proof", "orchestration", "lean", "research"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Scientific/Engineering :: Mathematics",
+]
+
+[project.scripts]
+witsoc = "witsoc.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/witsoc"]
+force-include = { "bootstrap.py" = "witsoc/bootstrap.py", "witsoc.py" = "witsoc/witsoc.py", "README.md" = "witsoc/README.md", "SKILL.md" = "witsoc/SKILL.md", "pyproject.toml" = "witsoc/pyproject.toml", "scripts" = "witsoc/scripts", "references" = "witsoc/references", "witsoc-explorer" = "witsoc/witsoc-explorer", "witsoc-research-lovasz" = "witsoc/witsoc-research-lovasz", "witsoc-generator" = "witsoc/witsoc-generator" }
+
+[tool.hatch.build.targets.sdist]
+include = [
+  "src/witsoc",
+  "scripts",
+  "references",
+  "witsoc-explorer",
+  "witsoc-research-lovasz",
+  "witsoc-generator",
+  "bootstrap.py",
+  "witsoc.py",
+  "SKILL.md",
+  "README.md",
+  "pyproject.toml",
+]

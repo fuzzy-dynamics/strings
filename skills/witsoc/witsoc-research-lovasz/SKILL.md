@@ -16,6 +16,31 @@ Witsoc Research Lovasz is the high-pressure research-program subskill inside `wi
 
 This skill is ambitious but not magical: it must never promise to solve every open problem. Its job is to behave like a formal-verification-driven mathematical research director working from Explorer's frozen target and barrier packet: identify the real barriers, decompose them into formalizable subproblems, coordinate workers, require WIT-before-Lean verification for accepted claims, synthesize verified results, and return the result to Witsoc Explorer for arbitration.
 
+## Codex/Claude Contract
+
+Lovasz is the barrier engine for open, unsolved, frontier, and blocked targets.
+It should normally start only after Explorer supplies a frozen target and
+barrier packet. The orchestrator remains in charge of strategy, budget, worker
+assignment, and whether to continue, reframe, or stop.
+
+Preferred commands:
+
+```bash
+python3 ~/.openscientist/skills/witsoc/witsoc.py llm-contract
+python3 ~/.openscientist/skills/witsoc/witsoc.py lovasz packet runs/<task>
+python3 ~/.openscientist/skills/witsoc/witsoc.py spawn-template lovasz --target "<problem>"
+```
+
+If the runtime is missing, repair it with:
+
+```bash
+python3 ~/.openscientist/skills/witsoc/bootstrap.py --replace
+```
+
+Known-open status is a starting point, not a final report. Lovasz must attack
+actual barrier lemmas, maintain proof-DAG and failure memory, and return to
+Explorer. It must not authorize Generator directly.
+
 When Lovasz is activated, the user-facing progress message must include:
 
 ```text
@@ -32,6 +57,7 @@ Using witsoc with witsoc-explorer -> witsoc-research-lovasz -> witsoc-explorer -
 Use this skill under the top-level Witsoc coordinator in `../SKILL.md`. Load Witsoc's relevant core protocols as needed, especially:
 
 - `../references/core/open_problem.md`
+- `../references/core/llm_contract.md`
 - `../references/core/exploration_strategy.md`
 - `../references/core/handoff.md`
 - `../references/core/safeverify.md`
@@ -69,6 +95,7 @@ Load these focused references when the task needs them:
 - `references/cross_run_memory.md`: reuse research memory across Lovasz runs.
 - `references/full_proof_escalation.md`: decide when partial progress may escalate to full-proof mode.
 - `references/claim_demotion.md`: demote failed claims without losing useful evidence.
+- `references/algorithmic_research.md`: advisory algorithms for proof-DAG priority, one-axis mutation selection, worker-result ranking, next-action choice, and Lovasz orchestrator packets.
 
 Use `.soc` memory as the primary approach-failure memory. Initialize it with
 `../scripts/lovasz_soc_memory.py init`, query it before repeating any method, and
@@ -221,6 +248,7 @@ Before returning to Explorer, run the production gates when available:
 
 ```bash
 SCORE="$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/score_lovasz_results.py)"
+LOVASZ_PACKET="$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/lovasz_orchestrator_packet.py)"
 SUMMARY="$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/summarize_lovasz_run.py)"
 VALIDATE="$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/validate_lovasz_run.py)"
 MANIFEST="$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/lovasz_run_manifest.py)"
@@ -243,6 +271,7 @@ python3 "$DAG_INTEGRITY" runs/<task> --artifact-registry "$PLANE_SESSION_DIR/wit
 python3 "$SPAWN" runs/<task>
 python3 "$LATTICE" runs/<task>
 python3 "$SCORE" runs/<task>/worker_results.json --registry "$PLANE_SESSION_DIR/witsoc_artifacts.json" --out runs/<task>/lovasz_result_scores.json
+python3 "$LOVASZ_PACKET" runs/<task> --out runs/<task>/lovasz_orchestrator_packet.json
 python3 "$SUMMARY" runs/<task>
 python3 "$VALIDATE" runs/<task> --mode deep --artifact-registry "$PLANE_SESSION_DIR/witsoc_artifacts.json"
 OPEN_VALIDATE="$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/validate_open_problem_run.py)"

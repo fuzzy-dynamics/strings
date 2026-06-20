@@ -23,6 +23,105 @@ Use this skill for all mathematical tasks. For simple questions, answer directly
 
 These subskills live inside this folder. If you need their full instructions, read the relevant nested `SKILL.md`; do not look for sibling top-level skill directories.
 
+## Codex/Claude Contract
+
+For Codex, Claude Code, and other shell-capable orchestrators, Witsoc is a
+packet-first mathematical decision-support layer. The orchestrator stays in
+charge of strategy, fanout, worker assignment, budget, reframing, and final
+decisions. Witsoc provides routing advice, evidence gates, target-freeze
+discipline, worker templates, recovery commands, and report standards.
+
+Use the root launcher from any working directory:
+
+```bash
+python3 ~/.openscientist/skills/witsoc/witsoc.py llm-contract
+python3 ~/.openscientist/skills/witsoc/witsoc.py subskills
+python3 ~/.openscientist/skills/witsoc/witsoc.py route --field json "<task>"
+python3 ~/.openscientist/skills/witsoc/witsoc.py spawn-template explorer --target "<problem>"
+```
+
+Read `references/core/llm_contract.md` only when the task needs the detailed
+agent contract. Witsoc recommends; the orchestrator decides. Witsoc may block
+unsupported claim-status upgrades, but must not block creative search,
+reframing, alternate strategies, or extra worker fanout.
+
+## Runtime Preflight
+
+Before using any Witsoc script command, check that the local runtime exists in
+the Witsoc skill folder:
+
+```text
+scripts/witsoc.py
+src/witsoc/cli.py
+```
+
+If either file is missing, do not treat Witsoc as ready just because `SKILL.md`
+exists. Restore the runtime first with the canonical absolute command:
+
+```bash
+python3 ~/.openscientist/skills/witsoc/bootstrap.py --replace
+```
+
+The safest local entrypoint is the root launcher, which performs this preflight
+and restore automatically before delegating to `scripts/witsoc.py`:
+
+```bash
+python3 ~/.openscientist/skills/witsoc/witsoc.py --help
+python3 ~/.openscientist/skills/witsoc/witsoc.py route "deep run prove or disprove this open conjecture"
+```
+
+After restore, verify:
+
+```bash
+python3 ~/.openscientist/skills/witsoc/scripts/witsoc.py --help
+python3 ~/.openscientist/skills/witsoc/witsoc.py --help
+```
+
+Only proceed with Witsoc script-based routing, validators, decision packets, or
+Lovasz/Explorer/Generator tooling after this preflight passes. If `bootstrap.py`
+is missing too, install the PyPI package and materialize the skill runtime:
+
+```bash
+python3 -m pip install -U witsoc
+python3 -m witsoc restore-skill --target ~/.openscientist/skills/witsoc --replace
+```
+
+The canonical OpenScientist skill directory is:
+
+```text
+~/.openscientist/skills/witsoc
+```
+
+If the local `scripts/` tree, `src/` package, or `scripts/witsoc.py` entrypoint
+is missing in that folder, restore Witsoc from PyPI before trying to recreate
+the scripts manually:
+
+```bash
+python3 -m pip install -U witsoc
+python3 -m witsoc restore-skill --target ~/.openscientist/skills/witsoc --replace
+```
+
+If this root-level `bootstrap.py` file is still present, it also survives
+deletion of `scripts/` and `src/`:
+
+```bash
+python3 ~/.openscientist/skills/witsoc/bootstrap.py --replace
+```
+
+PyPI page:
+
+```text
+https://pypi.org/project/witsoc/
+```
+
+After installation, verify with:
+
+```bash
+python3 ~/.openscientist/skills/witsoc/scripts/witsoc.py --help
+python3 ~/.openscientist/skills/witsoc/scripts/witsoc.py install-help
+python3 -m witsoc restore-skill --target ~/.openscientist/skills/witsoc --check
+```
+
 When a task routes through Lovasz, the user-facing progress message must include:
 
 ```text
@@ -39,6 +138,7 @@ Shared protocols live under `references/core/`. Load only the protocol needed fo
 - `references/core/generator_gate.md`: rules for when Generator may and may not run.
 - `references/core/production_gates.md`: before-final-answer checklist, production-complete criteria, and quality levels.
 - `references/core/orchestrator_fit.md`: boundary between orchestrator strategy and Witsoc math affordances.
+- `references/core/algorithmic_strategy.md`: advisory scoring algorithms for lanes, barriers, products, stop/continue, and portfolios.
 - `references/core/interactive_intake.md`: optional user questions, deep-run preview, and mission-menu guidance.
 - `references/core/plugin_integration.md`: registry-aware Witsoc plugin behavior and iframe activation.
 - `references/core/status.md`: canonical status labels and verification discipline.
@@ -80,6 +180,9 @@ Shared protocols live under `references/core/`. Load only the protocol needed fo
 - `scripts/result_ladder.py`: generate a tractable result ladder and `product_selection.json` for open-problem campaigns.
 - `scripts/formalization_feasibility.py`: score WIT/Lean readiness and route weak targets back to Explorer/Lovasz repair.
 - `scripts/counterexample_search.py`: generate bounded counterexample-search packets for graph, finite-model, SAT/SMT, number-theory, additive, Ramsey/extremal, finite-algebra, analysis, algebra, topology, and probability domains.
+- `scripts/rank_mission_menu.py`, `scripts/select_barrier.py`, `scripts/select_best_product.py`, `scripts/stop_continue.py`, and `scripts/allocate_portfolio.py`: advisory decision-support algorithms. They rank options and explain tradeoffs; they never upgrade claim status or override the orchestrator.
+- `scripts/rank_lovasz_dag.py`, `scripts/select_lovasz_mutation.py`, `scripts/rank_lovasz_results.py`, `scripts/lovasz_next_action.py`, and `scripts/lovasz_orchestrator_packet.py`: Lovasz advisory algorithms for proof-DAG priority, one-axis mutation choice, worker-result reportability, next action, and combined orchestrator state.
+- `scripts/explorer_decision_packet.py` and `scripts/generator_decision_packet.py`: Explorer/Generator advisory packets for theorem/sketch/handoff ranking and artifact/repair ranking.
 - `scripts/grade_witsoc_report.py`: grade report production quality from ledgers, artifacts, proof DAG, worker evidence, skeptic reviews, and formalization readiness.
 - `scripts/lovasz_run_manifest.py`: create/update `lovasz_run.json`, the authoritative Lovasz phase manifest.
 - `scripts/validate_lovasz_phase.py`: enforce Lovasz phase gates and allowed phase transitions.

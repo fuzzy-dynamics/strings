@@ -14,9 +14,35 @@ Explorer may solve small problems directly. For serious proof work, it must prod
 
 Explorer is the first subskill for serious proof work, theorem proving, WIT/Lean generation, open problems, unsolved conjectures, and research-like targets. Lovasz is invoked only after Explorer freezes the problem and writes a barrier packet. Generator is invoked only after Explorer accepts a solved/routine proof plan or an assembled Lovasz-reviewed target.
 
+## Codex/Claude Contract
+
+Explorer is the front door for serious mathematics in Codex/Claude-style runs.
+Use it to freeze the target, classify status, search theorem candidates, apply
+counterexample pressure, rank proof paths, and emit either a Generator handoff
+or a Lovasz barrier packet. The orchestrator remains in charge of strategy and
+worker fanout.
+
+Preferred commands:
+
+```bash
+python3 ~/.openscientist/skills/witsoc/witsoc.py llm-contract
+python3 ~/.openscientist/skills/witsoc/witsoc.py explorer packet runs/<task>
+python3 ~/.openscientist/skills/witsoc/witsoc.py spawn-template explorer --target "<problem>"
+```
+
+If the runtime is missing, repair it with:
+
+```bash
+python3 ~/.openscientist/skills/witsoc/bootstrap.py --replace
+```
+
+Use packets before long prose. Downgrade unsupported solved claims. Do not route
+Generator until a frozen target and handoff exist.
+
 Shared protocols live in the parent skill:
 
 - `../references/core/status.md`
+- `../references/core/llm_contract.md`
 - `../references/core/handoff.md`
 - `../references/core/failure_recovery.md`
 - `../references/core/open_problem.md`
@@ -30,6 +56,7 @@ Shared protocols live in the parent skill:
 - `../references/examples/handoff_open_problem.json`
 - `../references/examples/handoff_v1_blueprint.json`
 - `../scripts/validate_handoff.py`
+- `references/algorithmic_explorer.md`: advisory algorithms for theorem ranking, proof-sketch EV, handoff readiness, and Explorer decision packets.
 
 ## Operating Principle
 

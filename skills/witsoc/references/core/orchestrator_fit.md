@@ -37,6 +37,29 @@ The orchestrator may use these artifacts to build prompts, spawn agents, update
 progress, or explain the run to the user. Witsoc must not assume a specific
 runtime implementation.
 
+## Lazy Activation
+
+Witsoc should be fast and opinionated at the boundary, then lazy behind that
+boundary. The orchestrator should normally ask for cheap state first:
+
+```bash
+witsoc route "..."
+witsoc orchestrator-plan route "..."
+witsoc strategy rank-lanes --prompt "..."
+witsoc lovasz packet runs/<task>
+```
+
+Only after the orchestrator chooses a plan should it activate heavier tools such
+as worker dispatch, counterexample search, theorem retrieval, sketch
+tournaments, proof search, report generation, or experimental discovery.
+
+This lets the orchestrator decide whether Witsoc is being used as a router, a
+strategy advisor, a Lovasz state packet provider, a validator/report gate, or a
+full deep-research campaign engine. Use `witsoc commands --tier core`,
+`witsoc commands --tier lovasz`, and `witsoc commands --tier heavy` to inspect
+the available service tiers. Direct legacy aliases remain valid, but they are
+explicit activation of a deeper service.
+
 ## Mission Menu, Not Mission Script
 
 Deep-run route metadata should prefer `mission_menu` over an ordered `missions`
