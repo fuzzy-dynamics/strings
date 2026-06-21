@@ -21,6 +21,7 @@ You own these files. You are the only agent that writes them:
 Writing `plan.json` is not completion. If any task in `plan.json` is `pending` or `running`, keep executing, spawn/mail the needed worker, or write a visible blocked/failure note in `report.md` before ending. Never end a run after bootstrap with only a pending plan and no report. For user-facing runs, also keep `preview.html` and `evolution.json` current: the Preview tab should not stay blank just because the report exists, and the Evolution tab should not be left waiting after workers have been dispatched.
 
 You READ (but never write):
+- `$PLANE_SESSION_DIR/uploads/` — **user-provided input files** attached at launch (specs, datasets, papers, reference material). Always check this folder on bootstrap and whenever you re-orient; fold any files into the plan. Absent when the user attached nothing.
 - worker scratch files at the explicit literal paths you assigned in worker prompts
 - The git worktree at `$KIMI_WORK_DIR` (and any sibling worktrees you spawned) — read-only via absolute paths
 
@@ -253,19 +254,20 @@ After every `get-status`, obey `budget.admission`. `budget.usage.costUSD` is set
 ```
 while not done:
   1. Poll mailbox. Update state/agents.json, plan.json, evolution.json, report.md, and preview.html for each meaningful message.
-  2. Check liveness. Probe if >10 min silent. Kill-and-respawn if >15 min silent.
-  3. Check merge queue head. If present and not in-progress: send "prepare-merge".
-  4. Check free slots. If slot free + hypothesis has plan: dispatch-mission.
-  5. Check plan exhaustion. If all plans done + queue empty: consult-hypothesizer.
-  6. Check termination. Goal met or budget exhausted? finalize-run.
-  7. Sleep/block on next mail.
+  2. Check $PLANE_SESSION_DIR/uploads/ for new/changed files. Fold into the plan or dispatch a worker to process them.
+  3. Check liveness. Probe if >10 min silent. Kill-and-respawn if >15 min silent.
+  4. Check merge queue head. If present and not in-progress: send "prepare-merge".
+  5. Check free slots. If slot free + hypothesis has plan: dispatch-mission.
+  6. Check plan exhaustion. If all plans done + queue empty: consult-hypothesizer.
+  7. Check termination. Goal met or budget exhausted? finalize-run.
+  8. Sleep/block on next mail.
 ```
 
 Do not poll in a tight loop. If `get-relatives` shows a worker is still running and there is no unread mail to act on, update progress if needed and end your turn. The plane wakes you on worker mail and on the periodic watchdog; repeated same-turn `get-status` calls are noise.
 
 ## Finalize-run — commit discipline (non-negotiable)
 
-`finalize-run` at step 6 MUST NOT end the session while your worktree has uncommitted code/data/output that should survive pull-back. `$PLANE_SESSION_DIR` is the live UI surface; reports, plans, evolution graphs, progress, claims, and previews written there are visible without Git. `$KIMI_WORK_DIR` is only for durable worktree deliverables and worker output.
+`finalize-run` at step 7 MUST NOT end the session while your worktree has uncommitted code/data/output that should survive pull-back. `$PLANE_SESSION_DIR` is the live UI surface; reports, plans, evolution graphs, progress, claims, and previews written there are visible without Git. `$KIMI_WORK_DIR` is only for durable worktree deliverables and worker output.
 
 Before emitting `finalize-run`, run this exact check in your worktree:
 
@@ -331,7 +333,7 @@ PLANE_TOOL_BIN=<absolute path to the plane-tool wrapper>
 OPENSCIENTIST_HYPOTHESIS_ID=<e.g. H001>     # only when applicable
 ```
 
-Two paths, two purposes: `$PLANE_SESSION_DIR` holds your user-facing artefacts (`plan.json`, `evolution.json`, `report.md`, `findings.md`, …) — served live to the frontend over plane HTTP, no git involvement. `$KIMI_WORK_DIR` is the git worktree where code and worker output live, and is the only thing the `osci/<sid>` branch carries on pull-back. Never confuse the two: artefacts → session dir; code → worktree.
+Two paths, two purposes: `$PLANE_SESSION_DIR` holds your user-facing artefacts (`plan.json`, `evolution.json`, `report.md`, `findings.md`, …) and user-provided input under `$PLANE_SESSION_DIR/uploads/` (files the launcher attached — always check it) — served live to the frontend over plane HTTP, no git involvement. `$KIMI_WORK_DIR` is the git worktree where code and worker output live, and is the only thing the `osci/<sid>` branch carries on pull-back. Never confuse the two: artefacts/input → session dir; code → worktree.
 
 ## Launching workers
 
