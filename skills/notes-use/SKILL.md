@@ -235,8 +235,10 @@ Rules:
 - The path segment is the source's integer id (from `OpenScientistSearch` results, the document panel, etc.).
 - `exact` must be **plain text**, percent-encoded, verbatim from the source so the highlighter can find it. Keep it short (a few words). Optional `prefix=` / `suffix=` params disambiguate when the same phrase appears multiple times.
 - The parser treats any link with `exact` as a quote reference. `kind=quote` is decorative — `exact` is what triggers quote handling.
-- Anchor text inside `<a>` should be **≤ 4 words** (e.g. "attention mechanism", "Vaswani §3.2"). Long anchor text wraps awkwardly inline.
-- Cite the *thing you're claiming*, not the source as a whole. "Vaswani et al. observed [scaling effects](sources://12?...)" reads better than "[Vaswani et al.](sources://12) observed scaling effects."
+- **Place citations at the end of the sentence or paragraph they support — never mid-sentence.** The frontend renders every `sources://` link as a small superscript-style numbered marker; a marker dropped into the middle of a clause breaks the reading flow. Write the full claim, then attach the citation(s) right before the closing period. The `exact=` quote can still target the specific phrase being supported — only the visible marker moves to the end.
+- **Multiple citations are fine — group them together at the end.** When a sentence or paragraph rests on several sources, place the markers consecutively just before the final period, each as its own `<a>`. Example: `<p>All 340 target theorems were successfully formalized and proven <a href="sources://1?kind=quote&exact=...">1</a> <a href="sources://5?kind=quote&exact=...">5</a>.</p>`
+- Anchor text inside `<a>` should be **≤ 4 words** (e.g. "attention mechanism", "Vaswani §3.2") for sources that aren't rendered as numbered markers. Long anchor text wraps awkwardly inline.
+- Cite the *thing you're claiming*, not the source as a whole — let the `exact=` quote point at the specific result or phrase, then anchor the marker at the end of that sentence.
 
 ## 6. Editing: choose the right verb
 
@@ -285,6 +287,7 @@ Don't read every matched note in full — read the one or two whose snippets dir
 - **Treating notes as agent memory.** If you're the only consumer, write under `.openscientist/sessions/$SESSION/` — not the user's tree.
 - **Markdown as content.** The renderer doesn't parse it; convert to HTML first.
 - **Citing "the paper" without a `sources://` link.** A claim without a citation reachable from this workspace is a claim the user can't verify in one click.
+- **Citation markers mid-sentence.** Markers belong at the end of the sentence or paragraph (grouped if there are several), never wedged between words — that's where they render as clean numbered badges instead of interrupting the prose. See §5.
 - **Long `<a>` anchor text** — keep it ≤ 4 words.
 - **Using `<u>` for emphasis** — underline isn't loaded. Use `<em>` or `<mark>`.
 - **Block math via `$$...$$` literal in HTML** — input rule only. Use `<div data-type="block-math" data-latex="…">`.
