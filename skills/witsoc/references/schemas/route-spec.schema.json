@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "witsoc.route_spec.v1",
+  "title": "Witsoc RouteSpec",
+  "description": "Advisory routing classification emitted by route.py. Layer A fills it deterministically; the optional Layer B LLM classifier may enrich descriptive fields and escalate an ambiguous default route. RouteSpec allocates effort and preselects domain playbooks/backends; it never changes a claim's verification status.",
+  "type": "object",
+  "required": ["schema", "intent", "domain", "difficulty", "reachability", "artifact_request", "suggested_chain", "confidence", "source"],
+  "additionalProperties": true,
+  "properties": {
+    "schema": {"const": "witsoc.route_spec.v1"},
+    "intent": {
+      "type": "string",
+      "enum": ["prove", "disprove", "counterexample", "formalize", "repair", "lookup", "compute", "research"]
+    },
+    "domain": {
+      "type": "string",
+      "enum": ["number_theory", "additive_combinatorics", "graph_theory", "combinatorics", "analysis", "algebra", "topology", "logic", "geometry", "probability", "other"]
+    },
+    "difficulty": {
+      "type": "string",
+      "enum": ["routine", "reachable", "hard", "frontier", "likely_undecidable"]
+    },
+    "reachability": {"type": "number", "minimum": 0.0, "maximum": 1.0},
+    "artifact_request": {"type": "string", "enum": ["none", "wit", "wit_lean", "lean"]},
+    "prover_first": {"type": "boolean", "description": "Attempt the PROVER_ATTEMPT stage (kernel-checked search) before Lovasz decomposition. True for reachable proof-shaped targets."},
+    "suggested_chain": {"type": "array", "items": {"type": "string"}},
+    "confidence": {"type": "string", "enum": ["high", "medium", "low"]},
+    "source": {"type": "string", "enum": ["deterministic", "llm_merged"]},
+    "needs_llm": {"type": "boolean"},
+    "llm_status": {"type": "string", "enum": ["not_invoked", "merged", "unavailable_or_invalid"]},
+    "escalated_by_llm": {"type": "boolean"}
+  }
+}

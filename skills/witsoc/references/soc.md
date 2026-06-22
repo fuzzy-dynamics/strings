@@ -1,6 +1,10 @@
 # Soc Language Reference
 
-The `.soc` file is the persistent working memory for the solve loop. It tracks what's been tried, what's been learned, and what to do next. One `.soc` file per run.
+The `.soc` file is the persistent working memory for the solve loop. It tracks what's been tried, what's been learned, what barriers are active, and what the orchestrator should consider next. One `.soc` file per run.
+
+`.soc` is not a strategy owner. It is a compact memory and decision-support
+surface for the orchestrator. It should make prior work legible without forcing
+the next route.
 
 ## File Structure
 
@@ -9,10 +13,13 @@ A `.soc` file contains:
 1. Status header: `-- Status: RUNNING | DONE | STUCK`
 2. Goal description
 3. Current work and notes
-4. Insights accumulated across approaches
-5. Progress tracking
-6. Failed approaches and recovery plan
-7. Optionally: a queue of sub-problems or sub-tasks
+4. Active barriers
+5. Insights accumulated across approaches
+6. Reusable tools or theorem patterns
+7. Progress tracking
+8. Failed approaches and recovery plan
+9. Orchestrator notes
+10. Optionally: a queue of sub-problems or sub-tasks
 
 ## Status Header
 
@@ -44,9 +51,27 @@ CURRENT:
   Trying algebraic construction via unit-distance graphs.
   Approach 1 (probabilistic) failed -- see runs/chromatic/soc_approach_1.md
   Approach 2 (de Grey style) looks promising but needs more structure.
+  Last decision needed: choose whether to spawn a discharging worker or search obstructions.
 ```
 
 Free-form notes about what's being worked on right now.
+
+## Barriers
+
+Example:
+
+```
+BARRIERS:
+  - id: barrier_outer_face_extension
+    statement: outer-face induction cannot handle degree-4 boundary vertices with 3-list constraints
+    status: open
+    next_probe: search reducible configurations or construct a minimal obstruction
+    evidence: SEE runs/3choosable/barriers.md
+```
+
+Barriers are the current bottlenecks. They should be exact enough that the
+orchestrator can choose a tool: Explorer theorem search, Lovasz attack,
+Generator artifact repair, computation, skeptic pass, or outside method.
 
 ## Insights
 
@@ -60,6 +85,19 @@ INSIGHTS:
 ```
 
 Accumulated learnings. Write what's useful -- sometimes a sentence, sometimes a paragraph, sometimes a reference to a file with `SEE`. As the file grows, naturally use more SEE references for detailed content.
+
+## Reusable Tools
+
+Example:
+
+```
+REUSABLE_TOOLS:
+  - finite-model-search: useful for falsifying the current associativity variant. SEE runs/x/finite_search.py
+  - spectral-pivot: converts the graph barrier into an eigenvalue inequality when degrees are regular.
+```
+
+Reusable tools are affordances for the orchestrator. They do not require the
+orchestrator to use them; they prevent rediscovering useful machinery.
 
 ## Progress
 
@@ -91,6 +129,19 @@ FAILED_APPROACHES:
 ```
 
 Failure entries are inputs for new agents. The next worker must be told what failed and what not to repeat.
+
+## Orchestrator Notes
+
+Example:
+
+```
+ORCHESTRATOR_NOTES:
+  - High repeat risk for direct induction. Use only if the invariant is changed.
+  - Good next parallel split: one obstruction search, one theorem-precondition audit.
+```
+
+These notes are not commands. They are compact warnings and opportunities for
+the orchestrator to use while deciding sequence, fanout, and budget.
 
 ## Recovery Agents
 
@@ -210,3 +261,5 @@ PROGRESS:
 - **The .soc file grows naturally.** As work accumulates, use more SEE references for detailed content.
 - **The stop hook has a minimal contract.** It only needs: Status header, pending count (if QUEUE exists), and `problems_since_last_progress`. Everything else is for the agent's benefit.
 - **Freedom over structure.** The agent manages its own context.
+- **Read before action, write after outcome.** Query `.soc` before repeating a method, spawning a worker, or routing to another subskill; update it after every useful result, failed attempt, or barrier clarification.
+- **Memory guides; orchestrator decides.** `.soc` should expose repeat risks, reusable insights, and active barriers. It must not turn recommendations into mandatory strategy.

@@ -1,8 +1,13 @@
 # Lovasz SOC Memory Protocol
 
-Use `.soc` memory for every substantial Lovasz run. It prevents repeated dead approaches and preserves reusable barriers, reductions, conjectures, and verified partials.
+Use `.soc` memory for every substantial Lovasz run. It prevents repeated dead approaches and preserves reusable barriers, reductions, conjectures, verified partials, active barriers, and orchestrator-facing decision notes.
 
 Read `../../references/soc.md` for the base `.soc` format.
+
+`.soc` is an active decision-support surface, not a passive log. Lovasz should
+read it before selecting routes and update it immediately after outcomes. The
+orchestrator remains free to choose a different route, but `.soc` should make
+repeat risks and reusable insights impossible to miss.
 
 ## Required File
 
@@ -42,6 +47,21 @@ Add to `INSIGHTS`:
 - conjectures worth retesting,
 - verified or checked partial results with paths.
 
+Add to `BARRIERS`:
+
+- exact bottleneck lemma, obstruction, or theorem-precondition gap,
+- status,
+- next probe,
+- evidence path.
+
+Add to `REUSABLE_TOOLS`:
+
+- useful search scripts,
+- theorem families,
+- domain encodings,
+- successful proof patterns,
+- reusable counterexample generators.
+
 Add to `FAILED_APPROACHES`:
 
 - exact method,
@@ -62,6 +82,13 @@ PROGRESS:
 
 Reset `problems_since_last_progress` to `0` only when a new reusable insight, counterexample, checked computation, verified artifact, or source-status clarification is recorded.
 
+Add to `ORCHESTRATOR_NOTES`:
+
+- repeat-risk warnings,
+- recommended parallel splits,
+- useful but optional creative routes,
+- reasons a default Lovasz recommendation can be ignored or reframed.
+
 ## Efficient Use
 
 - Keep detailed derivations in `research.md`, `barriers.md`, or experiment files; put concise pointers in `.soc`.
@@ -74,6 +101,11 @@ Use the deterministic helper whenever available:
 
 ```bash
 python3 scripts/lovasz_soc_memory.py init runs/<task>
+python3 scripts/lovasz_soc_memory.py context runs/<task>
+python3 scripts/lovasz_soc_memory.py update-current runs/<task> --product "<product>" --barrier "<barrier>" --move "<move>" --decision "<orchestrator choice needed>"
+python3 scripts/lovasz_soc_memory.py add-barrier runs/<task> --statement "<barrier>" --next-probe "<next exact test>"
+python3 scripts/lovasz_soc_memory.py add-tool runs/<task> --tool "<tool/pattern>" --use "<when useful>"
+python3 scripts/lovasz_soc_memory.py add-note runs/<task> --text "<orchestrator-facing warning or option>"
 python3 scripts/lovasz_soc_memory.py query runs/<task> --statement "<exact node>" --method "<method family>"
 python3 scripts/lovasz_soc_memory.py add-failure runs/<task> --method "<method>" --statement "<exact node>" --blocker "<blocker>" --evidence "<path>"
 ```
@@ -92,9 +124,19 @@ CURRENT:
   Selected product: <product>
   Active barrier: <barrier>
   Active move: <move>
+  Last decision needed: <choice for orchestrator>
+
+BARRIERS:
+  - id: <barrier_id>
+    statement: <exact bottleneck>
+    status: open
+    next_probe: <next exact test>
 
 INSIGHTS:
   - <short reusable insight>. SEE <path>
+
+REUSABLE_TOOLS:
+  - <tool>: <when useful>. SEE <path>
 
 PROGRESS:
   - problems_since_last_progress: 0
@@ -111,6 +153,9 @@ FAILED_APPROACHES:
     do_not_repeat: <condition>
     next_methods:
       - <distinct method>
+
+ORCHESTRATOR_NOTES:
+  - <warning, option, or parallel split for orchestrator>
 
 QUEUE:
   - source_triage: pending

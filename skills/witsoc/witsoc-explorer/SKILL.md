@@ -14,9 +14,79 @@ Explorer may solve small problems directly. For serious proof work, it must prod
 
 Explorer is the first subskill for serious proof work, theorem proving, WIT/Lean generation, open problems, unsolved conjectures, and research-like targets. Lovasz is invoked only after Explorer freezes the problem and writes a barrier packet. Generator is invoked only after Explorer accepts a solved/routine proof plan or an assembled Lovasz-reviewed target.
 
+Explorer is a specialist, not the orchestrator. It should present target
+interpretations, routes, status risks, theorem candidates, and handoff options.
+It may recommend Generator, Lovasz, repair, stop, or ask-user, but the
+orchestrator decides sequencing, fanout, budget, and whether to pursue an
+alternate creative route.
+
+## Mandatory Explorer Packet
+
+Explorer should finish every serious pass with a compact decision packet, even
+when it also writes longer notes:
+
+```json
+{
+  "frozen_target": "exact statement or null if still ambiguous",
+  "target_status": "SOLVED|OPEN|UNCONFIRMED|FALSE|PARTIAL|UNKNOWN|BLOCKED",
+  "current_gap": "exact missing lemma, theorem precondition, or ambiguity",
+  "candidate_routes": ["ranked proof/search routes"],
+  "counterexample_pressure": ["tests run or queued"],
+  "evaluator": "the measurable test deciding whether the route made progress",
+  "recommended_next": "generator|lovasz|repair|ask-user|stop",
+  "artifact_targets": ["proofs/<task>.wit", "proofs/<task>.soc", "reports/witsoc_status.md"]
+}
+```
+
+If no `.wit` target is ready, Explorer must name the blocker rather than ending
+with only prose. Prefer running:
+
+```bash
+python3 ~/.openscientist/skills/witsoc/witsoc.py next-action runs/<task> --write
+python3 ~/.openscientist/skills/witsoc/witsoc.py proof-workflow runs/<task> --write
+python3 ~/.openscientist/skills/witsoc/witsoc.py explorer target-model runs/<task> --write
+python3 ~/.openscientist/skills/witsoc/witsoc.py explorer packet runs/<task> --out runs/<task>/explorer_decision_packet.json
+python3 ~/.openscientist/skills/witsoc/witsoc.py ui-summary runs/<task> --write
+```
+
+`explorer_target_model.json` is the Explorer's algorithmic control artifact.
+It should expose target variants, definition/quantifier audit, theorem
+candidates, falsification state, status confidence, and handoff readiness.
+Use it before recommending Generator or Lovasz so the orchestrator can compare
+routes without losing creative control.
+
+## Codex/Claude Contract
+
+Explorer is the front door for serious mathematics in Codex/Claude-style runs.
+Use it to freeze the target, classify status, search theorem candidates, apply
+counterexample pressure, rank proof paths, and emit either a Generator handoff
+or a Lovasz barrier packet. The orchestrator remains in charge of strategy and
+worker fanout. Explorer should expose options and tradeoffs rather than a
+single mandatory plan.
+
+Preferred commands:
+
+```bash
+python3 ~/.openscientist/skills/witsoc/witsoc.py llm-contract
+python3 ~/.openscientist/skills/witsoc/witsoc.py explorer target-model runs/<task> --write
+python3 ~/.openscientist/skills/witsoc/witsoc.py explorer packet runs/<task>
+python3 ~/.openscientist/skills/witsoc/witsoc.py ui-summary runs/<task> --write
+python3 ~/.openscientist/skills/witsoc/witsoc.py spawn-template explorer --target "<problem>"
+```
+
+If the runtime is missing, repair it with:
+
+```bash
+python3 ~/.openscientist/skills/witsoc/bootstrap.py --replace
+```
+
+Use packets before long prose. Downgrade unsupported solved claims. Do not route
+Generator until a frozen target and handoff exist.
+
 Shared protocols live in the parent skill:
 
 - `../references/core/status.md`
+- `../references/core/llm_contract.md`
 - `../references/core/handoff.md`
 - `../references/core/failure_recovery.md`
 - `../references/core/open_problem.md`
@@ -30,6 +100,7 @@ Shared protocols live in the parent skill:
 - `../references/examples/handoff_open_problem.json`
 - `../references/examples/handoff_v1_blueprint.json`
 - `../scripts/validate_handoff.py`
+- `references/algorithmic_explorer.md`: advisory algorithms for theorem ranking, proof-sketch EV, handoff readiness, and Explorer decision packets.
 
 ## Operating Principle
 

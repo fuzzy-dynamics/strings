@@ -16,6 +16,135 @@ Witsoc Research Lovasz is the high-pressure research-program subskill inside `wi
 
 This skill is ambitious but not magical: it must never promise to solve every open problem. Its job is to behave like a formal-verification-driven mathematical research director working from Explorer's frozen target and barrier packet: identify the real barriers, decompose them into formalizable subproblems, coordinate workers, require WIT-before-Lean verification for accepted claims, synthesize verified results, and return the result to Witsoc Explorer for arbitration.
 
+Lovasz is a specialist barrier tool for the orchestrator, not an autonomous
+commander. It should produce barrier kernels, proof-DAG options, worker packet
+suggestions, failed-method memory, evaluator gaps, and creative mathematical
+openings. The orchestrator decides whether to run Lovasz narrowly, expand it
+into a campaign, parallelize it with Explorer/Generator, reframe the target, or
+ignore a Lovasz recommendation.
+
+## Codex/Claude Contract
+
+Lovasz is the barrier engine for open, unsolved, frontier, and blocked targets.
+It should normally start only after Explorer supplies a frozen target and
+barrier packet. The orchestrator remains in charge of strategy, budget, worker
+assignment, and whether to continue, reframe, or stop. Lovasz should expose
+ranked options and mathematical tradeoffs, not a single compulsory route.
+
+Preferred commands:
+
+```bash
+python3 ~/.openscientist/skills/witsoc/witsoc.py llm-contract
+python3 ~/.openscientist/skills/witsoc/witsoc.py lovasz kernel runs/<task> --write
+python3 ~/.openscientist/skills/witsoc/witsoc.py lovasz judge runs/<task> --write
+python3 ~/.openscientist/skills/witsoc/witsoc.py lovasz autopsy runs/<task> --write
+python3 ~/.openscientist/skills/witsoc/witsoc.py lovasz packet runs/<task>
+python3 ~/.openscientist/skills/witsoc/witsoc.py spawn-template lovasz --target "<problem>"
+```
+
+If the runtime is missing, repair it with:
+
+```bash
+python3 ~/.openscientist/skills/witsoc/bootstrap.py --replace
+```
+
+Known-open status is a starting point, not a final report. Lovasz must attack
+actual barrier lemmas, maintain proof-DAG and failure memory, and return to
+Explorer. It must not authorize Generator directly.
+
+## Budgeted Lovasz Pass
+
+Lovasz must be easy to activate while keeping one contract. The orchestrator
+chooses budget and fanout. Every
+Lovasz pass, even a small checkpoint, should try to produce:
+
+```text
+actual barrier lemma
+one falsification or theorem-precondition test
+one proof-DAG seed or updated node
+one non-repeat mutation or honest stop reason
+one next-action packet
+```
+
+When the orchestrator gives more budget, continue the same Lovasz pass into:
+
+```text
+validated proof DAG
+worker packets/results when useful
+skeptic review
+formalization feasibility
+Explorer return packet
+report-quality grade
+```
+
+For every Lovasz pass, write or update `lovasz.soc` and emit:
+
+```bash
+python3 ~/.openscientist/skills/witsoc/witsoc.py lovasz kernel runs/<task> --write
+python3 ~/.openscientist/skills/witsoc/witsoc.py lovasz judge runs/<task> --write
+python3 ~/.openscientist/skills/witsoc/witsoc.py lovasz autopsy runs/<task> --write
+python3 ~/.openscientist/skills/witsoc/witsoc.py lovasz next-action runs/<task> --out runs/<task>/lovasz_next_action.json
+python3 ~/.openscientist/skills/witsoc/witsoc.py next-action runs/<task> --write
+python3 ~/.openscientist/skills/witsoc/witsoc.py proof-workflow runs/<task> --write
+python3 ~/.openscientist/skills/witsoc/witsoc.py ui-summary runs/<task> --write --deep
+```
+
+Small Lovasz passes are enough for early deep-run checkpoints; sustained
+barrier attack, worker fanout, and reportable open-problem products use the
+same Lovasz contract with a larger budget.
+
+## Lovasz Kernel Contract
+
+Lovasz must expose a compact research kernel before sustained campaign
+expansion, worker fanout, or final reporting. The kernel gives LLM agents a
+machine-readable mathematical state without removing creative control from the
+orchestrator.
+
+Required kernel artifacts:
+
+```text
+runs/<task>/lovasz_kernel.json
+runs/<task>/lovasz_blueprint.json
+runs/<task>/proofs/lovasz_blueprint.wit
+runs/<task>/actual_barrier_lemmas.json
+runs/<task>/route_population.json
+runs/<task>/evaluator_registry.json
+runs/<task>/lovasz_process_judge.json
+runs/<task>/lovasz_barrier_autopsy.json
+```
+
+Use:
+
+```bash
+python3 ~/.openscientist/skills/witsoc/witsoc.py lovasz kernel runs/<task> --write
+python3 ~/.openscientist/skills/witsoc/witsoc.py lovasz judge runs/<task> --write
+python3 ~/.openscientist/skills/witsoc/witsoc.py lovasz autopsy runs/<task> --write
+python3 ~/.openscientist/skills/witsoc/witsoc.py lovasz packet runs/<task> --out runs/<task>/lovasz_orchestrator_packet.json
+```
+
+`lovasz_barrier_autopsy.json` is the Lovasz failure-analysis artifact. It
+clusters failed methods, repeated theorem-precondition gaps, target drift,
+formalization bottlenecks, counterexample pressure, and genuine mathematical
+barriers. Use it after any repeated failure before spending more budget on the
+same route.
+
+The kernel must answer:
+
+- What is the frozen target and target hash?
+- What exact actual barrier lemma, obstruction, or counterexample certificate
+  is currently attacked?
+- Which proof-DAG node is selected and how does it point back to the target?
+- Which evaluator or acceptance test checks target fidelity, falsification
+  pressure, theorem preconditions, and formalization readiness?
+- Which route population exists, and which route is currently best?
+- Which `.soc` memory risk suggests a one-axis mutation instead of retry?
+- What is the single best next mathematical action?
+
+The process judge scores target fidelity, barrier clarity, evaluator coverage,
+proof-graph health, route diversity, memory use, skeptic pressure,
+formalization pressure, and next-action sharpness. A low score is not a command
+to stop; it is a command to repair Lovasz state before wasting budget.
+
 When Lovasz is activated, the user-facing progress message must include:
 
 ```text
@@ -32,6 +161,7 @@ Using witsoc with witsoc-explorer -> witsoc-research-lovasz -> witsoc-explorer -
 Use this skill under the top-level Witsoc coordinator in `../SKILL.md`. Load Witsoc's relevant core protocols as needed, especially:
 
 - `../references/core/open_problem.md`
+- `../references/core/llm_contract.md`
 - `../references/core/exploration_strategy.md`
 - `../references/core/handoff.md`
 - `../references/core/safeverify.md`
@@ -69,12 +199,16 @@ Load these focused references when the task needs them:
 - `references/cross_run_memory.md`: reuse research memory across Lovasz runs.
 - `references/full_proof_escalation.md`: decide when partial progress may escalate to full-proof mode.
 - `references/claim_demotion.md`: demote failed claims without losing useful evidence.
+- `references/algorithmic_research.md`: advisory algorithms for proof-DAG priority, one-axis mutation selection, worker-result ranking, next-action choice, and Lovasz orchestrator packets.
 
-Use `.soc` memory as the primary approach-failure memory. Initialize it with
-`../scripts/lovasz_soc_memory.py init`, query it before repeating any method, and
-append every failed route to `FAILED_APPROACHES` with a do-not-repeat condition.
-Failure JSONL and markdown ledgers may exist for validators, but Lovasz must
-keep `lovasz.soc` as the compact run memory used for efficient dispatch.
+Use `.soc` memory as the primary approach-failure and decision-support memory.
+Initialize it with `../scripts/lovasz_soc_memory.py init`, read `context`
+before selecting a route, query it before repeating any method, and append every
+failed route to `FAILED_APPROACHES` with a do-not-repeat condition. Also update
+`CURRENT`, `BARRIERS`, `REUSABLE_TOOLS`, and `ORCHESTRATOR_NOTES` whenever a
+run learns something useful for routing. Failure JSONL and markdown ledgers may
+exist for validators, but Lovasz must keep `lovasz.soc` as the compact run
+memory used for efficient dispatch.
 
 For open-solution campaigns, enforce
 `../references/core/open_problem.md#open-solution-protocol`. This is mandatory
@@ -155,7 +289,7 @@ Do not send a research claim to `../witsoc-explorer/SKILL.md` until it has passe
 
 1. **Audit Explorer's packet.** Confirm the frozen statement, domain, quantifiers, definitions, variants, and success criteria. If the packet is incomplete, return a request for Explorer to repair it instead of changing the target.
 2. **Triage literature and status.** Use `literature_triage.md`. Separate primary papers, surveys, formal-library facts, maintained pages, pointers, informal claims, known barriers, and known failed methods.
-3. **Load memory.** Use `soc_memory.md` and `cross_run_memory.md` before choosing a path; write back new barriers, dead methods, reusable theorem retrievals, and reductions after each loop.
+3. **Load memory.** Use `soc_memory.md` and `cross_run_memory.md` before choosing a path. Run `lovasz_soc_memory.py context runs/<task>` before serious routing; write back current state, new barriers, dead methods, reusable theorem retrievals, tools, reductions, and orchestrator-facing notes after each loop.
 4. **Select domain playbooks.** Use `domain_playbooks.md` and the closest specific domain playbooks.
 5. **Classify frontier level.** Use `erdos_level_playbook.md` when the problem resembles an Erdős-style asymptotic, extremal, additive, probabilistic, or multiplicative-number-theory problem.
 6. **Score candidate products.** Use `problem_selection.md` to rank subproblems and choose the highest-value tractable product.
@@ -209,7 +343,7 @@ Lovasz is the research director for open-problem barrier breaking, not merely a 
    - `REJECTED`: false, target drift, circular, or formally failed.
 10. **Enforce proof worktree and Lean project cleanup.** If a worker creates a private proof worktree or Lean project, it must delete it after finishing while preserving WIT files, Lean source snippets, logs, receipts, and reports. If workers share one Lean project inside a dedicated proof worktree, Lovasz must track shared-project ownership and delete the project only after the last worker is done.
 11. **Record verified lemma library entries, failure memory, and retry ledger.** Store reusable verified nodes and failed routes with enough statement, dependency, artifact, diagnostic, and target-hash data to reuse or avoid them in later runs. The retry ledger must record method family, target hash, result status, and what changed before a method is retried.
-11a. **Write failures to `.soc` immediately.** On every `FAILED_ATTEMPT`, `REJECTED`, target-drift diagnosis, or theorem-precondition blocker, append a concise entry with `../scripts/lovasz_soc_memory.py add-failure`. Do not wait until final synthesis.
+11a. **Write `.soc` updates immediately.** On every `FAILED_ATTEMPT`, `REJECTED`, target-drift diagnosis, or theorem-precondition blocker, append a concise entry with `../scripts/lovasz_soc_memory.py add-failure`. On every new bottleneck, use `add-barrier`. On every reusable method or theorem pattern, use `add-tool`. On every important strategic warning or optional parallel split, use `add-note`. Do not wait until final synthesis.
 12. **Run the assembly checker.** Check that all dependencies are covered, no hidden assumptions were introduced, local lemmas compose into the frozen target, definitions are consistent, every external theorem precondition is discharged, no conjecture is used as a theorem, there are no DAG cycles, and no worker solved a weakened theorem.
 12a. **Run the final synthesis audit before Generator.** Final Generator may run only when `final_synthesis_audit` confirms DAG composition, no conjecture-as-theorem, no hidden assumptions, no weaker theorem substitution, external preconditions discharged, target hashes match, and WIT/Lean target hashes match.
 13. **Classify synthesis gaps.** Each gap is one of: artifact issue, missing actual barrier lemma, theorem-precondition gap, false claim, target drift, or genuine mathematical barrier.
@@ -221,6 +355,9 @@ Before returning to Explorer, run the production gates when available:
 
 ```bash
 SCORE="$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/score_lovasz_results.py)"
+LOVASZ_PACKET="$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/lovasz_orchestrator_packet.py)"
+LOVASZ_KERNEL="$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/lovasz_kernel.py)"
+LOVASZ_JUDGE="$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/lovasz_judge.py)"
 SUMMARY="$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/summarize_lovasz_run.py)"
 VALIDATE="$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/validate_lovasz_run.py)"
 MANIFEST="$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/lovasz_run_manifest.py)"
@@ -249,6 +386,9 @@ OPEN_VALIDATE="$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/validate_open_prob
 OPEN_REPORT="$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/open_problem_report.py)"
 python3 "$OPEN_VALIDATE" runs/<task>
 python3 "$FORMAL" runs/<task> --out runs/<task>/formalization_feasibility.json
+python3 "$LOVASZ_KERNEL" runs/<task> --write
+python3 "$LOVASZ_JUDGE" runs/<task> --write
+python3 "$LOVASZ_PACKET" runs/<task> --out runs/<task>/lovasz_orchestrator_packet.json
 python3 "$OPEN_REPORT" runs/<task>
 python3 "$GRADE" runs/<task> --out runs/<task>/report_quality_grade.json
 python3 "$RETURN" runs/<task> --out runs/<task>/explorer_return_packet.json
@@ -430,6 +570,12 @@ runs/<task-slug>/
   proof_gaps.md
   skeptic.md
   proof_dependency_dag.json
+  lovasz_kernel.json
+  lovasz_blueprint.json
+  lovasz_process_judge.json
+  actual_barrier_lemmas.json
+  route_population.json
+  evaluator_registry.json
   worker_results.json
   proof_worktrees.json
   actual_lemma_queue.json
@@ -445,7 +591,7 @@ runs/<task-slug>/
   handoff_v1.json
 ```
 
-Use `lovasz_run.json` as the authoritative phase manifest. Use `lovasz.soc` as persistent working memory for reusable insights, dead approaches, progress counters, and recovery queues. Use `research.md` as the main ledger. Use `claims.md` for numbered mathematical claims with status, dependencies, and evidence. Use `sources.md` for source trails and exact status claims. Use `barriers.md` for barrier hypotheses, bypass attempts, and defeated approaches. Use `proof_dependency_dag.json` and `worker_results.json` for machine-checkable Lovasz orchestration state. Use `actual_lemma_queue.json` to keep the real missing lemmas foregrounded. Use `counterexample_search_templates.json` to preserve bounded falsification packets. Use `formalization_feasibility.json` to prevent premature WIT/Lean routing. Use `report_quality_grade.json` to expose missing production evidence before final response. Use `explorer_return_packet.json` as the only structured Lovasz-to-Explorer return. Use `retry_ledger.json` to prevent repeating failed methods unchanged. Use `skeptic_reviews.json` for independent target-drift/hidden-assumption/circularity/weaker-target review and partial-result classification. Use `closure_attempts.json` to record last-mile gap-closing attempts before accepting partial products. Use `theorem_retrieval_audit.json` to record nearby theorem statements, preconditions, formal availability, rejected theorem uses, and missing hypotheses for each serious DAG node. Use `proof_worktrees.json` to track each session-scoped proof worktree by `session_id`, `node_id`, `proof_id`, `path`, `owner_worker`, `dedicated`, and `cleanup_status`. Use `final_synthesis_audit.json` before final Generator. Use `verified_lemma_library.md` for reusable formally verified nodes and `failure_memory.md` for failed routes that should not be repeated without new information. Use `verification.md` for the Lovasz verification gate. Produce Witsoc handoffs only after a narrow target passes verification.
+Use `lovasz_run.json` as the authoritative phase manifest. Use `lovasz.soc` as persistent working memory for reusable insights, dead approaches, progress counters, and recovery queues. Use `research.md` as the main ledger. Use `claims.md` for numbered mathematical claims with status, dependencies, and evidence. Use `sources.md` for source trails and exact status claims. Use `barriers.md` for barrier hypotheses, bypass attempts, and defeated approaches. Use `proof_dependency_dag.json`, `lovasz_kernel.json`, `lovasz_blueprint.json`, `lovasz_process_judge.json`, `actual_barrier_lemmas.json`, `route_population.json`, `evaluator_registry.json`, and `worker_results.json` for machine-checkable Lovasz orchestration state. Use `actual_lemma_queue.json` to keep the real missing lemmas foregrounded. Use `counterexample_search_templates.json` to preserve bounded falsification packets. Use `formalization_feasibility.json` to prevent premature WIT/Lean routing. Use `report_quality_grade.json` to expose missing production evidence before final response. Use `explorer_return_packet.json` as the only structured Lovasz-to-Explorer return. Use `retry_ledger.json` to prevent repeating failed methods unchanged. Use `skeptic_reviews.json` for independent target-drift/hidden-assumption/circularity/weaker-target review and partial-result classification. Use `closure_attempts.json` to record last-mile gap-closing attempts before accepting partial products. Use `theorem_retrieval_audit.json` to record nearby theorem statements, preconditions, formal availability, rejected theorem uses, and missing hypotheses for each serious DAG node. Use `proof_worktrees.json` to track each session-scoped proof worktree by `session_id`, `node_id`, `proof_id`, `path`, `owner_worker`, `dedicated`, and `cleanup_status`. Use `final_synthesis_audit.json` before final Generator. Use `verified_lemma_library.md` for reusable formally verified nodes and `failure_memory.md` for failed routes that should not be repeated without new information. Use `verification.md` for the Lovasz verification gate. Produce Witsoc handoffs only after a narrow target passes verification.
 
 Also maintain `runs/witsoc_research_memory.soc` for cross-run reusable insights, barriers, theorem patterns, counterexample families, and formalization pitfalls.
 
