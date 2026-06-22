@@ -12,17 +12,26 @@ Witsoc Generator is the artifact engine inside Witsoc. It converts an Explorer-a
 
 The generator is not a chat-proof mode and not a mathematical truth arbiter. If this subskill is used, create or update a `.wit` artifact unless the user only asks to inspect existing WIT files. For nontrivial new proof tasks, require an Explorer handoff before writing the WIT. For open/unsolved/unconfirmed targets, require that Explorer has accepted Lovasz's verification result for the narrow artifact target.
 
+Generator is a specialist tool, not a strategy owner. It may report artifact
+quality, repair options, verifier receipts, blocked labels, and route-back
+recommendations. The orchestrator decides whether to retry locally, ask
+Explorer for a new plan, send a mathematical barrier to Lovasz, spawn another
+formalizer, or stop.
+
 ## Codex/Claude Contract
 
 Generator is the artifact engine for Codex/Claude-style runs. It starts from an
 accepted Explorer handoff, preserves the frozen target, creates or repairs
 WIT/Lean artifacts, runs checks where available, and reports exact artifact
 status. The orchestrator remains in charge of strategy and final reporting.
+Generator should make artifact tradeoffs visible without treating its preferred
+repair path as mandatory.
 
 Preferred commands:
 
 ```bash
 python3 ~/.openscientist/skills/witsoc/witsoc.py llm-contract
+python3 ~/.openscientist/skills/witsoc/witsoc.py generator obligations runs/<task> --write
 python3 ~/.openscientist/skills/witsoc/witsoc.py generator packet runs/<task>
 python3 ~/.openscientist/skills/witsoc/witsoc.py spawn-template generator --target "<problem>"
 ```
@@ -52,6 +61,44 @@ Shared protocols live in the parent skill:
 - `references/algorithmic_generator.md`: advisory algorithms for artifact quality, repair ranking, and Generator decision packets.
 
 If the user explicitly asks for WIT code, `.wit`, or WIT plus Lean, WIT generation is mandatory. Do not return only a plan, prose proof, verifier discussion, or Lean formalization. The generator must either write a `.wit` artifact or report a concrete blocker with status `GAP`, `FAILED_ATTEMPT`, or `REJECTED`.
+
+## Mandatory Verifier Loop
+
+Generator's default behavior is a local repair loop, not one-shot artifact
+writing:
+
+```text
+write/update WIT -> lint WIT -> wit check -> isolate failed label -> repair locally -> retry -> build verifier context -> attempt receipt/Lean when available -> packet/report
+```
+
+For every serious Generator pass, produce or update:
+
+```text
+proofs/<task>.wit
+proofs/<task>.soc
+runs/<task>/generator_obligation_graph.json
+runs/<task>/generator_decision_packet.json
+reports/witsoc_status.md
+reports/witsoc_preview.md
+reports/report.md
+```
+
+If a `.wit` artifact cannot be produced, write `proofs/<task>_blocker.md` with
+the frozen target, exact failed method, missing premise, failed label if any,
+and the route back to Explorer or Lovasz. Then refresh the top-level packet:
+
+```bash
+python3 ~/.openscientist/skills/witsoc/witsoc.py generator obligations runs/<task> --write
+python3 ~/.openscientist/skills/witsoc/witsoc.py generator packet runs/<task> --out runs/<task>/generator_decision_packet.json
+python3 ~/.openscientist/skills/witsoc/witsoc.py next-action runs/<task> --write
+python3 ~/.openscientist/skills/witsoc/witsoc.py proof-workflow runs/<task> --write
+python3 ~/.openscientist/skills/witsoc/witsoc.py ui-summary runs/<task> --write
+```
+
+`generator_obligation_graph.json` is the Generator's algorithmic control
+artifact. It must list proof obligations, dependencies, missing premises,
+repair blockers, and the next obligation to attack. Treat it as a map for
+artifact work, not as a restriction on the orchestrator's strategy.
 
 If generation, structural checking, verifier review, or Lean formalization fails for a serious problem, the generator must not end the run after the first blocked method. Preserve the failure and hand it back to top-level Witsoc/Explorer for alternate-method agents unless worker spawning is unavailable.
 

@@ -23,6 +23,16 @@ EXPLORER_REVIEW -> LOVASZ_BARRIER_PACKET | RESEARCH_HANDOFF_READY | HONEST_STOP
 RESEARCH_HANDOFF_READY -> BLUEPRINT_READY -> VALIDATE_BLUEPRINT -> GENERATE_WIT -> CHECK_WIT -> BUILD_CONTEXT -> SEMANTIC_REVIEW -> RECEIPT -> OPTIONAL_LEAN -> REPORT
 ```
 
+The orchestrator-facing shortcut for this state machine is:
+
+```bash
+python3 ~/.openscientist/skills/witsoc/witsoc.py proof-workflow runs/<task> --write
+```
+
+This command does not decide global strategy. It names the current proof phase,
+missing obligations, next suggested specialist owner, and expected artifact so
+the orchestrator can choose sequencing, fanout, and budget.
+
 Allowed transitions:
 
 - `CHECK_WIT` failure goes to `REPAIR_WIT` or `EXPLORER_REVIEW`.

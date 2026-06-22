@@ -15,11 +15,131 @@ fanout, ordering, budget, agent assignment, reframing, and which Witsoc
 recommendations to use. Witsoc recommendations are defaults and affordances, not
 commands, except where they enforce claim honesty.
 
+## Toolbox Boundary
+
+Witsoc is not the mind of the run. Witsoc is a mathematical toolbox and
+instrument panel for the orchestrator. It should expose sharp tools, candidate
+routes, checks, packets, and specialist opinions; the orchestrator decides which
+tool to use, in what order, with what budget, and whether to invent a route that
+Witsoc did not propose.
+
+When Witsoc emits advice, prefer menus over scripts:
+
+```json
+{
+  "available_tools": ["explorer", "lovasz", "generator", "validator", "search", "report"],
+  "candidate_moves": [],
+  "tradeoffs": [],
+  "evidence_gates": [],
+  "creative_openings": [],
+  "orchestrator_decision_needed": "choose sequence, fanout, budget, or reframe"
+}
+```
+
+The only hard Witsoc veto is mathematical honesty: unsupported status upgrades,
+target drift, hidden assumptions, or final reports that overclaim evidence. It
+must not veto creative search, extra workers, alternate ordering, speculative
+ideation, analogies, or orchestrator reframing when those are labeled honestly.
+
+## AI-Native Witsoc Loop
+
+For serious mathematical work, Witsoc must behave like a compact decision and
+artifact loop, not a prose manual. The default loop is:
+
+```text
+route -> freeze target -> update memory -> find current gap -> choose next action -> create/check artifact -> report packet
+```
+
+For proving work, keep the specialist loop explicit:
+
+```text
+Explorer freeze/retrieve/stress-test
+-> Lovasz if the target is open, blocked, or barrier-heavy
+-> Explorer review of Lovasz products
+-> Generator WIT artifact
+-> verifier/Lean/receipt repair loop
+-> final report or honest blocker
+```
+
+Use the proof workflow packet to expose where the proof is in this pipeline:
+
+```bash
+python3 ~/.openscientist/skills/witsoc/witsoc.py proof-workflow runs/<task> --write
+```
+
+The packet is advisory. It names the current phase, missing obligations, next
+specialist owner, expected artifact, and gates, while the orchestrator remains
+free to reorder, parallelize, or add creative routes.
+
+At every serious run checkpoint, Witsoc should leave a machine-usable product:
+
+```text
+proofs/<task>.wit            # or proofs/main.wit, unless mathematically blocked
+proofs/<task>.soc            # compact run memory and failed-route record
+reports/witsoc_status.md     # short human report
+runs/<task>/witsoc_next_action.json
+runs/<task>/proof_workflow.json
+runs/<task>/explorer_target_model.json      # when Explorer is active
+runs/<task>/generator_obligation_graph.json # when Generator is active
+runs/<task>/lovasz_barrier_autopsy.json     # when Lovasz is active
+runs/<task>/witsoc_scorecard.json           # before final report or deep-run checkpoint
+runs/<task>/witsoc_ui_summary.json          # UI/report cockpit for plugin and orchestrator
+runs/<task>/reports/witsoc_preview.md       # plain-English preview report
+runs/<task>/reports/report.md               # UI-facing report.md mirror
+```
+
+If WIT is blocked, write `proofs/<task>_blocker.md` with the exact missing
+lemma, failed method, falsification/evaluator status, and next experiment. Do
+not let serious Witsoc use end as prose only.
+
+The orchestrator-facing packet must answer:
+
+```json
+{
+  "target_status": "DIRECT|UNKNOWN|OPEN|PARTIAL|CHECKED|VERIFIED|BLOCKED",
+  "current_gap": "the exact missing lemma, precondition, or artifact failure",
+  "next_action": "explorer|lovasz|generator|repair|stop",
+  "evaluator": "the measurable check that decides progress",
+  "artifact": "path to .wit/.soc/report/blocker",
+  "success_condition": "what would count as progress",
+  "failure_route": "where to send the problem if this fails"
+}
+```
+
+Use the cheap packet command whenever a run needs a tactical state update:
+
+```bash
+python3 ~/.openscientist/skills/witsoc/witsoc.py next-action runs/<task> --write
+python3 ~/.openscientist/skills/witsoc/witsoc.py scorecard runs/<task> --write
+python3 ~/.openscientist/skills/witsoc/witsoc.py ui-summary runs/<task> --write
+```
+
+For deep runs and long open-problem campaigns, use the deep UI scan:
+
+```bash
+python3 ~/.openscientist/skills/witsoc/witsoc.py ui-summary runs/<task> --write --deep
+```
+
+`--write` materializes the default `proofs/`, `reports/`, `.soc`, status report,
+and `witsoc_next_action.json` scaffolds if they are missing. This packet is
+advisory: the orchestrator stays in charge and may choose a more creative route.
+
 Use this skill for all mathematical tasks. For simple questions, answer directly with a clear derivation. For serious proof work, coordinate the internal subskills:
 
 - `witsoc-research-lovasz/SKILL.md`: Lovasz-mode research-program orchestration for named open problems, unsolved conjectures, Erdős-style questions, frontier theorem discovery, barrier analysis, source/status triage, conjecture mining, disproof-first search, and verified partial research products.
 - `witsoc-explorer/SKILL.md`: search, premise selection, lemma discovery, counterexample hunting, proof automation planning, open-problem research ledgers, and general mathematical exploration.
 - `witsoc-generator/SKILL.md`: `.wit` proof generation, repair, structural checking, verifier-context construction, receipt tracking, and optional Lean formalization.
+
+Treat each subskill as a specialist tool, not a replacement orchestrator:
+
+- Explorer specializes in target freeze, route discovery, status arbitration, theorem search, and handoffs.
+- Lovasz specializes in open-problem barrier attack, actual barrier lemmas, proof-DAG pressure, worker packets, and failure memory.
+- Generator specializes in WIT/Lean artifact construction, repair, receipts, and exact verifier reporting.
+
+The orchestrator may combine these specialists nonlinearly: Explorer and
+Lovasz can run in parallel, Generator can inspect an existing artifact while
+Explorer audits target drift, and outside tools can be added whenever the
+orchestrator believes they improve the run.
 
 These subskills live inside this folder. If you need their full instructions, read the relevant nested `SKILL.md`; do not look for sibling top-level skill directories.
 
@@ -37,6 +157,8 @@ Use the root launcher from any working directory:
 python3 ~/.openscientist/skills/witsoc/witsoc.py llm-contract
 python3 ~/.openscientist/skills/witsoc/witsoc.py subskills
 python3 ~/.openscientist/skills/witsoc/witsoc.py route --field json "<task>"
+python3 ~/.openscientist/skills/witsoc/witsoc.py next-action runs/<task> --write
+python3 ~/.openscientist/skills/witsoc/witsoc.py proof-workflow runs/<task> --write
 python3 ~/.openscientist/skills/witsoc/witsoc.py spawn-template explorer --target "<problem>"
 ```
 
@@ -162,6 +284,13 @@ Shared protocols live under `references/core/`. Load only the protocol needed fo
 - `scripts/validate_spawn_packet.py`: validate Lovasz spawn requests and worker result packets.
 - `scripts/test_route.py`: deterministic routing regression tests.
 - `scripts/witsoc.py`: unified CLI entrypoint for route/init/check/verify/status/artifacts/validation.
+- `scripts/witsoc_next_action.py`: compact top-level run product and next-action packet; use `--write` to materialize default `.soc`, status report, and packet scaffolds.
+- `scripts/proof_workflow.py`: compact proof-state packet; identifies Explorer/Lovasz/Generator phase, missing proof obligations, gates, next owner, and expected artifact.
+- `scripts/witsoc_scorecard.py`: unified Explorer/Generator/Lovasz/proof-workflow readiness scorecard for deep-run checkpoints and final-report gating.
+- `scripts/witsoc_ui_summary.py`: single UI-facing run cockpit; writes `witsoc_ui_summary.json`, `reports/witsoc_preview.md`, `reports/witsoc_report.md`, and `reports/report.md`; use `--deep` to scan all WIT/Lean/SOC/JSON/receipt/report artifacts.
+- `scripts/explorer_target_model.py`: Explorer target model, variant/status audit, theorem-candidate ledger, falsification state, and handoff readiness packet.
+- `scripts/generator_obligation_graph.py`: Generator proof-obligation graph with dependencies, missing premises, repair blockers, and next obligation.
+- `scripts/lovasz_barrier_autopsy.py`: Lovasz failure clustering and barrier autopsy for repeated theorem-precondition gaps, target drift, counterexample pressure, formalization bottlenecks, and genuine mathematical barriers.
 - `scripts/artifacts.py`: session artifact registry for generated WIT, Lean, SOC, logs, receipts, and proof worktrees.
 - `scripts/validate_route_state.py`: reject invalid phase jumps or completion with required route phases still pending.
 - `scripts/validate_generator_handoff.py`: reject Generator starts without a valid Explorer handoff and route authorization.
@@ -176,7 +305,7 @@ Shared protocols live under `references/core/`. Load only the protocol needed fo
 - `scripts/validate_proof_dag_integrity.py`: reject cyclic, dependency-missing, target-drifting, or unsupported accepted proof-DAG nodes.
 - `scripts/spawn_workers_from_dag.py`: generate deterministic Lovasz worker spawn packets from the proof DAG and actual lemma queue.
 - `scripts/lovasz_worker_dispatch.py`: enrich spawn packets with `.soc` repeat-risk checks and write a dispatch manifest.
-- `scripts/lovasz_soc_memory.py`: initialize/query/update `lovasz.soc` with failed approaches, reusable insights, and imported failure JSONL.
+- `scripts/lovasz_soc_memory.py`: initialize/query/update/context-pack `lovasz.soc` with current state, barriers, failed approaches, reusable insights/tools, orchestrator notes, and imported failure JSONL.
 - `scripts/result_ladder.py`: generate a tractable result ladder and `product_selection.json` for open-problem campaigns.
 - `scripts/formalization_feasibility.py`: score WIT/Lean readiness and route weak targets back to Explorer/Lovasz repair.
 - `scripts/counterexample_search.py`: generate bounded counterexample-search packets for graph, finite-model, SAT/SMT, number-theory, additive, Ramsey/extremal, finite-algebra, analysis, algebra, topology, and probability domains.
@@ -406,6 +535,7 @@ as fallback.
 For Generator production readiness, run:
 
 ```bash
+python3 "$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/generator_obligation_graph.py)" runs/<task> --write
 python3 "$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/validate_generator_handoff.py)" runs/<task>/handoff_v1.json --route-state "$PLANE_SESSION_DIR/witsoc_route_state.json"
 python3 "$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/lint_wit_quality.py)" path/to/artifact.wit --json
 python3 "$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/generator_manifest.py)" --manifest runs/<task>/generator_artifacts.json --artifact path/to/artifact.wit --type wit --target-hash "$FROZEN_TARGET_SHA256"
@@ -417,6 +547,7 @@ For Lovasz production readiness, run:
 python3 "$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/lovasz_run_manifest.py)" runs/<task>
 python3 "$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/validate_lovasz_phase.py)" runs/<task>
 python3 "$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/lovasz_soc_memory.py)" init runs/<task>
+python3 "$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/lovasz_soc_memory.py)" context runs/<task>
 python3 "$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/result_ladder.py)" runs/<task> --write
 python3 "$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/decompose_problem.py)" runs/<task> --write --out runs/<task>/problem_decomposition.json
 python3 "$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/synthesize_open_ledgers.py)" runs/<task>
@@ -426,12 +557,15 @@ python3 "$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/spawn_workers_from_dag.p
 python3 "$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/lovasz_worker_dispatch.py)" runs/<task> --write
 python3 "$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/status_lattice.py)" runs/<task>
 python3 "$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/score_lovasz_results.py)" runs/<task>/worker_results.json --registry "$PLANE_SESSION_DIR/witsoc_artifacts.json" --out runs/<task>/lovasz_result_scores.json
+python3 "$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/lovasz_barrier_autopsy.py)" runs/<task> --write
 python3 "$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/summarize_lovasz_run.py)" runs/<task>
 python3 "$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/validate_lovasz_run.py)" runs/<task> --artifact-registry "$PLANE_SESSION_DIR/witsoc_artifacts.json"
 python3 "$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/validate_open_problem_run.py)" runs/<task>
 python3 "$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/formalization_feasibility.py)" runs/<task> --out runs/<task>/formalization_feasibility.json
 python3 "$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/open_problem_report.py)" runs/<task>
 python3 "$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/grade_witsoc_report.py)" runs/<task> --out runs/<task>/report_quality_grade.json
+python3 "$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/witsoc_scorecard.py)" runs/<task> --write
+python3 "$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/witsoc_ui_summary.py)" runs/<task> --write --deep
 python3 "$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/explorer_return_packet.py)" runs/<task> --out runs/<task>/explorer_return_packet.json
 python3 "$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/lovasz_run_manifest.py)" runs/<task> --phase EXPLORER_RETURN_READY
 python3 "$("$PLANE_TOOL_BIN" skill-which witsoc/scripts/validate_lovasz_phase.py)" runs/<task>

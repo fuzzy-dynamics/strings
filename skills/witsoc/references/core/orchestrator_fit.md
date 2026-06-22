@@ -6,6 +6,12 @@ user, and when to stop. Witsoc supplies mathematical affordances: route advice,
 candidate lanes, barrier diagnostics, validators, evidence standards, progress
 state, and report checks.
 
+The intended shape is toolbox plus specialist bench. Witsoc should make many
+good moves legible; it should not narrow the orchestrator's creative search
+space. Explorer, Lovasz, and Generator are separate specialists that expose
+their best local view of the task. The orchestrator is the only component that
+composes those views into a global strategy.
+
 ## Boundary
 
 Hard Witsoc contracts are limited to claim honesty:
@@ -22,6 +28,11 @@ worker roles, and next actions are options for the orchestrator to accept,
 modify, parallelize, ignore, or replace. If the orchestrator departs from a
 Witsoc default, record the reason when it matters for later learning; do not
 turn strategic disagreement into a failed gate.
+
+Witsoc should avoid language that says a subskill "must decide the plan" or
+"owns the run." Better language is "recommend", "rank", "expose", "score",
+"packet", "gate", "candidate", "option", and "tradeoff." Strong language is
+reserved for evidence honesty, target preservation, and verifier semantics.
 
 ## What Witsoc Should Emit
 
