@@ -2,14 +2,23 @@
 
 Use cross-run memory to carry reusable mathematical lessons across Lovasz runs.
 
-## File
+## Tooling (R4 — this is implemented, not aspirational)
 
-Maintain:
+The global store is `~/.witsoc/knowledge.sqlite3` (`witsoc memory`,
+`scripts/knowledge_store.py`):
 
-```text
-runs/witsoc_research_memory.soc
-```
+- **Write**: `witsoc memory sync-run runs/<task>` lifts a run's failure memory
+  (`lovasz.soc` + `failure_memory.jsonl`) into the global store. The driver's
+  `--finalize` and `explorer_return_packet.py` do this automatically.
+- **Read**: `witsoc memory query --statement "..." --method "..."` —
+  `lovasz_worker_dispatch` consults it automatically alongside the per-run
+  `.soc`, so a method that failed in ANOTHER run raises repeat risk here.
+- **Priors (L5)**: campaign outcomes are recorded per goal signature;
+  `engine_dispatch` campaigns start from `witsoc memory priors --target "..."`
+  automatically.
 
+A prose `runs/witsoc_research_memory.soc` may still hold narrative lessons;
+the machine-matched memory above is authoritative for repeat-risk decisions.
 This complements per-task `runs/<task>/lovasz.soc`.
 
 ## Read Before

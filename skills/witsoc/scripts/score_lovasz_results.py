@@ -21,6 +21,12 @@ STATUS_WEIGHT = {
     "PARTIAL": 22,
     "CONDITIONAL": 20,
     "CONJECTURE": 12,
+    "COUNTEREXAMPLE_CANDIDATE": 11,
+    "REDUCTION_CANDIDATE": 10,
+    "PROOF_SKETCH_CANDIDATE": 10,
+    "LEMMA_CANDIDATE": 9,
+    "ATTACK_CANDIDATE": 8,
+    "OPEN_UNFALSIFIED": 6,
     "FAILED_ATTEMPT": 8,
     "GAP": 5,
     "OPEN": 4,
@@ -44,6 +50,7 @@ def registry_paths(registry: Path | None) -> set[str]:
 
 def score_worker(worker: dict, registered: set[str]) -> dict:
     status = str(worker.get("status") or "")
+    claim_scope = str(worker.get("claim_scope") or "")
     evidence = worker.get("evidence") if isinstance(worker.get("evidence"), list) else []
     artifacts = worker.get("artifacts") if isinstance(worker.get("artifacts"), list) else []
     fidelity = worker.get("target_fidelity")
@@ -55,6 +62,8 @@ def score_worker(worker: dict, registered: set[str]) -> dict:
     score += min(12, 4 * len(artifacts))
     score += min(10, 5 * artifact_hits)
     score += round(20 * fidelity_value)
+    if claim_scope in {"candidate_only", "planning_only", "refutation_candidate"}:
+        score = min(score, 24)
     if worker.get("failure_class") in {None, "", "none"} and status in {"FAILED_ATTEMPT", "GAP", "OPEN", "REJECTED"}:
         score -= 8
     if missing_artifacts:
@@ -65,6 +74,7 @@ def score_worker(worker: dict, registered: set[str]) -> dict:
         "worker_id": worker.get("worker_id"),
         "node_id": worker.get("node_id"),
         "status": status,
+        "claim_scope": claim_scope,
         "score": max(0, score),
         "target_fidelity": fidelity_value,
         "evidence_count": len(evidence),

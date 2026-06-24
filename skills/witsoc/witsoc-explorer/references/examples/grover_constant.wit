@@ -1,0 +1,66 @@
+-- Grover measure condition constant
+-- The measure condition constant C = sup_{x>0} mu({g <= x})/x equals 1
+-- for the Grover problem, for all N >= 2.
+-- Status: UNVERIFIED
+
+MODULE [grover_constant]
+
+THEOREM [grover_constant]:
+  GIVEN:
+    - $M = 2$, $d_0 = 1$, $d_1 = N-1$, $E_0 = 0$, $E_1 = 1$
+    - [N_lower]: $N \geq 2$
+  CLAIM:
+    $C_{\mathrm{Grover}} = 1$.
+
+PROOF OF [grover_constant]:
+
+  [1] HAVE $g(s) = \sqrt{(2s-1)^2 + 4s(1-s)/N}$.
+      BY @{Grover gap formula, Paper Proposition 4.2}.
+
+  [2] HAVE $g(s)^2 = (2s-1)^2(1-1/N) + 1/N$.
+      BY [1], algebra: expand $4s(1-s) = 1 - (2s-1)^2$, collect terms.
+
+  [3] HAVE $g_{\min} = g(1/2) = 1/\sqrt{N}$.
+      BY [2], substitution: $s = 1/2$ gives $g(1/2)^2 = 1/N$.
+
+  [4] HAVE $g(s) \geq 1/\sqrt{N}$ for all $s \in [0,1]$.
+      BY [2], bound: $(2s-1)^2(1-1/N) \geq 0$, so $g(s)^2 \geq 1/N$.
+
+  [5] HAVE for $x < 1/\sqrt{N}$: $\mu(\{s : g(s) \leq x\}) = 0$.
+      BY [4], since $g(s) \geq 1/\sqrt{N} > x$ for all $s$.
+
+  [6] CASE $1/\sqrt{N} \leq x \leq 1$:
+
+    [6.1] HAVE $g(s) \leq x$ iff $(2s-1)^2 \leq (Nx^2 - 1)/(N-1)$.
+          BY [2], algebra: rearrange $g(s)^2 \leq x^2$ under the case condition.
+
+    [6.2] HAVE $\mu(\{s : g(s) \leq x\}) = \sqrt{(Nx^2 - 1)/(N-1)}$.
+          BY [6.1], the sublevel set is a symmetric interval about $s = 1/2$.
+
+    [6.3] HAVE $\mu/x = \sqrt{N/(N-1) - 1/(x^2(N-1))}$.
+          BY [6.2], algebra: divide by $x$ and simplify.
+
+    [6.4] HAVE $\mu/x$ is increasing in $x$ on $[1/\sqrt{N}, 1]$.
+          BY [6.3], the term $-1/(x^2(N-1))$ increases as $x$ increases.
+
+    [6.5] HAVE at $x = 1$: $\mu/x = \sqrt{(N-1)/(N-1)} = 1$.
+          BY [6.2], substitution: $x = 1$.
+
+    [6] QED BY [6.4], [6.5]: supremum on this interval is 1, achieved at $x = 1$.
+
+  [7] CASE $x > 1$:
+
+    [7.1] HAVE $g(s) \leq 1$ for all $s$, so $\mu(\{g \leq x\}) = 1$.
+          BY [4], [2]: $g(0) = g(1) = 1$ and $g(s) \leq 1$ by direct check under the case condition.
+
+    [7.2] HAVE $\mu/x = 1/x < 1$.
+          BY [7.1], algebra.
+
+    [7] QED BY [7.2].
+
+  [8] SHOW $C = \sup_{x > 0} \mu(\{g \leq x\})/x = 1$.
+      BY [5] (zero for $x < 1/\sqrt{N}$),
+         [6] (increasing to 1 on $[1/\sqrt{N}, 1]$),
+         [7] (below 1 for $x > 1$).
+
+  QED BY [8].

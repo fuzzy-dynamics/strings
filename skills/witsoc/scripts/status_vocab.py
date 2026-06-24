@@ -49,6 +49,28 @@ ALL_STATUSES = STRUCTURAL_STATUSES | ACCEPTED_STATUSES
 # schema-style coarse label can be matched against the granular transition graph.
 LEGACY_ALIASES = {"CHECKED": "CHECKED_SYMBOLIC", "VERIFIED": "VERIFIED_LEAN"}
 
+# --- R7: this module is the ONLY status authority. ----------------------------
+# Other subsystems use parallel WORKFLOW/TRUST vocabularies that are NOT claim
+# statuses; their documented mappings into the claim lattice are:
+#
+# Blueprint workflow states (blueprint_campaign):
+#   PENDING/READY -> no claim implied (scheduling state)
+#   VERIFIED      -> the node's claim may carry VERIFIED_LEAN (the proof was
+#                    kernel-checked by the dispatch that recorded it)
+#   FAILED        -> FAILED_ATTEMPT evidence on the node
+#   THEORY_GAP    -> GAP (missing prerequisite theory)
+BLUEPRINT_STATES = {"PENDING", "READY", "VERIFIED", "FAILED", "THEORY_GAP"}
+#
+# SAT certificate trust (sat_backend): CHECKED -> CHECKED_BOUNDED claim grade
+# (explicit re-verified witness or checked refutation of a finite instance);
+# OPEN -> no claim; REJECTED -> the certificate itself is invalid evidence.
+SAT_TRUST = {"CHECKED", "OPEN", "REJECTED"}
+#
+# Solve-claim stages (solve_claim_protocol): CLAIMED/SOLVE_ACCEPTED/REJECTED
+# are CLAIM-PROTOCOL states, not statuses; only SOLVE_ACCEPTED makes a solve
+# reportable, and it never upgrades any node status by itself.
+SOLVE_CLAIM_STATES = {"CLAIMED", "SOLVE_ACCEPTED", "REJECTED"}
+
 
 def normalize(status: Any) -> str:
     """Upper-case and strip a status; non-strings become ``""``."""

@@ -43,10 +43,7 @@ def load(path: Path, default: Any) -> Any:
         return default
 
 
-def records(path: Path) -> list[dict]:
-    data = load(path, [])
-    return [x for x in data if isinstance(x, dict)] if isinstance(data, list) else []
-
+from witcore import records  # noqa: E402  -- shared substrate, was a local copy
 
 def nonempty(path: Path) -> bool:
     try:

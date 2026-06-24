@@ -154,12 +154,6 @@
       "formalization_risk": 0.15
     }
   ],
-  "search_budget": {
-    "time_budget": "short",
-    "attempt_budget": 3,
-    "computation_budget": "finite 3 by 3 and 4 by 4 grids only",
-    "stop_conditions": ["arithmetic checked", "finite counterexample artifact generated"]
-  },
   "proof_compression": {
     "selected_sketch_id": "sketch_grid_3",
     "compression_goal": "Use two equal-distance pairs instead of enumerating every distance.",
